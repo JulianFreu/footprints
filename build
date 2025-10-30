@@ -1,0 +1,3 @@
+#!/bin/bash
+
+gcc -O3 main.c map.c fifo.c gpxParser.c tracks.c filters.c heat.c ui.c -o appl -lSDL2 -lSDL2_image -lSDL2_ttf -lcurl -lm -lxml2

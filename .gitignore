@@ -1,0 +1,3 @@
+gpx_files/*
+tilecache/*
+api_key.h

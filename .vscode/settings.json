@@ -1,0 +1,20 @@
+{
+    "files.associations": {
+        "*.c": "cpp",
+        "memory": "cpp",
+        "format": "cpp",
+        "limits": "cpp",
+        "streambuf": "cpp",
+        "type_traits": "cpp",
+        "typeinfo": "cpp",
+        "compare": "cpp",
+        "cmath": "cpp",
+        "array": "cpp",
+        "string_view": "cpp",
+        "initializer_list": "cpp",
+        "ranges": "cpp",
+        "span": "cpp",
+        "atomic": "cpp",
+        "ostream": "cpp"
+    }
+}
