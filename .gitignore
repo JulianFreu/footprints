@@ -1,4 +1,4 @@
 gpx_files/*
 tilecache/*
 api_key.h
-elev_profile.png
+**/elev_profile.png

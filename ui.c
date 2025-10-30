@@ -1229,11 +1229,7 @@ void clay_DrawUI(struct application *appl, GpxCollection *collection)
                 showSideBarTrackInfo(high_point_icon, "Other", " ", 8);
             }
 
-            SDL_Surface *image = IMG_Load("elev_profile.png");
-            //CLAY(CLAY_ID("ElevationProfileGap"),
-            //     {.layout = {.sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(GAPS)}}})
-            //{
-            //}
+            SDL_Surface *image = IMG_Load("resources/elev_profile.png");
             CLAY(CLAY_ID("ElevationProfile"),
                  {.layout = {.sizing = {.width = CLAY_SIZING_GROW(200), .height = CLAY_SIZING_FIXED(100)}},
                   .image = {.imageData = image}})

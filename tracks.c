@@ -505,6 +505,6 @@ void updateTrackInfoGraphs(struct application *appl, GpxCollection collection)
   static int prev_selected_track = -1;
   if (appl->selected_track >= 0 && prev_selected_track != appl->selected_track)
   {
-    save_elevation_profile_as_png(appl->renderer, collection.tracks[appl->selected_track], "elev_profile.png", 200, 100);
+    save_elevation_profile_as_png(appl->renderer, collection.tracks[appl->selected_track], "resources/elev_profile.png", 200, 100);
   }
 }
