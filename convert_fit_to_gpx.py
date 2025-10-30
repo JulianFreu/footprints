@@ -1,6 +1,7 @@
 import os
 import sys
 import datetime
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from fitparse import FitFile
 from lxml import etree
 
@@ -21,7 +22,6 @@ def fit_to_gpx(input_path, output_path):
     fitfile = FitFile(input_path)
     activity_type = detect_fit_activity_type(fitfile)
 
-    # Skip unwanted activity types
     if activity_type.lower() in SKIP_TYPES:
         print(f"⏭️  Skipping {os.path.basename(input_path)} (activity type: {activity_type})")
         return False
@@ -39,10 +39,7 @@ def fit_to_gpx(input_path, output_path):
     for record in fitfile.get_messages("record"):
         lat = record.get_value("position_lat")
         lon = record.get_value("position_long")
-        ele = record.get_value("altitude")
-        if ele is None:
-            ele = record.get_value("enhanced_altitude")  # fallback
-
+        ele = record.get_value("altitude") or record.get_value("enhanced_altitude")
         time = record.get_value("timestamp")
 
         if lat is None or lon is None:
@@ -73,15 +70,13 @@ def fit_to_gpx(input_path, output_path):
 # ----------------- TCX Handling -----------------
 def get_default_namespace(root):
     ns = root.nsmap.get(None)
-    if ns:
-        return {"tcx": ns}
-    return {}
+    return {"tcx": ns} if ns else {}
 
 def detect_tcx_activity_type(tcx_root):
     NS = get_default_namespace(tcx_root)
     activity = tcx_root.find(".//tcx:Activity", namespaces=NS)
-    if activity is not None and 'Sport' in activity.attrib:
-        return activity.attrib['Sport'].capitalize()
+    if activity is not None and "Sport" in activity.attrib:
+        return activity.attrib["Sport"].capitalize()
     return "Unknown"
 
 def tcx_to_gpx(input_path, output_path):
@@ -134,34 +129,56 @@ def tcx_to_gpx(input_path, output_path):
     print(f"✅ {os.path.basename(input_path)} → {os.path.basename(output_path)} ({activity_type})")
     return True
 
-# ----------------- Recursive Folder Conversion -----------------
-def convert_folder(input_folder, output_folder):
-    os.makedirs(output_folder, exist_ok=True)  # ensure output folder exists
 
+# ----------------- Parallel Folder Conversion -----------------
+def convert_single_file(fpath, out_path):
+    try:
+        _, ext = os.path.splitext(fpath)
+        ext = ext.lower()
+        if ext == ".fit":
+            return fit_to_gpx(fpath, out_path)
+        elif ext == ".tcx":
+            return tcx_to_gpx(fpath, out_path)
+        else:
+            print(f"⚠️  Unsupported file type: {os.path.basename(fpath)}")
+    except Exception as e:
+        print(f"❌ Error converting {os.path.basename(fpath)}: {e}")
+    return False
+
+
+def convert_folder(input_folder, output_folder, max_workers=None):
+    os.makedirs(output_folder, exist_ok=True)
+
+    # Collect all files
+    tasks = []
     for root_dir, _, files in os.walk(input_folder):
         for fname in files:
-            fpath = os.path.join(root_dir, fname)
             name, ext = os.path.splitext(fname)
-            ext = ext.lower()
+            if ext.lower() not in (".fit", ".tcx"):
+                continue
+            fpath = os.path.join(root_dir, fname)
+            out_path = os.path.join(output_folder, f"{name}.gpx")
+            tasks.append((fpath, out_path))
 
-            out_path = os.path.join(output_folder, f"{name}.gpx")  # all files in same folder
+    print(f"🧮 Found {len(tasks)} files to convert")
 
-            try:
-                if ext == ".fit":
-                    fit_to_gpx(fpath, out_path)
-                elif ext == ".tcx":
-                    tcx_to_gpx(fpath, out_path)
-                else:
-                    print(f"⚠️  Unsupported file type: {fname}")
-            except Exception as e:
-                print(f"❌ Error converting {fname}: {e}")
+    # Parallel execution across available cores
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(convert_single_file, f, o): f for f, o in tasks}
+        for future in as_completed(futures):
+            future.result()  # Let it print from within
+
+    print("✅ All conversions complete.")
+
 
 # ----------------- Command-line Interface -----------------
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python convert_fit_to_gpx.py <input_folder> <output_folder>")
+        print("Usage: python convert_fit_to_gpx.py <input_folder> <output_folder> [max_cores]")
         sys.exit(1)
 
     input_folder = sys.argv[1]
     output_folder = sys.argv[2]
-    convert_folder(input_folder, output_folder)
+    max_cores = int(sys.argv[3]) if len(sys.argv) >= 4 else None
+
+    convert_folder(input_folder, output_folder, max_workers=max_cores)
