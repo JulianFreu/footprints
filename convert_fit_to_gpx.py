@@ -7,6 +7,7 @@ from lxml import etree
 
 SKIP_TYPES = {"unknown", "training", "swimming"}
 
+
 # ----------------- FIT Handling -----------------
 def detect_fit_activity_type(fitfile):
     try:
@@ -18,13 +19,14 @@ def detect_fit_activity_type(fitfile):
         pass
     return "Unknown"
 
-def fit_to_gpx(input_path, output_path):
+
+def fit_to_gpx(input_path, output_folder):
     fitfile = FitFile(input_path)
     activity_type = detect_fit_activity_type(fitfile)
 
     if activity_type.lower() in SKIP_TYPES:
         print(f"⏭️  Skipping {os.path.basename(input_path)} (activity type: {activity_type})")
-        return False
+        return None
 
     gpx = etree.Element("gpx", version="1.1", creator="fit_tcx_to_gpx")
     metadata = etree.SubElement(gpx, "metadata")
@@ -35,7 +37,9 @@ def fit_to_gpx(input_path, output_path):
     etree.SubElement(trk, "type").text = activity_type
     trkseg = etree.SubElement(trk, "trkseg")
 
+    first_timestamp = None
     valid_points = 0
+
     for record in fitfile.get_messages("record"):
         lat = record.get_value("position_lat")
         lon = record.get_value("position_long")
@@ -53,24 +57,38 @@ def fit_to_gpx(input_path, output_path):
             etree.SubElement(trkpt, "ele").text = f"{float(ele):.1f}"
         if time:
             etree.SubElement(trkpt, "time").text = time.isoformat() + "Z"
+            if first_timestamp is None:
+                first_timestamp = time
 
         valid_points += 1
 
     if valid_points == 0:
         print(f"⏭️  Skipping {os.path.basename(input_path)} (no GPS points)")
-        return False
+        return None
 
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    with open(output_path, "wb") as f:
+    # Determine output filename based on timestamp
+    base_name = os.path.splitext(os.path.basename(input_path))[0]
+    if first_timestamp:
+        ts_str = first_timestamp.strftime("%Y-%m-%d-%H-%M-%S")
+        out_name = f"{ts_str}_{base_name}.gpx"
+    else:
+        out_name = f"{base_name}.gpx"
+
+    out_path = os.path.join(output_folder, out_name)
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+
+    with open(out_path, "wb") as f:
         f.write(etree.tostring(gpx, pretty_print=True, xml_declaration=True, encoding="UTF-8"))
 
-    print(f"✅ {os.path.basename(input_path)} → {os.path.basename(output_path)} ({activity_type})")
-    return True
+    print(f"✅ {os.path.basename(input_path)} → {out_name} ({activity_type})")
+    return out_path
+
 
 # ----------------- TCX Handling -----------------
 def get_default_namespace(root):
     ns = root.nsmap.get(None)
     return {"tcx": ns} if ns else {}
+
 
 def detect_tcx_activity_type(tcx_root):
     NS = get_default_namespace(tcx_root)
@@ -79,7 +97,8 @@ def detect_tcx_activity_type(tcx_root):
         return activity.attrib["Sport"].capitalize()
     return "Unknown"
 
-def tcx_to_gpx(input_path, output_path):
+
+def tcx_to_gpx(input_path, output_folder):
     tcx_tree = etree.parse(input_path)
     tcx_root = tcx_tree.getroot()
     NS = get_default_namespace(tcx_root)
@@ -87,7 +106,7 @@ def tcx_to_gpx(input_path, output_path):
     activity_type = detect_tcx_activity_type(tcx_root)
     if activity_type.lower() in SKIP_TYPES:
         print(f"⏭️  Skipping {os.path.basename(input_path)} (activity type: {activity_type})")
-        return False
+        return None
 
     gpx = etree.Element("gpx", version="1.1", creator="fit_tcx_to_gpx")
     metadata = etree.SubElement(gpx, "metadata")
@@ -99,6 +118,8 @@ def tcx_to_gpx(input_path, output_path):
     trkseg = etree.SubElement(trk, "trkseg")
 
     valid_points = 0
+    first_timestamp = None
+
     for tp in tcx_root.findall(".//tcx:Trackpoint", namespaces=NS):
         pos = tp.find("tcx:Position", namespaces=NS)
         if pos is None:
@@ -115,58 +136,68 @@ def tcx_to_gpx(input_path, output_path):
         time_text = tp.findtext("tcx:Time", namespaces=NS)
         if time_text:
             etree.SubElement(trkpt, "time").text = time_text
+            if first_timestamp is None:
+                try:
+                    first_timestamp = datetime.datetime.fromisoformat(time_text.replace("Z", "+00:00"))
+                except Exception:
+                    pass
 
         valid_points += 1
 
     if valid_points == 0:
         print(f"⏭️  Skipping {os.path.basename(input_path)} (no GPS points)")
-        return False
+        return None
 
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    with open(output_path, "wb") as f:
+    base_name = os.path.splitext(os.path.basename(input_path))[0]
+    if first_timestamp:
+        ts_str = first_timestamp.strftime("%Y-%m-%d-%H-%M-%S")
+        out_name = f"{ts_str}_{base_name}.gpx"
+    else:
+        out_name = f"{base_name}.gpx"
+
+    out_path = os.path.join(output_folder, out_name)
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+
+    with open(out_path, "wb") as f:
         f.write(etree.tostring(gpx, pretty_print=True, xml_declaration=True, encoding="UTF-8"))
 
-    print(f"✅ {os.path.basename(input_path)} → {os.path.basename(output_path)} ({activity_type})")
-    return True
+    print(f"✅ {os.path.basename(input_path)} → {out_name} ({activity_type})")
+    return out_path
 
 
 # ----------------- Parallel Folder Conversion -----------------
-def convert_single_file(fpath, out_path):
+def convert_single_file(fpath, output_folder):
     try:
         _, ext = os.path.splitext(fpath)
         ext = ext.lower()
         if ext == ".fit":
-            return fit_to_gpx(fpath, out_path)
+            return fit_to_gpx(fpath, output_folder)
         elif ext == ".tcx":
-            return tcx_to_gpx(fpath, out_path)
+            return tcx_to_gpx(fpath, output_folder)
         else:
             print(f"⚠️  Unsupported file type: {os.path.basename(fpath)}")
     except Exception as e:
         print(f"❌ Error converting {os.path.basename(fpath)}: {e}")
-    return False
+    return None
 
 
 def convert_folder(input_folder, output_folder, max_workers=None):
     os.makedirs(output_folder, exist_ok=True)
 
-    # Collect all files
+    # Collect all relevant files
     tasks = []
     for root_dir, _, files in os.walk(input_folder):
         for fname in files:
-            name, ext = os.path.splitext(fname)
-            if ext.lower() not in (".fit", ".tcx"):
-                continue
-            fpath = os.path.join(root_dir, fname)
-            out_path = os.path.join(output_folder, f"{name}.gpx")
-            tasks.append((fpath, out_path))
+            if os.path.splitext(fname)[1].lower() in (".fit", ".tcx"):
+                tasks.append(os.path.join(root_dir, fname))
 
     print(f"🧮 Found {len(tasks)} files to convert")
 
-    # Parallel execution across available cores
+    # Parallel conversion
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(convert_single_file, f, o): f for f, o in tasks}
+        futures = {executor.submit(convert_single_file, f, output_folder): f for f in tasks}
         for future in as_completed(futures):
-            future.result()  # Let it print from within
+            future.result()
 
     print("✅ All conversions complete.")
 
