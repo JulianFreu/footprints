@@ -7,7 +7,7 @@
 
 #define M_PI 3.14159265358979323846
 #define TILE_SIZE 256
-#define FIFO_DEPTH 128
+#define FIFO_DEPTH 16
 #define WINDOW_TITLE "footprints"
 #define SCREEN_WIDTH 1200
 #define SCREEN_HEIGHT 800
