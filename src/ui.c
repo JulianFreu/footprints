@@ -770,7 +770,6 @@ void showRunListBottom(char *total_visible_tracks, GpxCollection *collection)
                                     .cornerRadius = {.bottomLeft = CORNER_RADIUS, .bottomRight = CORNER_RADIUS}})
     {
 
-        showClayText(collection->total_visible_tracks_str, 12, bg1, CLAY_TEXT_ALIGN_CENTER);
         CLAY(CLAY_ID("RunListBottomSPACE"), {.layout = {
                                                  .sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW()}}})
         {
@@ -784,43 +783,7 @@ void showRunListBottom(char *total_visible_tracks, GpxCollection *collection)
                                               .cornerRadius = CORNER_RADIUS})
         {
             Clay_OnHover(Handle_ClickedOn_ToggleFilterView, 0);
-            showClayText("Toggle Filters", 16, darkAqua, CLAY_TEXT_ALIGN_CENTER);
-        }
-
-        CLAY(CLAY_ID("ReloadGPXButton"), {.layout = {
-                                              .padding = CLAY_PADDING_ALL(GAPS),
-                                              .sizing = {.width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT()},
-                                              .layoutDirection = CLAY_LEFT_TO_RIGHT,
-                                              .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}},
-                                          .backgroundColor = Clay_Hovered() ? bg_l : bg_d,
-                                          .cornerRadius = CORNER_RADIUS})
-        {
-            Clay_OnHover(Handle_ClickedOn_ToggleFilterView, 0);
-            showClayText("Reload GPX-Files", 16, darkAqua, CLAY_TEXT_ALIGN_CENTER);
-        }
-
-        CLAY(CLAY_ID("Calculate Heat"), {.layout = {
-                                             .padding = CLAY_PADDING_ALL(GAPS),
-                                             .sizing = {.width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT()},
-                                             .layoutDirection = CLAY_LEFT_TO_RIGHT,
-                                             .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}},
-                                         .backgroundColor = Clay_Hovered() ? bg_l : bg_d,
-                                         .cornerRadius = CORNER_RADIUS})
-        {
-            Clay_OnHover(Handle_ClickedOn_CalculateHeat, (intptr_t)collection);
-            showClayText("Calculate Heat", 16, darkAqua, CLAY_TEXT_ALIGN_CENTER);
-        }
-
-        CLAY(CLAY_ID("DisplayFilteredButton"), {.layout = {
-                                                    .padding = CLAY_PADDING_ALL(GAPS),
-                                                    .sizing = {.width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT()},
-                                                    .layoutDirection = CLAY_LEFT_TO_RIGHT,
-                                                    .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}},
-                                                .backgroundColor = Clay_Hovered() ? bg_l : bg_d,
-                                                .cornerRadius = CORNER_RADIUS})
-        {
-            Clay_OnHover(Handle_ClickedOn_ShowFilteredTracks, (intptr_t)&collection->track_tile_cache);
-            showClayText("Show Filtered Tracks", 16, darkAqua, CLAY_TEXT_ALIGN_CENTER);
+            showClayText("Toggle Filter View", 16, darkAqua, CLAY_TEXT_ALIGN_CENTER);
         }
     }
 }
@@ -1271,6 +1234,41 @@ void clay_DrawUI(struct application *appl, GpxCollection *collection)
             showTypeFilterContainer(&collection->filters);
             // check if anything changed
 
+            CLAY(CLAY_ID_LOCAL("FilterTracksState"), {.layout = {
+                                                 .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW()},
+                                                 .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}}
+                                            })
+            {
+                showClayText(collection->total_visible_tracks_str, 16, fg, CLAY_TEXT_ALIGN_CENTER);
+            }
+            CLAY(CLAY_ID_LOCAL("space"), {.layout = {
+                                                 .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW()}}
+                                            })
+            {
+            }
+            CLAY(CLAY_ID("Calculate Heat"), {.layout = {
+                                                 .padding = CLAY_PADDING_ALL(GAPS),
+                                                 .sizing = {.width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT()},
+                                                 .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                                                 .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}},
+                                             .backgroundColor = Clay_Hovered() ? bg_l : bg_d,
+                                             .cornerRadius = CORNER_RADIUS})
+            {
+                Clay_OnHover(Handle_ClickedOn_CalculateHeat, (intptr_t)collection);
+                showClayText("Calculate Heat", 16, darkAqua, CLAY_TEXT_ALIGN_CENTER);
+            }
+
+            CLAY(CLAY_ID("DisplayFilteredButton"), {.layout = {
+                                                        .padding = CLAY_PADDING_ALL(GAPS),
+                                                        .sizing = {.width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT()},
+                                                        .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                                                        .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}},
+                                                    .backgroundColor = Clay_Hovered() ? bg_l : bg_d,
+                                                    .cornerRadius = CORNER_RADIUS})
+            {
+                Clay_OnHover(Handle_ClickedOn_ShowFilteredTracks, (intptr_t)&collection->track_tile_cache);
+                showClayText("Show Filtered Tracks", 16, darkAqua, CLAY_TEXT_ALIGN_CENTER);
+            }
             if (pre_showRuns == collection->filters.showRuns || pre_showHikes == collection->filters.showHikes || pre_showCycling == collection->filters.showCycling || pre_showOther == collection->filters.showOther)
                 apply_filter_values(collection);
         }
