@@ -164,6 +164,47 @@ def tcx_to_gpx(input_path, output_folder):
     print(f"✅ {os.path.basename(input_path)} → {out_name} ({activity_type})")
     return out_path
 
+# ----------------- GPX Handling (copy + rename) -----------------
+def copy_gpx_file(input_path, output_folder):
+    """
+    Copies a GPX file to the output folder, renaming it by prepending the
+    timestamp of the first <time> element (if available) or file modification time.
+    """
+    try:
+        tree = etree.parse(input_path)
+        root = tree.getroot()
+
+        # Try to get the first <time> tag in the GPX file
+        first_time_elem = root.find(".//time")
+        first_timestamp = None
+        if first_time_elem is not None and first_time_elem.text:
+            try:
+                first_timestamp = datetime.datetime.fromisoformat(
+                    first_time_elem.text.replace("Z", "+00:00")
+                )
+            except Exception:
+                pass
+
+        # Fallback: use file's modification time
+        if first_timestamp is None:
+            first_timestamp = datetime.datetime.fromtimestamp(os.path.getmtime(input_path))
+
+        ts_str = first_timestamp.strftime("%Y-%m-%d-%H-%M-%S")
+        base_name = os.path.splitext(os.path.basename(input_path))[0]
+        out_name = f"{ts_str}_{base_name}.gpx"
+        out_path = os.path.join(output_folder, out_name)
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+
+        # Copy file contents
+        with open(input_path, "rb") as src, open(out_path, "wb") as dst:
+            dst.write(src.read())
+
+        print(f"✅ Copied GPX {os.path.basename(input_path)} → {out_name}")
+        return out_path
+
+    except Exception as e:
+        print(f"❌ Error copying GPX {os.path.basename(input_path)}: {e}")
+        return None
 
 # ----------------- Parallel Folder Conversion -----------------
 def convert_single_file(fpath, output_folder):
@@ -174,11 +215,14 @@ def convert_single_file(fpath, output_folder):
             return fit_to_gpx(fpath, output_folder)
         elif ext == ".tcx":
             return tcx_to_gpx(fpath, output_folder)
+        elif ext == ".gpx":  # 🆕 handle existing GPX files
+            return copy_gpx_file(fpath, output_folder)
         else:
             print(f"⚠️  Unsupported file type: {os.path.basename(fpath)}")
     except Exception as e:
         print(f"❌ Error converting {os.path.basename(fpath)}: {e}")
     return None
+
 
 
 def convert_folder(input_folder, output_folder, max_workers=None):
@@ -188,7 +232,7 @@ def convert_folder(input_folder, output_folder, max_workers=None):
     tasks = []
     for root_dir, _, files in os.walk(input_folder):
         for fname in files:
-            if os.path.splitext(fname)[1].lower() in (".fit", ".tcx"):
+            if os.path.splitext(fname)[1].lower() in (".fit", ".tcx", ".gpx"):
                 tasks.append(os.path.join(root_dir, fname))
 
     print(f"🧮 Found {len(tasks)} files to convert")
