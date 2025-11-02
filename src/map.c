@@ -142,17 +142,17 @@ bool tile_key_equal(MapTile a, MapTile b)
     return a.tile_x == b.tile_x && a.tile_y == b.tile_y && a.zoom == b.zoom;
 }
 
-void append_to_tile_cache(tile_texture_cache *cache, tile_texture entry)
+void append_to_tile_cache(TileTextureCache *cache, TileTexture entry)
 {
     if (cache->size >= cache->capacity)
     {
         cache->capacity = cache->capacity == 0 ? 64 : cache->capacity * 2;
-        cache->entries = realloc(cache->entries, cache->capacity * sizeof(tile_texture));
+        cache->entries = realloc(cache->entries, cache->capacity * sizeof(TileTexture));
     }
     cache->entries[cache->size++] = entry;
 }
 
-void free_tile_cache(tile_texture_cache *cache)
+void free_tile_cache(TileTextureCache *cache)
 {
     printf("tile cache capacity before cleanup: %d\n", cache->capacity);
     for (int i = 0; i < cache->size; i++)
@@ -188,7 +188,7 @@ SDL_Texture *get_cached_texture(struct application *appl, MapTile key, const cha
         return NULL;
 
     // Store in cache
-    tile_texture entry = {key, texture};
+    TileTexture entry = {key, texture};
     append_to_tile_cache(&(appl->tile_cache), entry); // You implement this
 
     return texture;

@@ -1,10 +1,10 @@
 #include "main.h"
 
-extern ui_state ui;
+extern UIState ui;
 
 SDL_Event event;
 
-bool animation_in_progress(ui_state ui)
+bool animation_in_progress(UIState ui)
 {
   bool animation_in_progress = false;
   if (ui.right_sidebar.opening == true || ui.right_sidebar.closing == true)
@@ -17,7 +17,7 @@ bool animation_in_progress(ui_state ui)
   return animation_in_progress;
 }
 
-void append_to_input_buffer(ui_state *ui, char c)
+void append_to_input_buffer(UIState *ui, char c)
 {
   // Leave space for null terminator
   if (ui->text_input_length < sizeof(ui->text_input_buffer) - 1)

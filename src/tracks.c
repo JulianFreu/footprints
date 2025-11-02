@@ -136,17 +136,17 @@ void draw_smooth_thick_polyline(SDL_Renderer *renderer,
     draw_circle(renderer, points[count - 1].x, points[count - 1].y, thickness / 2.0f, color);
 }
 
-void append_to_track_tile_cache(track_tile_texture_cache *cache, track_tile_texture entry)
+void append_to_track_tile_cache(TrackTileTextureCache *cache, TrackTileTexture entry)
 {
     if (cache->size >= cache->capacity)
     {
         cache->capacity = cache->capacity == 0 ? 64 : cache->capacity * 2;
-        cache->entries = realloc(cache->entries, cache->capacity * sizeof(track_tile_texture));
+        cache->entries = realloc(cache->entries, cache->capacity * sizeof(TrackTileTexture));
     }
     cache->entries[cache->size++] = entry;
 }
 
-void free_track_tile_cache(track_tile_texture_cache *cache)
+void free_track_tile_cache(TrackTileTextureCache *cache)
 {
     for (int i = 0; i < cache->size; i++)
     {
@@ -253,7 +253,7 @@ SDL_Texture *get_or_render_track_tile(struct application *appl, GpxCollection *c
     SDL_SetRenderTarget(appl->renderer, NULL);
 
     // Cachen
-    track_tile_texture entry = {
+    TrackTileTexture entry = {
         .key = key,
         .texture = tex,
         .valid = true};

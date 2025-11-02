@@ -57,25 +57,25 @@ typedef struct Clay_String
     const char *chars;
 } Clay_String;
 
-typedef struct animation_state
+typedef struct AnimationState
 {
     bool opening;
     bool closing;
     float animation;
     int ticks;
-} animation_state;
+} AnimationState;
 
-typedef struct ui_state
+typedef struct UIState
 {
-    animation_state left_sidebar;
-    animation_state right_sidebar;
-    animation_state run_list;
-    animation_state filters_animation;
+    AnimationState left_sidebar;
+    AnimationState right_sidebar;
+    AnimationState run_list;
+    AnimationState filters_animation;
     bool text_input_mode;
     char text_input_buffer[INPUT_BUFFER_SIZE];
     size_t text_input_length;
     uint16_t activeFilterID;
-} ui_state;
+} UIState;
 
 typedef struct MapTile
 {
@@ -103,14 +103,14 @@ typedef struct
     MapTile key;
     SDL_Texture *texture;
     bool valid;
-} track_tile_texture;
+} TrackTileTexture;
 
 typedef struct
 {
-    track_tile_texture *entries;
+    TrackTileTexture *entries;
     int size;
     int capacity;
-} track_tile_texture_cache;
+} TrackTileTextureCache;
 
 typedef struct
 {
@@ -124,18 +124,18 @@ struct MemoryStruct
     size_t size;
 };
 
-typedef struct tile_texture
+typedef struct TileTexture
 {
     MapTile key;
     SDL_Texture *texture;
-} tile_texture;
+} TileTexture;
 
 typedef struct
 {
-    tile_texture *entries;
+    TileTexture *entries;
     int size;
     int capacity;
-} tile_texture_cache;
+} TileTextureCache;
 
 struct fifo
 {
@@ -168,8 +168,8 @@ struct application
     int selected_track;
     struct fifo download_queue;
     SDL2_Font fonts[1];
-    tile_texture_cache tile_cache;
-    SDL_Texture *selected_track_overlay[MAX_ZOOM + 1]; // +1 für Zoom-Level 0 bis 20
+    TileTextureCache tile_cache;
+    SDL_Texture *selected_track_overlay[MAX_ZOOM + 1]; // +1 for zoom level 0 to 20
     int currentFPS;
     SDL_Event event;
     Uint32 lastFrameTime;
@@ -301,7 +301,7 @@ typedef struct GpxCollection
     AttributeType to_be_sorted_by;
     int *list_order;
     FilterSettings filters;
-    track_tile_texture_cache track_tile_cache;
+    TrackTileTextureCache track_tile_cache;
 } GpxCollection;
 
 typedef struct KDNode

@@ -35,7 +35,7 @@
 
 extern SDL_Event event;
 
-ui_state ui = {
+UIState ui = {
     .left_sidebar = {.opening = false, .closing = false, .animation = 0, .ticks = 0},
     .right_sidebar = {.opening = false, .closing = false, .animation = 0, .ticks = 0},
     .run_list = {.opening = false, .closing = false, .animation = 0, .ticks = 0},
@@ -672,7 +672,7 @@ void Handle_ClickedOn_ShowFilteredTracks(
 {
     if (pointerData.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME)
     {
-        track_tile_texture_cache *tracks_cache = (track_tile_texture_cache *)userData;
+        TrackTileTextureCache *tracks_cache = (TrackTileTextureCache *)userData;
         free_track_tile_cache(tracks_cache);
     }
 }
@@ -872,7 +872,7 @@ void showRunListScrollContainer(GpxCollection *collection, int height)
     }
 }
 
-void continue_animation(struct animation_state *anim_obj)
+void continue_animation(struct AnimationState *anim_obj)
 {
     // ticks are used as radians in sin(), -> sin(90°) = 1 and sin(0°) = 0
     if (anim_obj->opening)

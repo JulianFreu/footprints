@@ -182,7 +182,7 @@ bool gpxParser_ExtractActType(xmlNode *node, GpxTrack *track)
                         track->act_type = Run;
                         printf("run\n");
                     }
-                    else if (strcmp(type_str, "Hiking") == 0){
+                    else if (strcmp(type_str, "Hiking") == 0 || strcmp(type_str, "hiking") == 0){
                         track->act_type = Hike;
                         printf("hike\n");
                     }
