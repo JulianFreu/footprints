@@ -7,6 +7,6 @@
 #include <time.h>
 #include "structs.h"
 
-bool CalculateHeatmap(GpxCollection *collection);
+bool calculate_heatmap(GpxCollection *collection);
 
 #endif

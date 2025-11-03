@@ -187,7 +187,7 @@ SDL_Texture *get_or_render_track_tile(struct application *appl, GpxCollection *c
                 int world_x = track->points[i].world_x;
                 int world_y = track->points[i].world_y;
                 int tile_x, tile_y, pixel_in_tile_x, pixel_in_tile_y;
-                pixelToTileAndOffset(world_x, world_y, MAX_ZOOM, key.zoom, &tile_x, &tile_y, &pixel_in_tile_x, &pixel_in_tile_y);
+                conv_pixel_to_tile_and_offset(world_x, world_y, MAX_ZOOM, key.zoom, &tile_x, &tile_y, &pixel_in_tile_x, &pixel_in_tile_y);
 
                 if (tile_x == key.tile_x && tile_y == key.tile_y)
                 {
@@ -500,7 +500,7 @@ void save_elevation_profile_as_png(SDL_Renderer *renderer, const GpxTrack track,
     SDL_DestroyTexture(target);
 }
 
-void updateTrackInfoGraphs(struct application *appl, GpxCollection collection)
+void update_track_info_graphs(struct application *appl, GpxCollection collection)
 {
   static int prev_selected_track = -1;
   if (appl->selected_track >= 0 && prev_selected_track != appl->selected_track)

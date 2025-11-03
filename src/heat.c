@@ -164,11 +164,6 @@ void *heatmap_worker(void *arg)
 
     for (int i = task->start; i < task->end; i++)
     {
-        // precalculate some values of taget point to be more efficient:
-        // double lat_rad = task->points[i]->lat * DEG_TO_RAD;
-        // double cos_lat = cos(lat_rad);
-        // double meters_per_deg_lon = cos_lat * 111320.0;
-
         float x_correction = get_x_correction_factor(task->points[i]->world_y);
         // search for points in range
         int count = 0;
@@ -200,7 +195,7 @@ void *heatmap_worker(void *arg)
     return NULL;
 }
 
-bool CalculateHeatmap(GpxCollection *collection)
+bool calculate_heatmap(GpxCollection *collection)
 {
     // convert gpx track collection a single big point collection
     int total_points = 0;

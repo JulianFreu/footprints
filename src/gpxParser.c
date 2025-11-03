@@ -103,7 +103,7 @@ void gpxTrack_CalculateDistance(GpxTrack *track)
     track->distance = track->distance / 1000; // meters to kilometers
 }
 
-bool gpxParser_ExtractTime(xmlNode *node, GpxTrack *track, bool *found_start_time)
+bool gpxParser_extract_time(xmlNode *node, GpxTrack *track, bool *found_start_time)
 {
     bool found_time = false;
 
@@ -139,7 +139,7 @@ bool gpxParser_ExtractTime(xmlNode *node, GpxTrack *track, bool *found_start_tim
         }
 
         // Recurse into children
-        if (gpxParser_ExtractTime(cur_node->children, track, found_start_time))
+        if (gpxParser_extract_time(cur_node->children, track, found_start_time))
             found_time = true;
     }
 
@@ -166,7 +166,7 @@ void latLonToPixel(double lat, double lon, int zoom, int *x, int *y)
     *y = (int)(world_y * scale);
 }
 
-bool gpxParser_ExtractActType(xmlNode *node, GpxTrack *track)
+bool gpxParser_extract_act_type(xmlNode *node, GpxTrack *track)
 {
     for (xmlNode *cur_node = node; cur_node; cur_node = cur_node->next)
     {
@@ -198,12 +198,12 @@ bool gpxParser_ExtractActType(xmlNode *node, GpxTrack *track)
         }
 
         // Recurse into children
-        gpxParser_ExtractActType(cur_node->children, track);
+        gpxParser_extract_act_type(cur_node->children, track);
     }
     return true;
 }
 
-bool gpxParser_ExtractCoords(xmlNode *node, GpxTrack *track)
+bool gpxParser_extract_coords(xmlNode *node, GpxTrack *track)
 {
     for (xmlNode *cur_node = node; cur_node; cur_node = cur_node->next)
     {
@@ -268,12 +268,12 @@ bool gpxParser_ExtractCoords(xmlNode *node, GpxTrack *track)
                 xmlFree(s_lon);
         }
 
-        gpxParser_ExtractCoords(cur_node->children, track);
+        gpxParser_extract_coords(cur_node->children, track);
     }
     return true;
 }
 
-void gpxTrack_CalculateMidPoint(GpxTrack *track)
+void gpxTrack_calculate_mid_point(GpxTrack *track)
 {
     uint64_t mid_x = 0;
     uint64_t mid_y = 0;
@@ -286,7 +286,7 @@ void gpxTrack_CalculateMidPoint(GpxTrack *track)
    track->mid_y = mid_y / track->total_points;
 }
 
-void gpxTrack_CalculateElevationGainLoss(GpxTrack *track)
+void gpxTrack_calculate_elevation_gain_loss(GpxTrack *track)
 {
     const int window_size = 10; // Adjust as needed
     int total_points = track->total_points;
@@ -348,7 +348,7 @@ void gpxTrack_CalculateElevationGainLoss(GpxTrack *track)
     free(smoothed);
 }
 
-void calculateStringsForUI(GpxTrack *track)
+void gpxTrack_calculate_strings_for_UI(GpxTrack *track)
 {
     // duration
     int h = (int)track->duration_secs / 3600;
@@ -377,7 +377,7 @@ void calculateStringsForUI(GpxTrack *track)
     snprintf(track->distance_str, sizeof(track->distance_str), "%.2f", track->distance);
 }
 
-bool gpxParser_ParseFile(char *filename, GpxTrack *track)
+bool gpxParser_parse_file(char *filename, GpxTrack *track)
 {
     printf("Parsing: %s\n", filename);
     xmlDocPtr doc;
@@ -395,25 +395,25 @@ bool gpxParser_ParseFile(char *filename, GpxTrack *track)
     root_element = xmlDocGetRootElement(doc);
 
     // get activity type
-    gpxParser_ExtractActType(root_element, track);
+    gpxParser_extract_act_type(root_element, track);
 
-    if (gpxParser_ExtractCoords(root_element, track))
+    if (gpxParser_extract_coords(root_element, track))
     {
 
-        gpxTrack_CalculateMidPoint(track);
+        gpxTrack_calculate_mid_point(track);
         printf("Mid_x: %d, Mid_y: %d\n", track->mid_x, track->mid_y);
 
         gpxTrack_CalculateDistance(track);
         printf("Track distance: %.2f km\n", track->distance);
 
-        gpxTrack_CalculateElevationGainLoss(track);
+        gpxTrack_calculate_elevation_gain_loss(track);
         printf("Highest elevation: %.2f m\n", track->high_point);
         printf("Lowest elevation: %.2f m\n", track->low_point);
         printf("Total elevation up: %.2f m\n", track->elev_up);
         printf("Total elevation down: %.2f m\n", track->elev_down);
 
         bool found_start_time = false;
-        if (gpxParser_ExtractTime(root_element, track, &found_start_time))
+        if (gpxParser_extract_time(root_element, track, &found_start_time))
         {
             time_t start = parse_iso8601_utc(track->start_time_raw);
             time_t end = parse_iso8601_utc(track->end_time_raw);
@@ -442,7 +442,7 @@ bool gpxParser_ParseFile(char *filename, GpxTrack *track)
     return true;
 }
 
-int gpxParser_CountGpxFiles(){
+int gpxParser_count_gpx_files(){
     const char *folder_path = "./gpx_files"; // Folder containing GPX files
     DIR *dir;
     struct dirent *entry;
@@ -474,7 +474,7 @@ int gpxParser_CountGpxFiles(){
 
 }
 
-bool gpxParser_ParseAllFiles(GpxCollection *collection)
+bool gpxParser_parse_all_files(GpxCollection *collection)
 {
     const char *folder_path = "./gpx_files"; // Folder containing GPX files
     DIR *dir;
@@ -523,14 +523,14 @@ bool gpxParser_ParseAllFiles(GpxCollection *collection)
         current->total_points = 0;
 
         // Call your GPX parsing function here
-        gpxParser_ParseFile(full_path, current);
+        gpxParser_parse_file(full_path, current);
         printf("Tracks %d has %d data points\n", collection->total_tracks, collection->tracks[collection->total_tracks].total_points);
         collection->total_tracks++;
     }
 
     for (int i = 0; i < collection->total_tracks; i++)
     {
-        calculateStringsForUI(&collection->tracks[i]);
+        gpxTrack_calculate_strings_for_UI(&collection->tracks[i]);
 
         // give list order initial values
         collection->list_order[i] = i;

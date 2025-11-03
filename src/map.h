@@ -12,7 +12,7 @@
 
 bool get_map_background(struct application *appl, GpxCollection* collection);
 void *download_tiles(void *arg);
-void pixelToTileAndOffset(int pixel_x, int pixel_y, int source_zoom, int target_zoom,
+void conv_pixel_to_tile_and_offset(int pixel_x, int pixel_y, int source_zoom, int target_zoom,
                           int *tile_x, int *tile_y,
                           int *pixel_in_tile_x, int *pixel_in_tile_y);
 void free_tile_cache(TileTextureCache *cache);

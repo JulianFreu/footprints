@@ -51,7 +51,7 @@ int main(/*int argc, char *argv[]*/)
       .update_window = true,
   };
 
-  int order[gpxParser_CountGpxFiles()];
+  int order[gpxParser_count_gpx_files()];
   GpxCollection collection = {.list_order = order};
 
   if (sdl_initialize(&appl))
@@ -59,15 +59,15 @@ int main(/*int argc, char *argv[]*/)
 
   SDL_GetWindowSize(appl.window, &appl.window_width,
                     &appl.window_height);
-  clay_Init(&appl);
+  clay_init(&appl);
   SDL_RenderPresent(appl.renderer);
 
-  gpxParser_ParseAllFiles(&collection);
+  gpxParser_parse_all_files(&collection);
 
   reset_filters(&collection.filters);
   apply_filter_values(&collection);
 
-  CalculateHeatmap(&collection);
+  calculate_heatmap(&collection);
   printf("Maximum heat is %d\n", collection.max_heat);
 
   // start thread that will donwload missing tiles of the map
@@ -101,19 +101,19 @@ int main(/*int argc, char *argv[]*/)
       appl.update_window = false;
       SDL_RenderClear(appl.renderer);
 
-      updateTrackInfoGraphs(&appl, collection);
+      update_track_info_graphs(&appl, collection);
 
       update_selected_track_overlay(&appl, &collection);
 
       get_map_background(&appl, &collection);
 
-      clay_DrawUI(&appl, &collection);
+      clay_draw_UI(&appl, &collection);
 
       SDL_RenderPresent(appl.renderer);
     }
 
     // FPS counter
-    fpsTimer += GetDeltaTime(appl.lastFrameTime);
+    fpsTimer += get_delta_time(appl.lastFrameTime);
     fpsCounter++;
 
     if (fpsTimer >= 1.0f)
@@ -146,7 +146,7 @@ bool appl_cleanup(struct application *appl, GpxCollection *collection, int exit_
   free_tile_cache(&(appl->tile_cache));
   free_track_tile_cache(&collection->track_tile_cache);
   printf("Clean UI...\n");
-  clay_freeMemory();
+  clay_free_memory();
   printf("Clean renderer...\n");
   SDL_DestroyRenderer(appl->renderer);
   printf("Clean window...\n");

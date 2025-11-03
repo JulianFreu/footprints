@@ -1,7 +1,7 @@
 #include "map.h"
 #include "api_key.h"
 
-void pixelToTileAndOffset(int pixel_x, int pixel_y, int source_zoom, int target_zoom,
+void conv_pixel_to_tile_and_offset(int pixel_x, int pixel_y, int source_zoom, int target_zoom,
                           int *tile_x, int *tile_y,
                           int *pixel_in_tile_x, int *pixel_in_tile_y)
 {
@@ -59,12 +59,12 @@ void *download_tiles(void *arg)
     {
         pthread_mutex_lock(&download_queue->lock);
         // Wait while the queue is empty
-        while (fifo_isEmpty(download_queue))
+        while (fifo_is_empty(download_queue))
         {
             pthread_cond_wait(&download_queue->cond, &download_queue->lock);
         }
 
-        if (!fifo_readData(download_queue, &next_tile))
+        if (!fifo_read_data(download_queue, &next_tile))
         {
             fprintf(stderr, "Something went wrong while reading from download queue\n");
         }
@@ -210,7 +210,7 @@ bool get_map_background(struct application *appl, GpxCollection *collection)
     int center_tile_x, center_tile_y;
     int tile_offset_x, tile_offset_y;
 
-    pixelToTileAndOffset(appl->world_x, appl->world_y, MAX_ZOOM, appl->zoom,
+    conv_pixel_to_tile_and_offset(appl->world_x, appl->world_y, MAX_ZOOM, appl->zoom,
                          &center_tile_x, &center_tile_y,
                          &tile_offset_x, &tile_offset_y);
 
@@ -239,10 +239,10 @@ bool get_map_background(struct application *appl, GpxCollection *collection)
                     .tile_y = tile_y,
                     .zoom = appl->zoom,
                 };
-                if (!fifo_searchData(&(appl->download_queue), tile2queue))
+                if (!fifo_search_data(&(appl->download_queue), tile2queue))
                 {
                     printf("adding to queue\n");
-                    fifo_writeData(&(appl->download_queue), tile2queue);
+                    fifo_write_data(&(appl->download_queue), tile2queue);
                 }
             }
 

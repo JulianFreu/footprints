@@ -15,9 +15,9 @@
 #include "heat.h"
 #include "filters.h"
 
-float GetDeltaTime(Uint32 lastFrameTime);
-void clay_Init(struct application *appl);
-void clay_DrawUI(struct application *appl, GpxCollection* collection);
-void clay_freeMemory();
+float get_delta_time(Uint32 lastFrameTime);
+void clay_init(struct application *appl);
+void clay_draw_UI(struct application *appl, GpxCollection* collection);
+void clay_free_memory();
 
 #endif

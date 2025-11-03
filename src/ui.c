@@ -15,6 +15,7 @@
 #define ELEMENTS_HEIGHT 30
 #define ELEMENTS_WIDTH 180
 #define LIST_ENTRY_HEIGHT 30
+#define HEADER_HEIGHT 50
 #define FILTERS_WIDTH 300
 #define FILTERS_MINMAX_WIDTH 80
 
@@ -49,7 +50,7 @@ char track_id_str[16];
 bool ui_new_track_selected = false;
 int ui_track = -1;
 
-void ClickedOn_TypeFilter(
+void clicked_type_filter(
     Clay_ElementId elementId,
     Clay_PointerData pointerData,
     intptr_t userData)
@@ -64,7 +65,7 @@ void ClickedOn_TypeFilter(
     }
 }
 
-void showClayText(char *string, uint16_t fontSize, Clay_Color color, Clay_TextAlignment align)
+void draw_clay_text(char *string, uint16_t fontSize, Clay_Color color, Clay_TextAlignment align)
 {
     Clay_String clayString = {
         .chars = string,
@@ -205,7 +206,7 @@ void formatDistanceFilterStr(char *str)
     }
 }
 
-void showInputField(uint16_t filter_id, FilterSettings *filters)
+void draw_input_field(uint16_t filter_id, FilterSettings *filters)
 {
     CLAY(CLAY_IDI_LOCAL("InputFieldFilter", filter_id),
          {
@@ -226,85 +227,85 @@ void showInputField(uint16_t filter_id, FilterSettings *filters)
             if (filter_id == ui.activeFilterID)
                 formatDateFilterStr(filters->end_date_str);
             if (filters->end_date_str != NULL)
-                showClayText(filters->end_date_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
+                draw_clay_text(filters->end_date_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_DATE | LOW_LIMIT:
             if (filter_id == ui.activeFilterID)
                 formatDateFilterStr(filters->start_date_str);
             if (filters->start_date_str != NULL)
-                showClayText(filters->start_date_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
+                draw_clay_text(filters->start_date_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_DISTANCE | HIGH_LIMIT:
             if (filter_id == ui.activeFilterID)
                 formatDistanceFilterStr(filters->distance_high_str);
             if (filters->distance_high_str != NULL)
-                showClayText(filters->distance_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
+                draw_clay_text(filters->distance_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_DISTANCE | LOW_LIMIT:
             if (filter_id == ui.activeFilterID)
                 formatDistanceFilterStr(filters->distance_low_str);
             if (filters->distance_low_str != NULL)
-                showClayText(filters->distance_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
+                draw_clay_text(filters->distance_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_DURATION | HIGH_LIMIT:
             if (filter_id == ui.activeFilterID)
                 formatDurationFilterStr(filters->duration_high_str);
             if (filters->duration_high_str != NULL)
-                showClayText(filters->duration_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
+                draw_clay_text(filters->duration_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_DURATION | LOW_LIMIT:
             if (filter_id == ui.activeFilterID)
                 formatDurationFilterStr(filters->duration_low_str);
             if (filters->duration_low_str != NULL)
-                showClayText(filters->duration_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
+                draw_clay_text(filters->duration_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_PACE | HIGH_LIMIT:
             if (filter_id == ui.activeFilterID)
                 formatPaceFilterStr(filters->pace_high_str);
             if (filters->pace_high_str != NULL)
-                showClayText(filters->pace_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
+                draw_clay_text(filters->pace_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_PACE | LOW_LIMIT:
             if (filter_id == ui.activeFilterID)
                 formatPaceFilterStr(filters->pace_low_str);
             if (filters->pace_low_str != NULL)
-                showClayText(filters->pace_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
+                draw_clay_text(filters->pace_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_UPHILL | HIGH_LIMIT:
             if (filter_id == ui.activeFilterID)
                 formatElevFilterStr(filters->elev_up_high_str);
             if (filters->elev_up_high_str != NULL)
-                showClayText(filters->elev_up_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
+                draw_clay_text(filters->elev_up_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_UPHILL | LOW_LIMIT:
             if (filter_id == ui.activeFilterID)
                 formatElevFilterStr(filters->elev_up_low_str);
             if (filters->elev_up_low_str != NULL)
-                showClayText(filters->elev_up_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
+                draw_clay_text(filters->elev_up_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_DOWNHILL | HIGH_LIMIT:
             if (filter_id == ui.activeFilterID)
                 formatElevFilterStr(filters->elev_down_high_str);
             if (filters->elev_down_high_str != NULL)
-                showClayText(filters->elev_down_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
+                draw_clay_text(filters->elev_down_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_DOWNHILL | LOW_LIMIT:
             if (filter_id == ui.activeFilterID)
                 formatElevFilterStr(filters->elev_down_low_str);
             if (filters->elev_down_low_str != NULL)
-                showClayText(filters->elev_down_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
+                draw_clay_text(filters->elev_down_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_PEAK | HIGH_LIMIT:
             if (filter_id == ui.activeFilterID)
                 formatElevFilterStr(filters->high_point_high_str);
             if (filters->high_point_high_str != NULL)
-                showClayText(filters->high_point_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
+                draw_clay_text(filters->high_point_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_PEAK | LOW_LIMIT:
             if (filter_id == ui.activeFilterID)
                 formatElevFilterStr(filters->high_point_low_str);
             if (filters->high_point_low_str != NULL)
-                showClayText(filters->high_point_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
+                draw_clay_text(filters->high_point_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         default:
             break;
@@ -312,11 +313,11 @@ void showInputField(uint16_t filter_id, FilterSettings *filters)
     }
 }
 
-void showFilterHeader()
+void draw_filter_header()
 {
     CLAY(CLAY_ID_LOCAL("Filter"),
          {
-             .layout = {.padding = CLAY_PADDING_ALL(GAPS), .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(50)}, .layoutDirection = CLAY_LEFT_TO_RIGHT, .childGap = GAPS},
+             .layout = {.padding = CLAY_PADDING_ALL(GAPS), .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(HEADER_HEIGHT)}, .layoutDirection = CLAY_LEFT_TO_RIGHT, .childGap = GAPS},
              .backgroundColor = bg1,
              .cornerRadius = CORNER_RADIUS,
          })
@@ -328,7 +329,7 @@ void showFilterHeader()
                  .cornerRadius = CORNER_RADIUS,
              })
         {
-            showClayText("Min", 20, fg1, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text("Min", 20, fg1, CLAY_TEXT_ALIGN_CENTER);
         }
         CLAY(CLAY_ID_LOCAL("FilterType"),
              {
@@ -337,7 +338,7 @@ void showFilterHeader()
                  .cornerRadius = CORNER_RADIUS,
              })
         {
-            showClayText("Type", 20, fg1, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text("Type", 20, fg1, CLAY_TEXT_ALIGN_CENTER);
         }
         CLAY(CLAY_ID_LOCAL("FilterMax"),
              {
@@ -346,12 +347,12 @@ void showFilterHeader()
                  .cornerRadius = CORNER_RADIUS,
              })
         {
-            showClayText("Max", 20, fg1, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text("Max", 20, fg1, CLAY_TEXT_ALIGN_CENTER);
         }
     }
 }
 
-void showTypeFilter(ActivityType type, bool *show_type)
+void draw_type_filter(ActivityType type, bool *show_type)
 {
     Clay_Color background_color;
     Clay_Color background_color_hl;
@@ -373,19 +374,19 @@ void showTypeFilter(ActivityType type, bool *show_type)
              .cornerRadius = CORNER_RADIUS,
          })
     {
-        Clay_OnHover(ClickedOn_TypeFilter, (intptr_t)show_type);
+        Clay_OnHover(clicked_type_filter, (intptr_t)show_type);
         if (type == Run)
-            showClayText("Run", 16, bg, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text("Run", 16, bg, CLAY_TEXT_ALIGN_CENTER);
         else if (type == Cycling)
-            showClayText("Cycling", 16, bg, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text("Cycling", 16, bg, CLAY_TEXT_ALIGN_CENTER);
         else if (type == Hike)
-            showClayText("Hike", 16, bg, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text("Hike", 16, bg, CLAY_TEXT_ALIGN_CENTER);
         else
-            showClayText("Other", 16, bg, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text("Other", 16, bg, CLAY_TEXT_ALIGN_CENTER);
     }
 }
 
-void showTypeFilterContainer(FilterSettings *filter)
+void draw_type_filter_container(FilterSettings *filter)
 {
     CLAY(CLAY_ID_LOCAL("TypesFilterContainer"),
          {
@@ -393,14 +394,14 @@ void showTypeFilterContainer(FilterSettings *filter)
              .cornerRadius = CORNER_RADIUS,
          })
     {
-        showTypeFilter(Run, &filter->showRuns);
-        showTypeFilter(Cycling, &filter->showCycling);
-        showTypeFilter(Hike, &filter->showHikes);
-        showTypeFilter(Other, &filter->showOther);
+        draw_type_filter(Run, &filter->showRuns);
+        draw_type_filter(Cycling, &filter->showCycling);
+        draw_type_filter(Hike, &filter->showHikes);
+        draw_type_filter(Other, &filter->showOther);
     }
 }
 
-void showFilter(uint16_t filter_id, FilterSettings *filters)
+void draw_filter(uint16_t filter_id, FilterSettings *filters)
 {
     CLAY(CLAY_IDI_LOCAL("Filter", filter_id),
          {
@@ -409,7 +410,7 @@ void showFilter(uint16_t filter_id, FilterSettings *filters)
              .cornerRadius = CORNER_RADIUS,
          })
     {
-        showInputField(filter_id | LOW_LIMIT, filters);
+        draw_input_field(filter_id | LOW_LIMIT, filters);
         CLAY(CLAY_IDI_LOCAL("lesser", filter_id),
              {
                  .layout = {.childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}, .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(LIST_ENTRY_HEIGHT)}},
@@ -417,7 +418,7 @@ void showFilter(uint16_t filter_id, FilterSettings *filters)
                  .cornerRadius = CORNER_RADIUS,
              })
         {
-            showClayText("<", 16, fg1, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text("<", 16, fg1, CLAY_TEXT_ALIGN_CENTER);
         }
         CLAY(CLAY_IDI_LOCAL("FilterName", filter_id),
              {
@@ -429,25 +430,25 @@ void showFilter(uint16_t filter_id, FilterSettings *filters)
             switch (filter_id)
             {
             case FILTER_DISTANCE:
-                showClayText("distance", 16, fg1, CLAY_TEXT_ALIGN_CENTER);
+                draw_clay_text("distance", 16, fg1, CLAY_TEXT_ALIGN_CENTER);
                 break;
             case FILTER_DURATION:
-                showClayText("duration", 16, fg1, CLAY_TEXT_ALIGN_CENTER);
+                draw_clay_text("duration", 16, fg1, CLAY_TEXT_ALIGN_CENTER);
                 break;
             case FILTER_PACE:
-                showClayText("pace", 16, fg1, CLAY_TEXT_ALIGN_CENTER);
+                draw_clay_text("pace", 16, fg1, CLAY_TEXT_ALIGN_CENTER);
                 break;
             case FILTER_DATE:
-                showClayText("date", 16, fg1, CLAY_TEXT_ALIGN_CENTER);
+                draw_clay_text("date", 16, fg1, CLAY_TEXT_ALIGN_CENTER);
                 break;
             case FILTER_UPHILL:
-                showClayText("up", 16, fg1, CLAY_TEXT_ALIGN_CENTER);
+                draw_clay_text("up", 16, fg1, CLAY_TEXT_ALIGN_CENTER);
                 break;
             case FILTER_DOWNHILL:
-                showClayText("down", 16, fg1, CLAY_TEXT_ALIGN_CENTER);
+                draw_clay_text("down", 16, fg1, CLAY_TEXT_ALIGN_CENTER);
                 break;
             case FILTER_PEAK:
-                showClayText("peak", 16, fg1, CLAY_TEXT_ALIGN_CENTER);
+                draw_clay_text("peak", 16, fg1, CLAY_TEXT_ALIGN_CENTER);
                 break;
             default:
                 break;
@@ -460,9 +461,9 @@ void showFilter(uint16_t filter_id, FilterSettings *filters)
                  .cornerRadius = CORNER_RADIUS,
              })
         {
-            showClayText("<", 16, fg1, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text("<", 16, fg1, CLAY_TEXT_ALIGN_CENTER);
         }
-        showInputField(filter_id | HIGH_LIMIT, filters);
+        draw_input_field(filter_id | HIGH_LIMIT, filters);
     }
 }
 
@@ -631,7 +632,7 @@ void sort_tracks_by(GpxCollection *collection, AttributeType criteria)
     }
 }
 
-void Handle_ClickedOn_ListHeaders(
+void clicked_list_headers(
     Clay_ElementId elementId,
     Clay_PointerData pointerData,
     intptr_t userData)
@@ -643,7 +644,7 @@ void Handle_ClickedOn_ListHeaders(
     }
 }
 
-void Handle_ClickedOn_CalculateHeat(
+void clicked_calculate_heat(
     Clay_ElementId elementId,
     Clay_PointerData pointerData,
     intptr_t userData)
@@ -661,11 +662,11 @@ void Handle_ClickedOn_CalculateHeat(
             }
         }
         // recalculate heat
-        CalculateHeatmap(collection);
+        calculate_heatmap(collection);
         free_track_tile_cache(&collection->track_tile_cache);
     }
 }
-void Handle_ClickedOn_ShowFilteredTracks(
+void clicked_show_filtered_tracks(
     Clay_ElementId elementId,
     Clay_PointerData pointerData,
     intptr_t userData)
@@ -677,7 +678,7 @@ void Handle_ClickedOn_ShowFilteredTracks(
     }
 }
 
-void Handle_ClickedOn_ToggleFilterView(
+void clicked_toggle_filter_view(
     Clay_ElementId elementId,
     Clay_PointerData pointerData,
     intptr_t userData)
@@ -696,7 +697,7 @@ void Handle_ClickedOn_ToggleFilterView(
         }
     }
 }
-void Handle_ClickedOn_RunEntry(
+void clicked_run_entry(
     Clay_ElementId elementId,
     Clay_PointerData pointerData,
     intptr_t userData)
@@ -708,16 +709,16 @@ void Handle_ClickedOn_RunEntry(
     }
 }
 
-float GetDeltaTime(Uint32 lastFrameTime)
+float get_delta_time(Uint32 lastFrameTime)
 {
     Uint32 now = SDL_GetTicks();
     float deltaTime = ((float)now - (float)lastFrameTime) / 1000.0f;
     return deltaTime;
 }
 
-void showRunListHeaderAttribute(GpxCollection *collection, int width, char *str, AttributeType sort_type)
+void draw_run_list_header_attribute(GpxCollection *collection, int width, char *str, AttributeType sort_type)
 {
-    CLAY(CLAY_IDI_LOCAL("RunListHeaderAttribute", sort_type), {.layout = {.sizing = {.width = width, .height = LIST_ENTRY_HEIGHT},
+    CLAY(CLAY_IDI_LOCAL("RunListHeaderAttribute", sort_type), {.layout = {.sizing = {.width = width, .height = CLAY_SIZING_GROW(0)},
                                                                           .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
                                                                           .layoutDirection = CLAY_TOP_TO_BOTTOM},
                                                                .backgroundColor = Clay_Hovered() ? accent_color_hl : accent_color,
@@ -727,30 +728,30 @@ void showRunListHeaderAttribute(GpxCollection *collection, int width, char *str,
         {
             collection->to_be_sorted_by = sort_type;
         }
-        Clay_OnHover(Handle_ClickedOn_ListHeaders, (intptr_t)collection);
-        showClayText(str, 16, bg_d, CLAY_TEXT_ALIGN_CENTER);
+        Clay_OnHover(clicked_list_headers, (intptr_t)collection);
+        draw_clay_text(str, 16, bg_d, CLAY_TEXT_ALIGN_CENTER);
         switch (sort_type)
         {
         case DATE:
-            showClayText("[dd:mm:yyyy]", 12, bg_d, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text("[dd:mm:yyyy]", 12, bg_d, CLAY_TEXT_ALIGN_CENTER);
             break;
         case DISTANCE:
-            showClayText("[km]", 12, bg_d, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text("[km]", 12, bg_d, CLAY_TEXT_ALIGN_CENTER);
             break;
         case PACE:
-            showClayText("[min/km]", 12, bg_d, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text("[min/km]", 12, bg_d, CLAY_TEXT_ALIGN_CENTER);
             break;
         case DURATION:
-            showClayText("[hh:mm:ss]", 12, bg_d, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text("[hh:mm:ss]", 12, bg_d, CLAY_TEXT_ALIGN_CENTER);
             break;
         case UPHILL:
-            showClayText("[m]", 12, bg_d, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text("[m]", 12, bg_d, CLAY_TEXT_ALIGN_CENTER);
             break;
         case DOWNHILL:
-            showClayText("[m]", 12, bg_d, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text("[m]", 12, bg_d, CLAY_TEXT_ALIGN_CENTER);
             break;
         case HIGHPOINT:
-            showClayText("[m]", 12, bg_d, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text("[m]", 12, bg_d, CLAY_TEXT_ALIGN_CENTER);
             break;
         default:
             break;
@@ -758,7 +759,7 @@ void showRunListHeaderAttribute(GpxCollection *collection, int width, char *str,
     }
 }
 
-void showRunListBottom(char *total_visible_tracks, GpxCollection *collection)
+void draw_run_list_bottom(char *total_visible_tracks, GpxCollection *collection)
 {
     CLAY(CLAY_ID("RunListBottom"), {.layout = {
                                         .padding = CLAY_PADDING_ALL(GAPS),
@@ -782,73 +783,77 @@ void showRunListBottom(char *total_visible_tracks, GpxCollection *collection)
                                               .backgroundColor = Clay_Hovered() ? bg_l : bg_d,
                                               .cornerRadius = CORNER_RADIUS})
         {
-            Clay_OnHover(Handle_ClickedOn_ToggleFilterView, 0);
-            showClayText("Toggle Filter View", 16, darkAqua, CLAY_TEXT_ALIGN_CENTER);
+            Clay_OnHover(clicked_toggle_filter_view, 0);
+            draw_clay_text("Toggle Filter View", 16, darkAqua, CLAY_TEXT_ALIGN_CENTER);
         }
     }
 }
 
-void showRunListHeader(GpxCollection *collection)
+void draw_run_list_header(GpxCollection *collection)
 {
     CLAY(CLAY_ID("RunListHeader"), {.layout = {.padding = CLAY_PADDING_ALL(GAPS),
-                                               .sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIT()},
+                                               .sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(HEADER_HEIGHT)},
                                                .layoutDirection = CLAY_LEFT_TO_RIGHT},
                                     .backgroundColor = accent_color,
-                                    .cornerRadius = {.topLeft = CORNER_RADIUS,
-                                                     .topRight = CORNER_RADIUS}})
+                                    .cornerRadius = {
+                                        .topLeft = CORNER_RADIUS,
+                                        .topRight = CORNER_RADIUS,
+                                        .bottomLeft = 0,
+                                        .bottomRight = 0}})
     {
-        showRunListHeaderAttribute(collection, WIDTH_TYPE, "Type", TYPE);
-        showRunListHeaderAttribute(collection, WIDTH_DATE, "Date", DATE);
-        showRunListHeaderAttribute(collection, WIDTH_DISTANCE, "Distance", DISTANCE);
-        showRunListHeaderAttribute(collection, WIDTH_PACE, "Pace", PACE);
-        showRunListHeaderAttribute(collection, WIDTH_DURATION, "Duration", DURATION);
-        showRunListHeaderAttribute(collection, WIDTH_UPHILL, "Uphill", UPHILL);
-        showRunListHeaderAttribute(collection, WIDTH_DOWNHILL, "Downhill", DOWNHILL);
-        showRunListHeaderAttribute(collection, WIDTH_TOP, "Highest", HIGHPOINT);
+        draw_run_list_header_attribute(collection, WIDTH_TYPE, "Type", TYPE);
+        draw_run_list_header_attribute(collection, WIDTH_DATE, "Date", DATE);
+        draw_run_list_header_attribute(collection, WIDTH_DISTANCE, "Distance", DISTANCE);
+        draw_run_list_header_attribute(collection, WIDTH_PACE, "Pace", PACE);
+        draw_run_list_header_attribute(collection, WIDTH_DURATION, "Duration", DURATION);
+        draw_run_list_header_attribute(collection, WIDTH_UPHILL, "Uphill", UPHILL);
+        draw_run_list_header_attribute(collection, WIDTH_DOWNHILL, "Downhill", DOWNHILL);
+        draw_run_list_header_attribute(collection, WIDTH_TOP, "Highest", HIGHPOINT);
     }
 }
 
-void showRunEntryAttribute(int width, char *str, int id)
+void draw_run_entry_attribute(int width, char *str, int id)
 {
     CLAY(CLAY_IDI_LOCAL("RunEntryAttribute", id),
          {.layout = {.sizing = {.width = CLAY_SIZING_FIXED(width), .height = CLAY_SIZING_FIXED(LIST_ENTRY_HEIGHT)},
                      .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}}})
     {
-        showClayText(str, 16, bg_d, CLAY_TEXT_ALIGN_CENTER);
+        // showClayText(str, 16, bg_d, CLAY_TEXT_ALIGN_CENTER);
+        draw_clay_text(str, 16, fg_l, CLAY_TEXT_ALIGN_CENTER);
     }
 }
 
-void showRunListEntry(GpxTrack *track)
+void draw_run_list_entry(GpxTrack *track)
 {
     CLAY(CLAY_IDI_LOCAL("RunListEntry", track->track_id),
          {
-             .border = {.color = border, .width = (ui_track == track->track_id) ? (Clay_BorderWidth)CLAY_BORDER_OUTSIDE(3) : (Clay_BorderWidth)CLAY_BORDER_OUTSIDE(0)},
+             .border = {.color = border, .width = (ui_track == track->track_id) ? (Clay_BorderWidth)CLAY_BORDER_OUTSIDE(2) : (Clay_BorderWidth)CLAY_BORDER_OUTSIDE(0)},
              .layout = {.sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(LIST_ENTRY_HEIGHT)}, .layoutDirection = CLAY_LEFT_TO_RIGHT},
-             .backgroundColor = Clay_Hovered() ? blue : darkBlue,
-             .cornerRadius = CORNER_RADIUS,
+             .backgroundColor = Clay_Hovered() ? bg_l : bg_d,
+             .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS),
          })
     {
-        Clay_OnHover(Handle_ClickedOn_RunEntry, track->track_id);
+        Clay_OnHover(clicked_run_entry, track->track_id);
         if (track->act_type == Run)
-            showRunEntryAttribute(WIDTH_TYPE, "Run", track->track_id * 8 + 0);
+            draw_run_entry_attribute(WIDTH_TYPE, "Run", track->track_id * 8 + 0);
         else if (track->act_type == Hike)
-            showRunEntryAttribute(WIDTH_TYPE, "Hike", track->track_id * 8 + 0);
+            draw_run_entry_attribute(WIDTH_TYPE, "Hike", track->track_id * 8 + 0);
         else if (track->act_type == Cycling)
-            showRunEntryAttribute(WIDTH_TYPE, "Cycling", track->track_id * 8 + 0);
+            draw_run_entry_attribute(WIDTH_TYPE, "Cycling", track->track_id * 8 + 0);
         else
-            showRunEntryAttribute(WIDTH_TYPE, "Other", track->track_id * 8 + 0);
+            draw_run_entry_attribute(WIDTH_TYPE, "Other", track->track_id * 8 + 0);
 
-        showRunEntryAttribute(WIDTH_DATE, track->start_date_str, track->track_id * 8 + 1);
-        showRunEntryAttribute(WIDTH_DISTANCE, track->distance_str, track->track_id * 8 + 2);
-        showRunEntryAttribute(WIDTH_PACE, track->pace_str, track->track_id * 8 + 3);
-        showRunEntryAttribute(WIDTH_DURATION, track->duration_str, track->track_id * 8 + 4);
-        showRunEntryAttribute(WIDTH_UPHILL, track->elev_up_str, track->track_id * 8 + 5);
-        showRunEntryAttribute(WIDTH_DOWNHILL, track->elev_down_str, track->track_id * 8 + 6);
-        showRunEntryAttribute(WIDTH_TOP, track->high_point_str, track->track_id * 8 + 7);
+        draw_run_entry_attribute(WIDTH_DATE, track->start_date_str, track->track_id * 8 + 1);
+        draw_run_entry_attribute(WIDTH_DISTANCE, track->distance_str, track->track_id * 8 + 2);
+        draw_run_entry_attribute(WIDTH_PACE, track->pace_str, track->track_id * 8 + 3);
+        draw_run_entry_attribute(WIDTH_DURATION, track->duration_str, track->track_id * 8 + 4);
+        draw_run_entry_attribute(WIDTH_UPHILL, track->elev_up_str, track->track_id * 8 + 5);
+        draw_run_entry_attribute(WIDTH_DOWNHILL, track->elev_down_str, track->track_id * 8 + 6);
+        draw_run_entry_attribute(WIDTH_TOP, track->high_point_str, track->track_id * 8 + 7);
     }
 }
 
-void showRunListScrollContainer(GpxCollection *collection, int height)
+void draw_run_list_scroll_container(GpxCollection *collection, int height)
 {
     CLAY(CLAY_ID("RunListScrollContainer"),
          {
@@ -866,7 +871,7 @@ void showRunListScrollContainer(GpxCollection *collection, int height)
             for (int i = 0; i < collection->total_tracks; i++)
             {
                 if (collection->tracks[collection->list_order[i]].visible_in_list) // check if filtered out
-                    showRunListEntry(&collection->tracks[collection->list_order[i]]);
+                    draw_run_list_entry(&collection->tracks[collection->list_order[i]]);
             }
         }
     }
@@ -897,7 +902,7 @@ void continue_animation(struct AnimationState *anim_obj)
     }
 }
 
-void clay_HandleError(Clay_ErrorData error)
+void clay_handle_error(Clay_ErrorData error)
 {
     // Convert error text (Clay_StringSlice) to null-terminated string
     char buffer[512];
@@ -912,7 +917,7 @@ void clay_HandleError(Clay_ErrorData error)
     fprintf(stderr, "Clay ERROR: %s\n", buffer);
 }
 
-void clay_Init(struct application *appl)
+void clay_init(struct application *appl)
 {
     printf("[CLAY] clay_Init called\n");
 
@@ -927,11 +932,11 @@ void clay_Init(struct application *appl)
     Clay_Initialize(
         clayMemory,
         (Clay_Dimensions){.width = appl->window_width, .height = appl->window_height},
-        (Clay_ErrorHandler){.errorHandlerFunction = clay_HandleError, .userData = 0});
+        (Clay_ErrorHandler){.errorHandlerFunction = clay_handle_error, .userData = 0});
     Clay_SetMeasureTextFunction(SDL2_MeasureText, appl->fonts);
 }
 
-void clay_freeMemory()
+void clay_free_memory()
 {
     free(clayMemory.memory);
     clayMemory.memory = NULL;
@@ -944,30 +949,14 @@ Clay_LayoutConfig MenuButtonLayout = {
     .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
 };
 
-Clay_LayoutConfig littleButtonLayout = {
-    .sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIT()},
-    .padding = {GAPS, GAPS, GAPS, GAPS},
-    .childGap = GAPS,
-    .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
-    .layoutDirection = CLAY_TOP_TO_BOTTOM};
+//Clay_LayoutConfig littleButtonLayout = {
+//    .sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIT()},
+//    .padding = {GAPS, GAPS, GAPS, GAPS},
+//    .childGap = GAPS,
+//    .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
+//    .layoutDirection = CLAY_TOP_TO_BOTTOM};
 
-uint32_t selectedBigButton = 0;
-uint32_t selectedLittleButton = 0;
-void HandleLittleButtonInteraction(
-    Clay_ElementId elementId,
-    Clay_PointerData pointerData,
-    intptr_t userData)
-{
-    if (pointerData.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME)
-    {
-        if (selectedLittleButton == userData)
-            selectedLittleButton = NONE;
-        else
-            selectedLittleButton = userData;
-        printf("Clicked on %d\n", userData);
-    }
-}
-void HandleMenuButtonInteraction(
+void clicked_menu_button(
     Clay_ElementId elementId,
     Clay_PointerData pointerData,
     intptr_t userData)
@@ -991,7 +980,7 @@ void HandleMenuButtonInteraction(
     }
 }
 
-void MenuButton(SDL_Surface *icon, Clay_Color color, uint32_t button_id)
+void draw_menu_button(SDL_Surface *icon, Clay_Color color, uint32_t button_id)
 {
     CLAY(CLAY_IDI_LOCAL("MenuButton", button_id),
          {
@@ -1000,7 +989,7 @@ void MenuButton(SDL_Surface *icon, Clay_Color color, uint32_t button_id)
              .cornerRadius = CORNER_RADIUS,
          })
     {
-        Clay_OnHover(HandleMenuButtonInteraction, button_id);
+        Clay_OnHover(clicked_menu_button, button_id);
         CLAY(CLAY_IDI_LOCAL("MenuButtonIcon", button_id),
              {.layout = {
                   .padding = CLAY_PADDING_ALL(GAPS),
@@ -1010,7 +999,7 @@ void MenuButton(SDL_Surface *icon, Clay_Color color, uint32_t button_id)
     }
 }
 
-void showSideBarTrackInfo(SDL_Surface *icon, char *value, char *unit, int id)
+void draw_sidebar_track_info(SDL_Surface *icon, char *value, char *unit, int id)
 {
     CLAY(CLAY_IDI_LOCAL("SidebarAttribute", id),
          {
@@ -1048,7 +1037,7 @@ void showSideBarTrackInfo(SDL_Surface *icon, char *value, char *unit, int id)
                  },
              })
         {
-            showClayText(value, 16, fg_l, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text(value, 16, fg_l, CLAY_TEXT_ALIGN_CENTER);
         }
         CLAY(CLAY_IDI_LOCAL("Unit", id),
              {
@@ -1058,12 +1047,12 @@ void showSideBarTrackInfo(SDL_Surface *icon, char *value, char *unit, int id)
                      .padding = {.left = GAPS}},
              })
         {
-            showClayText(unit, 12, fg_l, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text(unit, 12, fg_l, CLAY_TEXT_ALIGN_CENTER);
         }
     }
 }
 
-void clay_DrawUI(struct application *appl, GpxCollection *collection)
+void clay_draw_UI(struct application *appl, GpxCollection *collection)
 {
     if (!clayMemory.memory)
     {
@@ -1087,7 +1076,7 @@ void clay_DrawUI(struct application *appl, GpxCollection *collection)
     Clay_UpdateScrollContainers(
         false,
         (Clay_Vector2){0, (float)appl->wheel_y * 5},
-        GetDeltaTime(appl->lastFrameTime));
+        get_delta_time(appl->lastFrameTime));
 
     // filter options
     continue_animation(&ui.filters_animation);
@@ -1135,7 +1124,7 @@ void clay_DrawUI(struct application *appl, GpxCollection *collection)
 
         SDL_Surface *icon_1 = IMG_Load("resources/menu-burger.png");
         SDL_SetSurfaceColorMod(icon_1, 250, 0, 0);
-        MenuButton(icon_1, darkRed, LIST_RUNS);
+        draw_menu_button(icon_1, darkRed, LIST_RUNS);
     }
 
     CLAY(CLAY_ID("Right sidebar"),
@@ -1160,36 +1149,36 @@ void clay_DrawUI(struct application *appl, GpxCollection *collection)
         {
 
             SDL_Surface *date_icon = IMG_Load("resources/date.png");
-            showSideBarTrackInfo(date_icon, collection->tracks[appl->selected_track].start_date_str, "", 0);
+            draw_sidebar_track_info(date_icon, collection->tracks[appl->selected_track].start_date_str, "", 0);
             SDL_Surface *time_icon = IMG_Load("resources/clock.png");
-            showSideBarTrackInfo(time_icon, collection->tracks[appl->selected_track].start_time_str, "", 1);
+            draw_sidebar_track_info(time_icon, collection->tracks[appl->selected_track].start_time_str, "", 1);
             SDL_Surface *duration_icon = IMG_Load("resources/duration.png");
-            showSideBarTrackInfo(duration_icon, collection->tracks[appl->selected_track].duration_str, "h", 2);
+            draw_sidebar_track_info(duration_icon, collection->tracks[appl->selected_track].duration_str, "h", 2);
             SDL_Surface *pace_icon = IMG_Load("resources/pace.png");
-            showSideBarTrackInfo(pace_icon, collection->tracks[appl->selected_track].pace_str, "min/km", 3);
+            draw_sidebar_track_info(pace_icon, collection->tracks[appl->selected_track].pace_str, "min/km", 3);
             SDL_Surface *distance_icon = IMG_Load("resources/distance.png");
-            showSideBarTrackInfo(distance_icon, collection->tracks[appl->selected_track].distance_str, "km", 4);
+            draw_sidebar_track_info(distance_icon, collection->tracks[appl->selected_track].distance_str, "km", 4);
             SDL_Surface *elev_up_icon = IMG_Load("resources/up.png");
-            showSideBarTrackInfo(elev_up_icon, collection->tracks[appl->selected_track].elev_up_str, "m", 5);
+            draw_sidebar_track_info(elev_up_icon, collection->tracks[appl->selected_track].elev_up_str, "m", 5);
             SDL_Surface *elev_down_icon = IMG_Load("resources/down.png");
-            showSideBarTrackInfo(elev_down_icon, collection->tracks[appl->selected_track].elev_down_str, "m", 6);
+            draw_sidebar_track_info(elev_down_icon, collection->tracks[appl->selected_track].elev_down_str, "m", 6);
             SDL_Surface *high_point_icon = IMG_Load("resources/peak.png");
-            showSideBarTrackInfo(high_point_icon, collection->tracks[appl->selected_track].high_point_str, "m", 7);
+            draw_sidebar_track_info(high_point_icon, collection->tracks[appl->selected_track].high_point_str, "m", 7);
             if (collection->tracks[appl->selected_track].act_type == Run)
             {
-                showSideBarTrackInfo(high_point_icon, "Run", " ", 8);
+                draw_sidebar_track_info(high_point_icon, "Run", " ", 8);
             }
             else if (collection->tracks[appl->selected_track].act_type == Hike)
             {
-                showSideBarTrackInfo(high_point_icon, "Hike", " ", 8);
+                draw_sidebar_track_info(high_point_icon, "Hike", " ", 8);
             }
             else if (collection->tracks[appl->selected_track].act_type == Cycling)
             {
-                showSideBarTrackInfo(high_point_icon, "Cycling", " ", 8);
+                draw_sidebar_track_info(high_point_icon, "Cycling", " ", 8);
             }
             else
             {
-                showSideBarTrackInfo(high_point_icon, "Other", " ", 8);
+                draw_sidebar_track_info(high_point_icon, "Other", " ", 8);
             }
 
             SDL_Surface *image = IMG_Load("resources/elev_profile.png");
@@ -1218,32 +1207,30 @@ void clay_DrawUI(struct application *appl, GpxCollection *collection)
         {
             if (Clay_Hovered())
                 appl->mouseOverUI = true;
-            showFilterHeader();
-            showFilter(FILTER_DISTANCE, &collection->filters);
-            showFilter(FILTER_DURATION, &collection->filters);
-            showFilter(FILTER_PACE, &collection->filters);
-            showFilter(FILTER_DATE, &collection->filters);
-            showFilter(FILTER_UPHILL, &collection->filters);
-            showFilter(FILTER_DOWNHILL, &collection->filters);
-            showFilter(FILTER_PEAK, &collection->filters);
+            draw_filter_header();
+            draw_filter(FILTER_DISTANCE, &collection->filters);
+            draw_filter(FILTER_DURATION, &collection->filters);
+            draw_filter(FILTER_PACE, &collection->filters);
+            draw_filter(FILTER_DATE, &collection->filters);
+            draw_filter(FILTER_UPHILL, &collection->filters);
+            draw_filter(FILTER_DOWNHILL, &collection->filters);
+            draw_filter(FILTER_PEAK, &collection->filters);
 
             bool pre_showRuns = collection->filters.showRuns;
             bool pre_showHikes = collection->filters.showHikes;
             bool pre_showCycling = collection->filters.showCycling;
             bool pre_showOther = collection->filters.showOther;
-            showTypeFilterContainer(&collection->filters);
+            draw_type_filter_container(&collection->filters);
             // check if anything changed
 
             CLAY(CLAY_ID_LOCAL("FilterTracksState"), {.layout = {
-                                                 .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW()},
-                                                 .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}}
-                                            })
+                                                          .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW()},
+                                                          .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}}})
             {
-                showClayText(collection->total_visible_tracks_str, 16, fg, CLAY_TEXT_ALIGN_CENTER);
+                draw_clay_text(collection->total_visible_tracks_str, 16, fg, CLAY_TEXT_ALIGN_CENTER);
             }
             CLAY(CLAY_ID_LOCAL("space"), {.layout = {
-                                                 .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW()}}
-                                            })
+                                              .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW()}}})
             {
             }
             CLAY(CLAY_ID("Calculate Heat"), {.layout = {
@@ -1254,8 +1241,8 @@ void clay_DrawUI(struct application *appl, GpxCollection *collection)
                                              .backgroundColor = Clay_Hovered() ? bg_l : bg_d,
                                              .cornerRadius = CORNER_RADIUS})
             {
-                Clay_OnHover(Handle_ClickedOn_CalculateHeat, (intptr_t)collection);
-                showClayText("Calculate Heat", 16, darkAqua, CLAY_TEXT_ALIGN_CENTER);
+                Clay_OnHover(clicked_calculate_heat, (intptr_t)collection);
+                draw_clay_text("Calculate Heat", 16, darkAqua, CLAY_TEXT_ALIGN_CENTER);
             }
 
             CLAY(CLAY_ID("DisplayFilteredButton"), {.layout = {
@@ -1266,8 +1253,8 @@ void clay_DrawUI(struct application *appl, GpxCollection *collection)
                                                     .backgroundColor = Clay_Hovered() ? bg_l : bg_d,
                                                     .cornerRadius = CORNER_RADIUS})
             {
-                Clay_OnHover(Handle_ClickedOn_ShowFilteredTracks, (intptr_t)&collection->track_tile_cache);
-                showClayText("Show Filtered Tracks", 16, darkAqua, CLAY_TEXT_ALIGN_CENTER);
+                Clay_OnHover(clicked_show_filtered_tracks, (intptr_t)&collection->track_tile_cache);
+                draw_clay_text("Show Filtered Tracks", 16, darkAqua, CLAY_TEXT_ALIGN_CENTER);
             }
             if (pre_showRuns == collection->filters.showRuns || pre_showHikes == collection->filters.showHikes || pre_showCycling == collection->filters.showCycling || pre_showOther == collection->filters.showOther)
                 apply_filter_values(collection);
@@ -1288,9 +1275,9 @@ void clay_DrawUI(struct application *appl, GpxCollection *collection)
         if (Clay_Hovered())
             appl->mouseOverUI = true;
 
-        showRunListHeader(collection);
-        showRunListScrollContainer(collection, appl->window_height - (MENU_ICON_SIZE + 2 * GAPS) - (LIST_ENTRY_HEIGHT + 2 * GAPS) - (LIST_ENTRY_HEIGHT + 2 * GAPS) - (2 * SCREEN_BORDER_PADDING));
-        showRunListBottom(collection->total_visible_tracks_str, collection);
+        draw_run_list_header(collection);
+        draw_run_list_scroll_container(collection, appl->window_height - (MENU_ICON_SIZE + 2 * GAPS) - (LIST_ENTRY_HEIGHT + 2 * GAPS) - (LIST_ENTRY_HEIGHT + 2 * GAPS) - (2 * SCREEN_BORDER_PADDING));
+        draw_run_list_bottom(collection->total_visible_tracks_str, collection);
     }
 
     Clay_RenderCommandArray ui_renderCommands = Clay_EndLayout();

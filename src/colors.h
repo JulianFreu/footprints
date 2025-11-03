@@ -62,5 +62,6 @@ const Clay_Color accent_color = darkRed;
 const Clay_Color accent_color_hl = red;
 
 const Clay_Color bigButtonColor = fg1;
-const Clay_Color border = darkOrange;
+const Clay_Color border_hl = darkOrange;
+const Clay_Color border = fg_l;
 #endif
