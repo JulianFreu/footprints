@@ -1,9 +1,11 @@
 #include "map.h"
 #include "api_key.h"
 
+extern bool use_osm_tiles;
+
 void conv_pixel_to_tile_and_offset(int pixel_x, int pixel_y, int source_zoom, int target_zoom,
-                          int *tile_x, int *tile_y,
-                          int *pixel_in_tile_x, int *pixel_in_tile_y)
+                                   int *tile_x, int *tile_y,
+                                   int *pixel_in_tile_x, int *pixel_in_tile_y)
 {
     int zoom_diff = source_zoom - target_zoom;
 
@@ -64,12 +66,15 @@ void *download_tiles(void *arg)
             pthread_cond_wait(&download_queue->cond, &download_queue->lock);
         }
 
-        if (!fifo_read_data(download_queue, &next_tile))
+        if (!fifo_peek_data(download_queue, &next_tile))
         {
             fprintf(stderr, "Something went wrong while reading from download queue\n");
         }
         pthread_mutex_unlock(&download_queue->lock);
-
+        if(next_tile.zoom > 20){
+            printf("Something is wrong, requested zoom is too high:\n");
+            printf("Zoom: %d\n", next_tile.zoom);
+        }
         char tile_path[256];
         snprintf(tile_path, sizeof(tile_path), "tilecache/%d/%d/%d.png", next_tile.zoom,
                  next_tile.tile_x, next_tile.tile_y);
@@ -86,10 +91,9 @@ void *download_tiles(void *arg)
         // Download starten
         struct MemoryStruct image_data;
         char url[256];
-        snprintf(url, sizeof(url), "https://tiles.stadiamaps.com/tiles/stamen_terrain/%d/%d/%d.png",
-                 next_tile.zoom, next_tile.tile_x, next_tile.tile_y);
 
         CURL *curl = curl_easy_init();
+        struct curl_slist *list = NULL;
         if (!curl)
         {
             fprintf(stderr, "Fehler beim Initialisieren von CURL\n");
@@ -99,23 +103,29 @@ void *download_tiles(void *arg)
         image_data.memory = (char *)malloc(1);
         image_data.size = 0;
 
-        curl_easy_setopt(curl, CURLOPT_URL, url);
 
-        struct curl_slist *list = NULL;
-        char auth[256];
-        sprintf(auth, "Authorization: Stadia-Auth %s", api_key);
-        list = curl_slist_append(list, auth);
+        if (use_osm_tiles)
+        {
+            snprintf(url, sizeof(url), "https://tile.openstreetmap.org/%d/%d/%d.png",
+                     next_tile.zoom, next_tile.tile_x, next_tile.tile_y);
+            curl_easy_setopt(curl, CURLOPT_URL, url);
+            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+            curl_easy_setopt(curl, CURLOPT_WRITEDATA, &image_data);
+            curl_easy_setopt(curl, CURLOPT_USERAGENT, "OSM-Viewer/1.0");
+        }
+        else
+        {
+            snprintf(url, sizeof(url), "https://tiles.stadiamaps.com/tiles/stamen_terrain/%d/%d/%d.png",
+                     next_tile.zoom, next_tile.tile_x, next_tile.tile_y);
+            char auth[256];
+            sprintf(auth, "Authorization: Stadia-Auth %s", api_key);
+            list = curl_slist_append(list, auth);
 
-        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, list);
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &image_data);
-
-        // snprintf(url, sizeof(url), "https://tile.openstreetmap.org/%d/%d/%d.png",
-        //          dl->zoom, dl->tile_x, dl->tile_y);
-        //    curl_easy_setopt(curl, CURLOPT_URL, url);
-        //    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
-        //    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &image_data);
-        //    curl_easy_setopt(curl, CURLOPT_USERAGENT, "OSM-Viewer/1.0");
+            curl_easy_setopt(curl, CURLOPT_URL, url);
+            curl_easy_setopt(curl, CURLOPT_HTTPHEADER, list);
+            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+            curl_easy_setopt(curl, CURLOPT_WRITEDATA, &image_data);
+        }
 
         CURLcode res = curl_easy_perform(curl);
         curl_easy_cleanup(curl);
@@ -134,6 +144,10 @@ void *download_tiles(void *arg)
             fclose(f);
         }
         free(image_data.memory);
+
+        pthread_mutex_lock(&download_queue->lock);
+        fifo_pop_data(download_queue);
+        pthread_mutex_unlock(&download_queue->lock);
     }
 }
 
@@ -211,8 +225,8 @@ bool get_map_background(struct application *appl, GpxCollection *collection)
     int tile_offset_x, tile_offset_y;
 
     conv_pixel_to_tile_and_offset(appl->world_x, appl->world_y, MAX_ZOOM, appl->zoom,
-                         &center_tile_x, &center_tile_y,
-                         &tile_offset_x, &tile_offset_y);
+                                  &center_tile_x, &center_tile_y,
+                                  &tile_offset_x, &tile_offset_y);
 
     for (int dx = -tiles_x / 2; dx <= tiles_x / 2; dx++)
     {
@@ -239,11 +253,13 @@ bool get_map_background(struct application *appl, GpxCollection *collection)
                     .tile_y = tile_y,
                     .zoom = appl->zoom,
                 };
+                pthread_mutex_lock(&appl->download_queue.lock);
                 if (!fifo_search_data(&(appl->download_queue), tile2queue))
                 {
-                    printf("adding to queue\n");
+                    printf("adding tile to queue: %d/%d/%d\n", tile2queue.zoom, tile2queue.tile_x, tile2queue.tile_y);
                     fifo_write_data(&(appl->download_queue), tile2queue);
                 }
+                pthread_mutex_unlock(&appl->download_queue.lock);
             }
 
             MapTile key = {tile_x, tile_y, appl->zoom};

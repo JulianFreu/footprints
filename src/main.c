@@ -1,7 +1,7 @@
 #include "main.h"
 
 extern UIState ui;
-
+bool use_osm_tiles = true;
 SDL_Event event;
 
 bool animation_in_progress(UIState ui)
@@ -27,8 +27,21 @@ void append_to_input_buffer(UIState *ui, char c)
   }
 }
 
-int main(/*int argc, char *argv[]*/)
+int main(int argc, char *argv[])
 {
+  if (argc > 1)
+  {
+    if (argc == 2 && strcmp(argv[1], "-stadiamaps") == 0)
+    {
+      printf("using stadiamaps\n");
+      use_osm_tiles = false;
+    }
+    else
+    {
+      printf("The only supported argument is \"-stadiamaps\"\n");
+      exit(1);
+    }
+  }
   struct application appl = {
       .window = NULL,
       .renderer = NULL,

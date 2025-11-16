@@ -6,6 +6,8 @@
 #include "map.h"
 
 
+bool fifo_peek_data(struct fifo *fifo, MapTile *readData);
+bool fifo_pop_data(struct fifo *fifo);
 
 bool fifo_read_data(struct fifo *fifo, MapTile *readData);
 bool fifo_write_data(struct fifo *fifo, MapTile writeData);

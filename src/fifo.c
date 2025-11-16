@@ -2,6 +2,30 @@
 
 void fifo_increment_pointer(int *fifo_pointer);
 
+// read data without moving the read pointer
+bool fifo_peek_data(struct fifo *fifo, MapTile *readData)
+{
+    bool peekSuccess = false;
+    if (fifo->read_p != fifo->write_p)
+    {
+        *readData = fifo->tile[fifo->read_p];
+//        fifo_increment_pointer(&fifo->read_p);
+        peekSuccess = true;
+    }
+    return peekSuccess;
+}
+bool fifo_pop_data(struct fifo *fifo)
+{
+    bool popSuccess = false;
+    if (fifo->read_p != fifo->write_p)
+    {
+//        *readData = fifo->tile[fifo->read_p];
+        fifo_increment_pointer(&fifo->read_p);
+        popSuccess = true;
+    }
+    return popSuccess;
+}
+
 bool fifo_read_data(struct fifo *fifo, MapTile *readData)
 {
     bool readSuccess = false;
@@ -16,7 +40,7 @@ bool fifo_read_data(struct fifo *fifo, MapTile *readData)
 
 bool fifo_write_data(struct fifo *fifo, MapTile writeData)
 {
-    pthread_mutex_lock(&fifo->lock);
+//    pthread_mutex_lock(&fifo->lock);
     bool writeSuccess = false;
     if (!fifo_is_full(fifo))
     {
@@ -25,13 +49,13 @@ bool fifo_write_data(struct fifo *fifo, MapTile writeData)
         writeSuccess = true;
         pthread_cond_signal(&fifo->cond); // wake up thread
     }
-    pthread_mutex_unlock(&fifo->lock);
+    //pthread_mutex_unlock(&fifo->lock);
     return writeSuccess;
 }
 
 bool fifo_search_data(struct fifo *fifo, MapTile searchData)
 {
-    pthread_mutex_lock(&fifo->lock);
+    //pthread_mutex_lock(&fifo->lock);
     bool foundData = false;
     int search_p = fifo->read_p;
     while (search_p != fifo->write_p)
@@ -44,7 +68,7 @@ bool fifo_search_data(struct fifo *fifo, MapTile searchData)
         }
         fifo_increment_pointer(&search_p);
     }
-    pthread_mutex_unlock(&fifo->lock);
+    //pthread_mutex_unlock(&fifo->lock);
     return foundData;
 }
 
