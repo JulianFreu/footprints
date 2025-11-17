@@ -142,6 +142,7 @@ struct fifo
     int read_p;
     int write_p;
     MapTile tile[FIFO_DEPTH];
+    MapTile tile_in_dl;
     pthread_mutex_t lock;
     pthread_cond_t cond;
 };

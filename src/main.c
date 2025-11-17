@@ -1,5 +1,6 @@
 #include "main.h"
 
+bool download_in_progress;
 extern UIState ui;
 bool use_osm_tiles = true;
 SDL_Event event;
@@ -63,6 +64,7 @@ int main(int argc, char *argv[])
       .show_heat = true,
       .update_window = true,
   };
+  download_in_progress = false;
 
   int order[gpxParser_count_gpx_files()];
   GpxCollection collection = {.list_order = order};
@@ -90,7 +92,7 @@ int main(int argc, char *argv[])
   pthread_t dl_thread;
   if (pthread_create(&dl_thread, NULL, download_tiles, (void *)&(appl.download_queue)))
   {
-    fprintf(stderr, "Fehler beim Erstellen des Threads\n");
+    fprintf(stderr, "Failed to create download thread\n");
     return 1;
   }
   pthread_detach(dl_thread);
@@ -109,7 +111,7 @@ int main(int argc, char *argv[])
                       &appl.window_height);
     handle_events(&appl, &collection);
 
-    if (appl.update_window || animation_in_progress(ui))
+    if (appl.update_window || animation_in_progress(ui) || download_in_progress)
     {
       appl.update_window = false;
       SDL_RenderClear(appl.renderer);

@@ -170,7 +170,7 @@ SDL_Texture *get_or_render_track_tile(struct application *appl, GpxCollection *c
         }
     }
 
-    // Sammle Punkte aller Tracks für dieses Tile
+    // Collect all points
     CombinedTilePoints ctp = {
         .key = key,
         .points = NULL,
@@ -202,13 +202,11 @@ SDL_Texture *get_or_render_track_tile(struct application *appl, GpxCollection *c
                         .heat = track->points[i].heat};
 
                     ctp.points[ctp.point_count++] = hp;
-                    //                    ctp.points[ctp.point_count++] = (SDL_Point){pixel_in_tile_x, pixel_in_tile_y};
                 }
             }
         }
     }
 
-    // Rendern
     SDL_Texture *tex = SDL_CreateTexture(appl->renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, 256, 256);
     if (!tex)
     {
@@ -230,7 +228,7 @@ SDL_Texture *get_or_render_track_tile(struct application *appl, GpxCollection *c
     {
         float heat = (float)ctp.points[j].heat;
 
-        // Normalize heat (replace 0.0 and 1.0 with your actual range if needed)
+        // Normalize heat
         float normalized = (heat - min_heat) / (max_heat - min_heat);
         if (normalized < 0.0f)
             normalized = 0.0f;
@@ -290,7 +288,7 @@ int find_track_near_click(GpxCollection *collection, int click_world_x, int clic
             }
         }
     }
-    return closest_track_id; // -1 wenn kein Track nahe genug war
+    return closest_track_id; // will be -1 when there was no track nearby
 }
 
 void update_selected_track_overlay(struct application *appl, GpxCollection *collection)
@@ -306,14 +304,14 @@ void update_selected_track_overlay(struct application *appl, GpxCollection *coll
         return;
     }
 
-    // Falls alte Textur existiert, freigeben
+    // destroy old texture
     if (appl->selected_track_overlay[zoom])
     {
         SDL_DestroyTexture(appl->selected_track_overlay[zoom]);
         appl->selected_track_overlay[zoom] = NULL;
     }
 
-    // Neue transparente Textur erstellen
+    // new transparent texture
     SDL_Texture *overlay = SDL_CreateTexture(appl->renderer,
                                              SDL_PIXELFORMAT_RGBA8888,
                                              SDL_TEXTUREACCESS_TARGET,
@@ -328,12 +326,12 @@ void update_selected_track_overlay(struct application *appl, GpxCollection *coll
 
     SDL_SetTextureBlendMode(overlay, SDL_BLENDMODE_BLEND);
     SDL_SetRenderTarget(appl->renderer, overlay);
-    SDL_SetRenderDrawColor(appl->renderer, 0, 0, 0, 0); // Transparent
+    SDL_SetRenderDrawColor(appl->renderer, 0, 0, 0, 0); // transparant
     SDL_RenderClear(appl->renderer);
 
-    SDL_SetRenderDrawColor(appl->renderer, 255, 255, 0, 255); // Gelb
+    SDL_SetRenderDrawColor(appl->renderer, 255, 255, 0, 255); // yellow
 
-    // Track finden
+    // Find track
     GpxTrack *track = NULL;
     for (int i = 0; i < collection->total_tracks; i++)
     {
@@ -357,7 +355,7 @@ void update_selected_track_overlay(struct application *appl, GpxCollection *coll
     SDL_Color color = {.a = 255, .r = 255, .g = 255, .b = 0};
     draw_smooth_thick_polyline(appl->renderer, pts, track->total_points, 10.0f, color);
 
-    // Zurück zum normalen Render-Target (Fenster)
+    // Switch back to normal render target
     SDL_SetRenderTarget(appl->renderer, NULL);
 
     appl->selected_track_overlay[zoom] = overlay;
@@ -381,11 +379,10 @@ SDL_Texture *generate_elevation_profile_texture(SDL_Renderer *renderer, const Gp
     SDL_Texture *prev_target = SDL_GetRenderTarget(renderer);
     SDL_SetRenderTarget(renderer, texture);
 
-    // Hintergrund löschen
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 0); // Transparent
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 0);
     SDL_RenderClear(renderer);
 
-    // Höhenbereich ermitteln
+    // Calculate min and max height plus some margin
     float min_elev = track.points[0].elevation;
     float max_elev = track.points[0].elevation;
     for (int i = 1; i < track.total_points; i++)
@@ -403,7 +400,7 @@ SDL_Texture *generate_elevation_profile_texture(SDL_Renderer *renderer, const Gp
 
     float total_distance_m = track.points[track.total_points - 1].partial_distance;
 
-    // Punkte fürs Polygon vorbereiten
+    // Prepare points for polygon
     SDL_Point *polygon_points = malloc(sizeof(SDL_Point) * (track.total_points + 2));
     if (!polygon_points)
     {
@@ -419,12 +416,11 @@ SDL_Texture *generate_elevation_profile_texture(SDL_Renderer *renderer, const Gp
         polygon_points[i] = (SDL_Point){x, y};
     }
 
-    // Zwei weitere Punkte: rechts unten & links unten (Basislinie)
+    // Bottom left and bottom right base points
     polygon_points[track.total_points] = (SDL_Point){polygon_points[track.total_points - 1].x, height};
     polygon_points[track.total_points + 1] = (SDL_Point){polygon_points[0].x, height};
 
-    // Flächenfüllung zeichnen (z.B. hellblau)
-    SDL_SetRenderDrawColor(renderer, 150, 200, 255, 255); // Füllfarbe
+    SDL_SetRenderDrawColor(renderer, 150, 200, 255, 255); // fill color
     SDL_RenderDrawLines(renderer, polygon_points, track.total_points + 2);
 
     for (int i = 1; i < track.total_points; i++)
@@ -434,7 +430,7 @@ SDL_Texture *generate_elevation_profile_texture(SDL_Renderer *renderer, const Gp
         int x2 = (int)((track.points[i].partial_distance / total_distance_m) * width);
         int y2 = height - (int)(((track.points[i].elevation - min_elev) / (max_elev - min_elev)) * height);
 
-        // Fläche zwischen den Punkten zeichnen als "Dreieck + Rechteck"
+        // Fill area underneath two points tirangle + quad
         for (int x = x1; x <= x2; x++)
         {
             float t = (float)(x - x1) / (x2 - x1);
@@ -443,8 +439,8 @@ SDL_Texture *generate_elevation_profile_texture(SDL_Renderer *renderer, const Gp
         }
     }
 
-    // Höhenprofil-Linie darüber zeichnen
-    SDL_SetRenderDrawColor(renderer, 0, 100, 200, 255); // Dunkelblau
+    // Draw top line
+    SDL_SetRenderDrawColor(renderer, 0, 100, 200, 255); // dark blue
     SDL_RenderDrawLines(renderer, polygon_points, track.total_points);
 
     free(polygon_points);

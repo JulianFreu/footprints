@@ -16,7 +16,7 @@ Visualize all your runs, hikes, and rides in one place, explore your most freque
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/yourusername/footprints.git
+git clone https://github.com/JulianFreu/footprints.git
 cd footprints
 ```
 
