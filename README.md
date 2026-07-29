@@ -75,5 +75,13 @@ To use the conversion script, install its dependencies first:
 pip install fitparse lxml
 ```
 
+## ToDo
+
+- Smooth fade-in of tiles after download
+- Smooth zooming
+- More statistics in activities (heart-rate, speed, ...)
+- Limit the tile cache (drop earliest if cache is full)
+- Color overhaul
+
 ## License
 This project is licensed under the MIT License – see the [LICENSE](LICENSE) file for details.
