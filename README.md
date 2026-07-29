@@ -84,6 +84,11 @@ pip install fitparse lxml
 - Color overhaul
 - Add watermark of tile provider to bottom right
 - Add screenshots to README
+- Export the current heatmap view as a PNG for sharing
+- Yearly/monthly/weekly summary view (total distance, time, elevation per period — a "wrapped"-style recap)
+- Personal records (longest run, fastest pace, most elevation gain)
+- Interactive elevation profile on click instead of the current static PNG
+- A settings file for defaults (start location/zoom, tile cache path) instead of hardcoded values in `structs.h`
 
 ## License
 This project is licensed under the MIT License – see the [LICENSE](LICENSE) file for details.
