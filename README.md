@@ -82,6 +82,7 @@ pip install fitparse lxml
 - More statistics in activities (heart-rate, speed, ...)
 - Limit the tile cache (drop earliest if cache is full)
 - Color overhaul
+- Add watermark of tile provider to bottom right
 
 ## License
 This project is licensed under the MIT License – see the [LICENSE](LICENSE) file for details.
