@@ -89,6 +89,10 @@ pip install fitparse lxml
 - Personal records (longest run, fastest pace, most elevation gain)
 - Interactive elevation profile on click instead of the current static PNG
 - A settings file for defaults (start location/zoom, tile cache path) instead of hardcoded values in `structs.h`
+- GPS noise filtering (smooth out jumpy points before distance/pace calculations)
+- Multi-select in the run list for bulk delete/hide
+- A minimal config for map tile provider/API key setup instead of editing `api_key.h` by hand
+- Auto-sync with Garmin Connect
 
 ## License
 This project is licensed under the MIT License – see the [LICENSE](LICENSE) file for details.
