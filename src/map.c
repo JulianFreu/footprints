@@ -6,8 +6,7 @@ extern bool download_in_progress;
 
 void conv_pixel_to_tile_and_offset(int pixel_x, int pixel_y, int source_zoom, int target_zoom,
                                    int *tile_x, int *tile_y,
-                                   int *pixel_in_tile_x, int *pixel_in_tile_y)
-{
+                                   int *pixel_in_tile_x, int *pixel_in_tile_y) {
     int zoom_diff = source_zoom - target_zoom;
 
     // Convert world coordinates to target zoom level by shifting right
@@ -27,18 +26,15 @@ void conv_pixel_to_tile_and_offset(int pixel_x, int pixel_y, int source_zoom, in
         *pixel_in_tile_y += TILE_SIZE;
 }
 
-void ensure_directory(const char *path)
-{
+void ensure_directory(const char *path) {
     struct stat st = {0};
-    if (stat(path, &st) == -1)
-    {
+    if (stat(path, &st) == -1) {
         mkdir(path, 0755);
     }
 }
 
 // Callback for curl
-static size_t write_callback(void *contents, size_t size, size_t nmemb, void *userp)
-{
+static size_t write_callback(void *contents, size_t size, size_t nmemb, void *userp) {
     size_t realsize = size * nmemb;
     struct MemoryStruct *mem = (struct MemoryStruct *)userp;
 
@@ -54,12 +50,10 @@ static size_t write_callback(void *contents, size_t size, size_t nmemb, void *us
     return realsize;
 }
 
-void *download_tiles(void *arg)
-{
+void *download_tiles(void *arg) {
     struct fifo *download_queue = (struct fifo *)arg;
     MapTile next_tile = {0};
-    while (true)
-    {
+    while (true) {
         download_in_progress = false;
         pthread_mutex_lock(&download_queue->lock);
         // Wait while the queue is empty
@@ -91,8 +85,7 @@ void *download_tiles(void *arg)
 
         CURL *curl = curl_easy_init();
         struct curl_slist *list = NULL;
-        if (!curl)
-        {
+        if (!curl) {
             fprintf(stderr, "Fehler beim Initialisieren von CURL\n");
             continue; // oder break oder return
         }
@@ -100,16 +93,14 @@ void *download_tiles(void *arg)
         image_data.memory = (char *)malloc(1);
         image_data.size = 0;
 
-        if (use_osm_tiles)
-        {
+        if (use_osm_tiles) {
             snprintf(url, sizeof(url), "https://tile.openstreetmap.org/%d/%d/%d.png",
                      next_tile.zoom, next_tile.tile_x, next_tile.tile_y);
             curl_easy_setopt(curl, CURLOPT_URL, url);
             curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
             curl_easy_setopt(curl, CURLOPT_WRITEDATA, &image_data);
             curl_easy_setopt(curl, CURLOPT_USERAGENT, "OSM-Viewer/1.0");
-        }
-        else // use stadiamaps; requires api key
+        } else // use stadiamaps; requires api key
         {
             snprintf(url, sizeof(url), "https://tiles.stadiamaps.com/tiles/stamen_terrain/%d/%d/%d.png",
                      next_tile.zoom, next_tile.tile_x, next_tile.tile_y);
@@ -127,15 +118,13 @@ void *download_tiles(void *arg)
         curl_easy_cleanup(curl);
         curl_slist_free_all(list); /* free the list */
 
-        if (res != CURLE_OK)
-        {
+        if (res != CURLE_OK) {
             fprintf(stderr, "Fehler beim Laden: %s\n", curl_easy_strerror(res));
         }
 
         // save tile to tile cache
         FILE *f = fopen(tile_path, "wb");
-        if (f)
-        {
+        if (f) {
             fwrite(image_data.memory, 1, image_data.size, f);
             fclose(f);
         }
@@ -143,26 +132,21 @@ void *download_tiles(void *arg)
     }
 }
 
-bool tile_key_equal(MapTile a, MapTile b)
-{
+bool tile_key_equal(MapTile a, MapTile b) {
     return a.tile_x == b.tile_x && a.tile_y == b.tile_y && a.zoom == b.zoom;
 }
 
-void append_to_tile_cache(TileTextureCache *cache, TileTexture entry)
-{
-    if (cache->size >= cache->capacity)
-    {
+void append_to_tile_cache(TileTextureCache *cache, TileTexture entry) {
+    if (cache->size >= cache->capacity) {
         cache->capacity = cache->capacity == 0 ? 64 : cache->capacity * 2;
         cache->entries = realloc(cache->entries, cache->capacity * sizeof(TileTexture));
     }
     cache->entries[cache->size++] = entry;
 }
 
-void free_tile_cache(TileTextureCache *cache)
-{
+void free_tile_cache(TileTextureCache *cache) {
     printf("tile cache capacity before cleanup: %d\n", cache->capacity);
-    for (int i = 0; i < cache->size; i++)
-    {
+    for (int i = 0; i < cache->size; i++) {
         if (cache->entries[i].texture)
             SDL_DestroyTexture(cache->entries[i].texture);
     }
@@ -172,13 +156,10 @@ void free_tile_cache(TileTextureCache *cache)
     cache->capacity = 0;
 }
 
-SDL_Texture *get_cached_texture(struct application *appl, MapTile key, const char *path)
-{
+SDL_Texture *get_cached_texture(struct application *appl, MapTile key, const char *path) {
     // Try to find the texture in the cache
-    for (int i = 0; i < appl->tile_cache.size; i++)
-    {
-        if (tile_key_equal(appl->tile_cache.entries[i].key, key))
-        {
+    for (int i = 0; i < appl->tile_cache.size; i++) {
+        if (tile_key_equal(appl->tile_cache.entries[i].key, key)) {
             return appl->tile_cache.entries[i].texture;
         }
     }
@@ -200,13 +181,11 @@ SDL_Texture *get_cached_texture(struct application *appl, MapTile key, const cha
     return texture;
 }
 
-int file_exists(const char *path)
-{
+int file_exists(const char *path) {
     return access(path, F_OK) == 0;
 }
 
-bool get_map_background(struct application *appl, GpxCollection *collection)
-{
+bool get_map_background(struct application *appl, GpxCollection *collection) {
     // How many tiles do we need?
     int tiles_x = appl->window_width / TILE_SIZE + 2;
     int tiles_y = appl->window_height / TILE_SIZE + 2;
@@ -219,10 +198,8 @@ bool get_map_background(struct application *appl, GpxCollection *collection)
                                   &center_tile_x, &center_tile_y,
                                   &tile_offset_x, &tile_offset_y);
 
-    for (int dx = -tiles_x / 2; dx <= tiles_x / 2; dx++)
-    {
-        for (int dy = -tiles_y / 2; dy <= tiles_y / 2; dy++)
-        {
+    for (int dx = -tiles_x / 2; dx <= tiles_x / 2; dx++) {
+        for (int dy = -tiles_y / 2; dy <= tiles_y / 2; dy++) {
             int tile_x = center_tile_x + dx;
             int tile_y = center_tile_y + dy;
 
@@ -234,8 +211,7 @@ bool get_map_background(struct application *appl, GpxCollection *collection)
             snprintf(tile_path, sizeof(tile_path), "tilecache/%d/%d/%d.png", appl->zoom,
                      tile_x, tile_y);
 
-            if (!file_exists(tile_path))
-            {
+            if (!file_exists(tile_path)) {
                 // add tile to download queue if it is not in there already
                 MapTile tile2queue = {
                     .tile_x = tile_x,
@@ -251,8 +227,7 @@ bool get_map_background(struct application *appl, GpxCollection *collection)
                     appl->download_queue.tile_in_dl.zoom == tile2queue.zoom)
                     already_downloading = true;
 
-                if (!already_queued && !already_downloading)
-                {
+                if (!already_queued && !already_downloading) {
                     fifo_write_data(&appl->download_queue, tile2queue);
                 }
 
@@ -272,15 +247,13 @@ bool get_map_background(struct application *appl, GpxCollection *collection)
             int screen_x = (tile_x - center_tile_x) * TILE_SIZE - tile_offset_x + appl->window_width / 2;
             int screen_y = (tile_y - center_tile_y) * TILE_SIZE - tile_offset_y + appl->window_height / 2;
 
-            if (texture)
-            {
+            if (texture) {
                 SDL_Rect dest = {screen_x, screen_y, TILE_SIZE, TILE_SIZE};
                 SDL_RenderCopy(appl->renderer, texture, NULL, &dest);
             }
 
             SDL_Texture *trackTex = get_or_render_track_tile(appl, collection, key);
-            if (trackTex)
-            {
+            if (trackTex) {
                 SDL_Rect dst = {
                     .x = screen_x,
                     .y = screen_y,
@@ -290,8 +263,7 @@ bool get_map_background(struct application *appl, GpxCollection *collection)
             }
         }
     }
-    if (appl->selected_track_overlay[appl->zoom])
-    {
+    if (appl->selected_track_overlay[appl->zoom]) {
         SDL_RenderCopy(appl->renderer, appl->selected_track_overlay[appl->zoom], NULL, NULL);
     }
     return true;

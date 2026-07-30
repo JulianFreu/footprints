@@ -10,13 +10,12 @@
 #include "fifo.h"
 #include "tracks.h"
 
-bool get_map_background(struct application *appl, GpxCollection* collection);
+bool get_map_background(struct application *appl, GpxCollection *collection);
 void *download_tiles(void *arg);
 void conv_pixel_to_tile_and_offset(int pixel_x, int pixel_y, int source_zoom, int target_zoom,
-                          int *tile_x, int *tile_y,
-                          int *pixel_in_tile_x, int *pixel_in_tile_y);
+                                   int *tile_x, int *tile_y,
+                                   int *pixel_in_tile_x, int *pixel_in_tile_y);
 void free_tile_cache(TileTextureCache *cache);
 bool tile_key_equal(MapTile a, MapTile b);
-
 
 #endif

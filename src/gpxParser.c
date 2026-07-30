@@ -1,15 +1,13 @@
 #include "gpxParser.h"
 
 // Cross-platform ISO8601 parser: "YYYY-MM-DDTHH:MM:SS[.sss]Z"
-time_t parse_iso8601_utc(const char *timestr)
-{
+time_t parse_iso8601_utc(const char *timestr) {
     struct tm tm = {0};
     int year, month, day, hour, min, sec;
 
     // Parse time up to seconds — ignore milliseconds and 'Z'
     if (sscanf(timestr, "%4d-%2d-%2dT%2d:%2d:%2d",
-               &year, &month, &day, &hour, &min, &sec) != 6)
-    {
+               &year, &month, &day, &hour, &min, &sec) != 6) {
         return (time_t)-1;
     }
 
@@ -42,15 +40,13 @@ time_t parse_iso8601_utc(const char *timestr)
 #endif
 }
 
-bool format_iso8601_display_strings(const char *iso8601, char *out_date, size_t date_size, char *out_time, size_t time_size)
-{
+bool format_iso8601_display_strings(const char *iso8601, char *out_date, size_t date_size, char *out_time, size_t time_size) {
     struct tm tm = {0};
     int year, month, day, hour, min, sec;
 
     // Parse: "YYYY-MM-DDTHH:MM:SS"
     if (sscanf(iso8601, "%4d-%2d-%2dT%2d:%2d:%2d",
-               &year, &month, &day, &hour, &min, &sec) != 6)
-    {
+               &year, &month, &day, &hour, &min, &sec) != 6) {
         return false;
     }
 
@@ -68,8 +64,7 @@ bool format_iso8601_display_strings(const char *iso8601, char *out_date, size_t 
     return true;
 }
 
-static double haversine_distance(double lat1, double lon1, double lat2, double lon2)
-{
+static double haversine_distance(double lat1, double lon1, double lat2, double lon2) {
     double dlat = (lat2 - lat1) * M_PI / 180.0;
     double dlon = (lon2 - lon1) * M_PI / 180.0;
 
@@ -83,16 +78,14 @@ static double haversine_distance(double lat1, double lon1, double lat2, double l
     return EARTH_RADIUS_METERS * c;
 }
 
-void gpxTrack_CalculateDistance(GpxTrack *track)
-{
+void gpxTrack_CalculateDistance(GpxTrack *track) {
     track->distance = 0.0;
 
     if (track->total_points < 2)
         return;
 
     track->points[0].partial_distance = 0;
-    for (int i = 1; i < track->total_points; i++)
-    {
+    for (int i = 1; i < track->total_points; i++) {
         GpxPoint *p1 = &track->points[i - 1];
         GpxPoint *p2 = &track->points[i];
 
@@ -103,25 +96,18 @@ void gpxTrack_CalculateDistance(GpxTrack *track)
     track->distance = track->distance / 1000; // meters to kilometers
 }
 
-bool gpxParser_extract_time(xmlNode *node, GpxTrack *track, bool *found_start_time)
-{
+bool gpxParser_extract_time(xmlNode *node, GpxTrack *track, bool *found_start_time) {
     bool found_time = false;
 
-    for (xmlNode *cur_node = node; cur_node; cur_node = cur_node->next)
-    {
+    for (xmlNode *cur_node = node; cur_node; cur_node = cur_node->next) {
         if (cur_node->type == XML_ELEMENT_NODE &&
-            xmlStrcmp(cur_node->name, (const xmlChar *)"trkpt") == 0)
-        {
-            for (xmlNode *child = cur_node->children; child; child = child->next)
-            {
+            xmlStrcmp(cur_node->name, (const xmlChar *)"trkpt") == 0) {
+            for (xmlNode *child = cur_node->children; child; child = child->next) {
                 if (child->type == XML_ELEMENT_NODE &&
-                    xmlStrcmp(child->name, (const xmlChar *)"time") == 0)
-                {
+                    xmlStrcmp(child->name, (const xmlChar *)"time") == 0) {
                     xmlChar *time_content = xmlNodeGetContent(child);
-                    if (time_content)
-                    {
-                        if (!*found_start_time)
-                        {
+                    if (time_content) {
+                        if (!*found_start_time) {
                             strncpy(track->start_time_raw, (const char *)time_content, sizeof(track->start_time_raw) - 1);
                             track->start_time_raw[sizeof(track->start_time_raw) - 1] = '\0';
                             *found_start_time = true;
@@ -146,8 +132,7 @@ bool gpxParser_extract_time(xmlNode *node, GpxTrack *track, bool *found_start_ti
     return found_time;
 }
 
-void latLonToPixel(double lat, double lon, int zoom, int *x, int *y)
-{
+void latLonToPixel(double lat, double lon, int zoom, int *x, int *y) {
     double lat_rad = lat * (double)M_PI / 180.0f;
     double siny = sinf(lat_rad);
 
@@ -166,31 +151,23 @@ void latLonToPixel(double lat, double lon, int zoom, int *x, int *y)
     *y = (int)(world_y * scale);
 }
 
-bool gpxParser_extract_act_type(xmlNode *node, GpxTrack *track)
-{
-    for (xmlNode *cur_node = node; cur_node; cur_node = cur_node->next)
-    {
-        if (cur_node->type == XML_ELEMENT_NODE)
-        {
-            if (xmlStrcmp(cur_node->name, (const xmlChar *)"type") == 0)
-            {
-                if (cur_node->children && cur_node->children->content)
-                {
+bool gpxParser_extract_act_type(xmlNode *node, GpxTrack *track) {
+    for (xmlNode *cur_node = node; cur_node; cur_node = cur_node->next) {
+        if (cur_node->type == XML_ELEMENT_NODE) {
+            if (xmlStrcmp(cur_node->name, (const xmlChar *)"type") == 0) {
+                if (cur_node->children && cur_node->children->content) {
                     char *type_str = (char *)cur_node->children->content;
 
-                    if (strcmp(type_str, "Running") == 0){
+                    if (strcmp(type_str, "Running") == 0) {
                         track->act_type = Run;
                         printf("run\n");
-                    }
-                    else if (strcmp(type_str, "Hiking") == 0 || strcmp(type_str, "hiking") == 0){
+                    } else if (strcmp(type_str, "Hiking") == 0 || strcmp(type_str, "hiking") == 0) {
                         track->act_type = Hike;
                         printf("hike\n");
-                    }
-                    else if (strcmp(type_str, "Cycling") == 0){
+                    } else if (strcmp(type_str, "Cycling") == 0) {
                         track->act_type = Cycling;
                         printf("cycle\n");
-                    }
-                    else
+                    } else
                         track->act_type = Other;
                 }
                 return true; // found <type>, done
@@ -203,16 +180,12 @@ bool gpxParser_extract_act_type(xmlNode *node, GpxTrack *track)
     return true;
 }
 
-bool gpxParser_extract_coords(xmlNode *node, GpxTrack *track)
-{
-    for (xmlNode *cur_node = node; cur_node; cur_node = cur_node->next)
-    {
-        if (cur_node->type == XML_ELEMENT_NODE && xmlStrcmp(cur_node->name, (const xmlChar *)"trkpt") == 0)
-        {
+bool gpxParser_extract_coords(xmlNode *node, GpxTrack *track) {
+    for (xmlNode *cur_node = node; cur_node; cur_node = cur_node->next) {
+        if (cur_node->type == XML_ELEMENT_NODE && xmlStrcmp(cur_node->name, (const xmlChar *)"trkpt") == 0) {
             int new_total = track->total_points + 1;
             GpxPoint *temp = (GpxPoint *)realloc(track->points, new_total * sizeof(GpxPoint));
-            if (temp == NULL)
-            {
+            if (temp == NULL) {
                 fprintf(stderr, "Memory reallocation for tracks failed.\n");
                 free(track);
                 return false;
@@ -226,13 +199,10 @@ bool gpxParser_extract_coords(xmlNode *node, GpxTrack *track)
             double elevation = 0.0;
             bool elevation_found = false;
 
-            for (xmlNode *child = cur_node->children; child; child = child->next)
-            {
-                if (child->type == XML_ELEMENT_NODE && xmlStrcmp(child->name, (const xmlChar *)"ele") == 0)
-                {
+            for (xmlNode *child = cur_node->children; child; child = child->next) {
+                if (child->type == XML_ELEMENT_NODE && xmlStrcmp(child->name, (const xmlChar *)"ele") == 0) {
                     xmlChar *ele_content = xmlNodeGetContent(child);
-                    if (ele_content)
-                    {
+                    if (ele_content) {
                         elevation = atof((const char *)ele_content);
                         elevation_found = true;
                         xmlFree(ele_content);
@@ -241,8 +211,7 @@ bool gpxParser_extract_coords(xmlNode *node, GpxTrack *track)
                 }
             }
 
-            if (s_lat && s_lon)
-            {
+            if (s_lat && s_lon) {
                 double lat = atof((const char *)s_lat);
                 double lon = atof((const char *)s_lon);
                 int world_x, world_y;
@@ -273,21 +242,18 @@ bool gpxParser_extract_coords(xmlNode *node, GpxTrack *track)
     return true;
 }
 
-void gpxTrack_calculate_mid_point(GpxTrack *track)
-{
+void gpxTrack_calculate_mid_point(GpxTrack *track) {
     uint64_t mid_x = 0;
     uint64_t mid_y = 0;
-    for (int i = 0; i < track->total_points; i++)
-    {
+    for (int i = 0; i < track->total_points; i++) {
         mid_x += track->points->world_x;
         mid_y += track->points->world_y;
     }
-   track->mid_x = mid_x / track->total_points;
-   track->mid_y = mid_y / track->total_points;
+    track->mid_x = mid_x / track->total_points;
+    track->mid_y = mid_y / track->total_points;
 }
 
-void gpxTrack_calculate_elevation_gain_loss(GpxTrack *track)
-{
+void gpxTrack_calculate_elevation_gain_loss(GpxTrack *track) {
     const int window_size = 10; // Adjust as needed
     int total_points = track->total_points;
 
@@ -296,15 +262,13 @@ void gpxTrack_calculate_elevation_gain_loss(GpxTrack *track)
 
     // Temporary array for smoothed elevation values
     float *smoothed = (float *)malloc(total_points * sizeof(float));
-    if (!smoothed)
-    {
+    if (!smoothed) {
         fprintf(stderr, "Memory allocation failed in elevation smoothing.\n");
         return;
     }
 
     // Apply rolling average smoothing
-    for (int i = 0; i < total_points; i++)
-    {
+    for (int i = 0; i < total_points; i++) {
         int start = i - window_size;
         int end = i + window_size;
         if (start < 0)
@@ -315,8 +279,7 @@ void gpxTrack_calculate_elevation_gain_loss(GpxTrack *track)
         float sum = 0.0;
         int count = 0;
 
-        for (int j = start; j <= end; j++)
-        {
+        for (int j = start; j <= end; j++) {
             sum += track->points[j].elevation;
             count++;
         }
@@ -331,8 +294,7 @@ void gpxTrack_calculate_elevation_gain_loss(GpxTrack *track)
     track->high_point = smoothed[0];
     track->low_point = smoothed[0];
 
-    for (int i = 1; i < total_points; i++)
-    {
+    for (int i = 1; i < total_points; i++) {
         float diff = smoothed[i] - smoothed[i - 1];
         if (diff > 0)
             track->elev_up += diff;
@@ -348,8 +310,7 @@ void gpxTrack_calculate_elevation_gain_loss(GpxTrack *track)
     free(smoothed);
 }
 
-void gpxTrack_calculate_strings_for_UI(GpxTrack *track)
-{
+void gpxTrack_calculate_strings_for_UI(GpxTrack *track) {
     // duration
     int h = (int)track->duration_secs / 3600;
     int m = ((int)(track->duration_secs) % 3600) / 60;
@@ -377,8 +338,7 @@ void gpxTrack_calculate_strings_for_UI(GpxTrack *track)
     snprintf(track->distance_str, sizeof(track->distance_str), "%.2f", track->distance);
 }
 
-bool gpxParser_parse_file(char *filename, GpxTrack *track)
-{
+bool gpxParser_parse_file(char *filename, GpxTrack *track) {
     printf("Parsing: %s\n", filename);
     xmlDocPtr doc;
     xmlNode *root_element;
@@ -386,8 +346,7 @@ bool gpxParser_parse_file(char *filename, GpxTrack *track)
     // Parse the XML file
     doc = xmlReadFile(filename, NULL, 0);
 
-    if (doc == NULL)
-    {
+    if (doc == NULL) {
         fprintf(stderr, "Failed to read %s\n", filename);
         return false;
     }
@@ -397,9 +356,7 @@ bool gpxParser_parse_file(char *filename, GpxTrack *track)
     // get activity type
     gpxParser_extract_act_type(root_element, track);
 
-    if (gpxParser_extract_coords(root_element, track))
-    {
-
+    if (gpxParser_extract_coords(root_element, track)) {
         gpxTrack_calculate_mid_point(track);
         printf("Mid_x: %d, Mid_y: %d\n", track->mid_x, track->mid_y);
 
@@ -413,18 +370,14 @@ bool gpxParser_parse_file(char *filename, GpxTrack *track)
         printf("Total elevation down: %.2f m\n", track->elev_down);
 
         bool found_start_time = false;
-        if (gpxParser_extract_time(root_element, track, &found_start_time))
-        {
+        if (gpxParser_extract_time(root_element, track, &found_start_time)) {
             time_t start = parse_iso8601_utc(track->start_time_raw);
             time_t end = parse_iso8601_utc(track->end_time_raw);
 
-            if (start != (time_t)-1 && end != (time_t)-1 && end >= start)
-            {
+            if (start != (time_t)-1 && end != (time_t)-1 && end >= start) {
                 track->duration_secs = difftime(end, start);
                 track->secs_per_km = track->duration_secs / track->distance;
-            }
-            else
-            {
+            } else {
                 track->duration_secs = 0.0f;
                 track->secs_per_km = 0.0f;
             }
@@ -442,20 +395,18 @@ bool gpxParser_parse_file(char *filename, GpxTrack *track)
     return true;
 }
 
-int gpxParser_count_gpx_files(){
+int gpxParser_count_gpx_files() {
     const char *folder_path = "./gpx_files"; // Folder containing GPX files
     DIR *dir;
     struct dirent *entry;
 
     dir = opendir(folder_path);
-    if (dir == NULL)
-    {
+    if (dir == NULL) {
         perror("opendir");
         return false;
     }
     int gpx_file_counter = 0;
-    while ((entry = readdir(dir)) != NULL)
-    {
+    while ((entry = readdir(dir)) != NULL) {
         // Skip "." and ".."
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
             continue;
@@ -471,18 +422,15 @@ int gpxParser_count_gpx_files(){
 
     closedir(dir);
     return gpx_file_counter;
-
 }
 
-bool gpxParser_parse_all_files(GpxCollection *collection)
-{
+bool gpxParser_parse_all_files(GpxCollection *collection) {
     const char *folder_path = "./gpx_files"; // Folder containing GPX files
     DIR *dir;
     struct dirent *entry;
 
     dir = opendir(folder_path);
-    if (dir == NULL)
-    {
+    if (dir == NULL) {
         perror("opendir");
         return false;
     }
@@ -490,8 +438,7 @@ bool gpxParser_parse_all_files(GpxCollection *collection)
     collection->total_tracks = 0;
     collection->tracks = NULL;
 
-    while ((entry = readdir(dir)) != NULL)
-    {
+    while ((entry = readdir(dir)) != NULL) {
         // Skip "." and ".."
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
             continue;
@@ -505,8 +452,7 @@ bool gpxParser_parse_all_files(GpxCollection *collection)
             collection->tracks,
             (collection->total_tracks + 1) * sizeof(GpxTrack));
 
-        if (!collection->tracks)
-        {
+        if (!collection->tracks) {
             perror("realloc");
             closedir(dir);
             return false;
@@ -528,8 +474,7 @@ bool gpxParser_parse_all_files(GpxCollection *collection)
         collection->total_tracks++;
     }
 
-    for (int i = 0; i < collection->total_tracks; i++)
-    {
+    for (int i = 0; i < collection->total_tracks; i++) {
         gpxTrack_calculate_strings_for_UI(&collection->tracks[i]);
 
         // give list order initial values

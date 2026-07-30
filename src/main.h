@@ -12,9 +12,8 @@
 #include "filters.h"
 #include "heat.h"
 
-
 bool sdl_initialize(struct application *appl);
-bool appl_cleanup(struct application *appl, GpxCollection * collection, int exit_status);
+bool appl_cleanup(struct application *appl, GpxCollection *collection, int exit_status);
 bool handle_events(struct application *appl, GpxCollection *collection);
 
 #endif
