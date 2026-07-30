@@ -11,7 +11,7 @@
 // loop in main.c both reads and drives it.
 extern UIState ui;
 
-float get_delta_time(Uint32 lastFrameTime);
+float get_delta_time(Uint32 last_frame_time);
 void clay_init(struct application *appl);
 void clay_draw_ui(struct application *appl, GpxCollection *collection);
 void clay_free_memory(void);

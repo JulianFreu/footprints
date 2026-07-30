@@ -55,7 +55,7 @@ UIState ui = {
     .filters_animation = {.opening = false, .closing = false, .animation = 0, .ticks = 0}};
 
 static GpxCollection *g_collection = NULL; // tmp global pointer for compare functions
-static Clay_Arena clayMemory;
+static Clay_Arena clay_memory;
 
 static bool ui_new_track_selected = false;
 static int ui_track = -1;
@@ -74,11 +74,11 @@ static void clicked_type_filter(
 }
 
 static void draw_clay_text(const char *string, uint16_t fontSize, Clay_Color color, Clay_TextAlignment align) {
-    Clay_String clayString = {
+    Clay_String clay_string = {
         .chars = string,
         .length = strlen(string),
         .isStaticallyAllocated = false};
-    CLAY_TEXT(clayString, CLAY_TEXT_CONFIG({.fontSize = fontSize, .textColor = color, .textAlignment = align}));
+    CLAY_TEXT(clay_string, CLAY_TEXT_CONFIG({.fontSize = fontSize, .textColor = color, .textAlignment = align}));
 }
 
 static void init_numbers_input(void) {
@@ -96,7 +96,7 @@ static void clicked_filter_field(
     intptr_t userData) {
     if (pointerData.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME) {
         init_numbers_input();
-        ui.activeFilterID = (uint16_t)userData;
+        ui.active_filter_id = (uint16_t)userData;
         LOG_DEBUG("start number input\n");
     }
 }
@@ -215,17 +215,17 @@ static void draw_input_field(uint16_t filter_id, FilterSettings *filters) {
 
     CLAY(CLAY_IDI_LOCAL("InputFieldFilter", filter_id),
          {
-             .border = {.color = border, .width = (ui.text_input_mode && ui.activeFilterID == filter_id) ? (Clay_BorderWidth)CLAY_BORDER_OUTSIDE(3) : (Clay_BorderWidth)CLAY_BORDER_OUTSIDE(0)},
+             .border = {.color = border, .width = (ui.text_input_mode && ui.active_filter_id == filter_id) ? (Clay_BorderWidth)CLAY_BORDER_OUTSIDE(3) : (Clay_BorderWidth)CLAY_BORDER_OUTSIDE(0)},
              .layout = {.sizing = {.width = CLAY_SIZING_FIXED(FILTERS_MINMAX_WIDTH), .height = CLAY_SIZING_FIXED(LIST_ENTRY_HEIGHT)},
                         .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
                         .layoutDirection = CLAY_LEFT_TO_RIGHT},
-             .backgroundColor = Clay_Hovered() ? blue : darkBlue,
+             .backgroundColor = Clay_Hovered() ? blue : dark_blue,
              .cornerRadius = CORNER_RADIUS,
          }) {
         Clay_OnHover(clicked_filter_field, filter_id);
 
         char *text = filter_field_text(filters, field);
-        if (filter_id == ui.activeFilterID)
+        if (filter_id == ui.active_filter_id)
             format_filter_input(text, field->format);
         draw_clay_text(text, 12, bg1, CLAY_TEXT_ALIGN_CENTER);
     }
@@ -269,7 +269,7 @@ static void draw_type_filter(ActivityType type, bool *show_type) {
     Clay_Color background_color;
     Clay_Color background_color_hl;
     if (*show_type == true) {
-        background_color = darkGreen;
+        background_color = dark_green;
         background_color_hl = green;
     } else {
         background_color = bg5;
@@ -293,10 +293,10 @@ static void draw_type_filter_container(FilterSettings *filter) {
              .layout = {.padding = CLAY_PADDING_ALL(3 * GAPS), .childGap = GAPS, .sizing = {.width = CLAY_SIZING_FIXED(FILTERS_WIDTH / 2), .height = CLAY_SIZING_FIT(0)}, .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}, .layoutDirection = CLAY_TOP_TO_BOTTOM},
              .cornerRadius = CORNER_RADIUS,
          }) {
-        draw_type_filter(Run, &filter->showRuns);
-        draw_type_filter(Cycling, &filter->showCycling);
-        draw_type_filter(Hike, &filter->showHikes);
-        draw_type_filter(Other, &filter->showOther);
+        draw_type_filter(Run, &filter->show_runs);
+        draw_type_filter(Cycling, &filter->show_cycling);
+        draw_type_filter(Hike, &filter->show_hikes);
+        draw_type_filter(Other, &filter->show_other);
     }
 }
 
@@ -494,9 +494,9 @@ static void clicked_run_entry(
     }
 }
 
-float get_delta_time(Uint32 lastFrameTime) {
+float get_delta_time(Uint32 last_frame_time) {
     Uint32 now = SDL_GetTicks();
-    float deltaTime = ((float)now - (float)lastFrameTime) / 1000.0f;
+    float deltaTime = ((float)now - (float)last_frame_time) / 1000.0f;
     return deltaTime;
 }
 
@@ -559,7 +559,7 @@ static void draw_run_list_bottom(const char *total_visible_tracks, GpxCollection
                                               .backgroundColor = Clay_Hovered() ? bg_l : bg_d,
                                               .cornerRadius = CORNER_RADIUS}) {
             Clay_OnHover(clicked_toggle_filter_view, 0);
-            draw_clay_text("Toggle Filter View", 16, darkAqua, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text("Toggle Filter View", 16, dark_aqua, CLAY_TEXT_ALIGN_CENTER);
         }
     }
 }
@@ -735,14 +735,14 @@ void clay_init(struct application *appl) {
 
     Clay_SetMaxElementCount(32000);
     // Configure Clay
-    uint32_t clayRequiredMemory = Clay_MinMemorySize();
+    uint32_t clay_required_memory = Clay_MinMemorySize();
 
-    clayMemory = (Clay_Arena){
-        .memory = malloc(clayRequiredMemory),
-        .capacity = clayRequiredMemory};
+    clay_memory = (Clay_Arena){
+        .memory = malloc(clay_required_memory),
+        .capacity = clay_required_memory};
 
     Clay_Initialize(
-        clayMemory,
+        clay_memory,
         (Clay_Dimensions){.width = appl->window_width, .height = appl->window_height},
         (Clay_ErrorHandler){.errorHandlerFunction = clay_handle_error, .userData = 0});
     Clay_SetMeasureTextFunction(SDL2_MeasureText, appl->fonts);
@@ -750,9 +750,9 @@ void clay_init(struct application *appl) {
 
 void clay_free_memory(void) {
     free_visible_rows();
-    free(clayMemory.memory);
-    clayMemory.memory = NULL;
-    clayMemory.capacity = 0;
+    free(clay_memory.memory);
+    clay_memory.memory = NULL;
+    clay_memory.capacity = 0;
 }
 
 static SDL_Surface *load_icon(const char *path) {
@@ -823,7 +823,7 @@ static void draw_menu_button(SDL_Surface *icon, Clay_Color color, uint32_t butto
     CLAY(CLAY_IDI_LOCAL("MenuButton", button_id),
          {
              .layout = MenuButtonLayout,
-             .backgroundColor = Clay_Hovered() ? bigButtonColor : color,
+             .backgroundColor = Clay_Hovered() ? big_button_color : color,
              .cornerRadius = CORNER_RADIUS,
          }) {
         Clay_OnHover(clicked_menu_button, button_id);
@@ -884,13 +884,13 @@ static void draw_sidebar_track_info(SDL_Surface *icon, const char *value, const 
 }
 
 void clay_draw_ui(struct application *appl, GpxCollection *collection) {
-    if (!clayMemory.memory) {
-        fprintf(stderr, "[CLAY] ERROR: clayMemory not initialized!\n");
+    if (!clay_memory.memory) {
+        fprintf(stderr, "[CLAY] ERROR: clay_memory not initialized!\n");
         return;
     }
     // defaulting
 
-    appl->mouseOverUI = false;
+    appl->mouse_over_ui = false;
     if (ui_new_track_selected == true) {
         appl->selected_track = ui_track;
         ui_new_track_selected = false;
@@ -899,12 +899,12 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
     }
 
     Clay_SetPointerState(
-        (Clay_Vector2){appl->mouse_x, appl->mouse_y}, appl->leftMouseButtonPressed);
+        (Clay_Vector2){appl->mouse_x, appl->mouse_y}, appl->left_mouse_button_pressed);
 
     Clay_UpdateScrollContainers(
         false,
         (Clay_Vector2){0, (float)appl->wheel_y * 5},
-        get_delta_time(appl->lastFrameTime));
+        get_delta_time(appl->last_frame_time));
 
     // filter options
     continue_animation(&ui.filters_animation);
@@ -925,8 +925,8 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
     continue_animation(&ui.run_list);
 
     // draw UI
-    char fpsLabel[64];
-    snprintf(fpsLabel, sizeof(fpsLabel), "FPS: %d", appl->currentFPS);
+    char fps_label[64];
+    snprintf(fps_label, sizeof(fps_label), "FPS: %d", appl->current_fps);
 
     Clay_SetLayoutDimensions((Clay_Dimensions){
         .width = appl->window_width,
@@ -944,9 +944,9 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
           .layout = {.childGap = GAPS, .sizing = {.width = CLAY_SIZING_FIXED(MENU_BAR_WIDTH), .height = CLAY_SIZING_FIT()}, .layoutDirection = CLAY_LEFT_TO_RIGHT},
           .cornerRadius = CORNER_RADIUS}) {
         if (Clay_Hovered())
-            appl->mouseOverUI = true;
+            appl->mouse_over_ui = true;
 
-        draw_menu_button(appl->icons.menu_burger, darkRed, LIST_RUNS);
+        draw_menu_button(appl->icons.menu_burger, dark_red, LIST_RUNS);
     }
 
     CLAY(CLAY_ID("Right sidebar"),
@@ -960,10 +960,10 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
           },
           .layout = {.padding = CLAY_PADDING_ALL(GAPS), .childGap = GAPS, .sizing = {.width = CLAY_SIZING_FIXED(SIDEBAR_WIDTH), .height = appl->window_height - 2 * SCREEN_BORDER_PADDING}, .childAlignment = {.x = CLAY_ALIGN_X_CENTER}, .layoutDirection = CLAY_TOP_TO_BOTTOM},
           .backgroundColor = bg,
-          .border = {.color = darkAqua, .width = {.betweenChildren = 2}},
+          .border = {.color = dark_aqua, .width = {.betweenChildren = 2}},
           .cornerRadius = CORNER_RADIUS}) {
         if (Clay_Hovered())
-            appl->mouseOverUI = true;
+            appl->mouse_over_ui = true;
 
         if (appl->selected_track >= 0) {
             const GpxTrack *track = &collection->tracks[appl->selected_track];
@@ -1003,7 +1003,7 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
               .layout = {.childAlignment = {.x = CLAY_ALIGN_X_CENTER}, .padding = CLAY_PADDING_ALL(GAPS), .sizing = {.width = CLAY_SIZING_FIXED(FILTERS_WIDTH), .height = CLAY_SIZING_FIXED(appl->window_height - 3 * GAPS - MENU_ICON_SIZE - 25)}, .layoutDirection = CLAY_TOP_TO_BOTTOM, .childGap = GAPS},
               .backgroundColor = bg}) {
             if (Clay_Hovered())
-                appl->mouseOverUI = true;
+                appl->mouse_over_ui = true;
             draw_filter_header();
             draw_filter(FILTER_DISTANCE, &collection->filters);
             draw_filter(FILTER_DURATION, &collection->filters);
@@ -1013,10 +1013,10 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
             draw_filter(FILTER_DOWNHILL, &collection->filters);
             draw_filter(FILTER_PEAK, &collection->filters);
 
-            bool pre_showRuns = collection->filters.showRuns;
-            bool pre_showHikes = collection->filters.showHikes;
-            bool pre_showCycling = collection->filters.showCycling;
-            bool pre_showOther = collection->filters.showOther;
+            bool pre_showRuns = collection->filters.show_runs;
+            bool pre_showHikes = collection->filters.show_hikes;
+            bool pre_showCycling = collection->filters.show_cycling;
+            bool pre_showOther = collection->filters.show_other;
             draw_type_filter_container(&collection->filters);
             // check if anything changed
 
@@ -1036,7 +1036,7 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
                                              .backgroundColor = Clay_Hovered() ? bg_l : bg_d,
                                              .cornerRadius = CORNER_RADIUS}) {
                 Clay_OnHover(clicked_calculate_heat, (intptr_t)collection);
-                draw_clay_text("Calculate Heat", 16, darkAqua, CLAY_TEXT_ALIGN_CENTER);
+                draw_clay_text("Calculate Heat", 16, dark_aqua, CLAY_TEXT_ALIGN_CENTER);
             }
 
             CLAY(CLAY_ID("DisplayFilteredButton"), {.layout = {
@@ -1047,15 +1047,15 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
                                                     .backgroundColor = Clay_Hovered() ? bg_l : bg_d,
                                                     .cornerRadius = CORNER_RADIUS}) {
                 Clay_OnHover(clicked_show_filtered_tracks, (intptr_t)&collection->track_tile_cache);
-                draw_clay_text("Show Filtered Tracks", 16, darkAqua, CLAY_TEXT_ALIGN_CENTER);
+                draw_clay_text("Show Filtered Tracks", 16, dark_aqua, CLAY_TEXT_ALIGN_CENTER);
             }
             // Re-filter only when a type toggle actually changed. This read
             // `==` joined by `||`, i.e. "if anything is unchanged", which was
             // true on nearly every frame.
-            if (pre_showRuns != collection->filters.showRuns ||
-                pre_showHikes != collection->filters.showHikes ||
-                pre_showCycling != collection->filters.showCycling ||
-                pre_showOther != collection->filters.showOther)
+            if (pre_showRuns != collection->filters.show_runs ||
+                pre_showHikes != collection->filters.show_hikes ||
+                pre_showCycling != collection->filters.show_cycling ||
+                pre_showOther != collection->filters.show_other)
                 apply_filter_values(collection);
         }
     }
@@ -1070,7 +1070,7 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
              .layout = {.sizing = {.width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIXED(appl->window_height - 2 * SCREEN_BORDER_PADDING - GAPS - MENU_ICON_SIZE)}, .layoutDirection = CLAY_TOP_TO_BOTTOM},
          }) {
         if (Clay_Hovered())
-            appl->mouseOverUI = true;
+            appl->mouse_over_ui = true;
 
         draw_run_list_header(collection);
         draw_run_list_scroll_container(collection, appl->window_height - (MENU_ICON_SIZE + 2 * GAPS) - (LIST_ENTRY_HEIGHT + 2 * GAPS) - (LIST_ENTRY_HEIGHT + 2 * GAPS) - (2 * SCREEN_BORDER_PADDING));

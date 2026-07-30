@@ -37,21 +37,21 @@ static const Clay_Color aqua = {0x8b, 0xba, 0x7f, 0xff};   // #8bba7fff
 static const Clay_Color blue = {0x80, 0xaa, 0x9e, 0xff};   // #80aa9eff
 static const Clay_Color purple = {0xd3, 0x86, 0x9b, 0xff}; // #d3869bff
 
-static const Clay_Color darkRed = {0xb8, 0x56, 0x51, 0xff};    // #b85651ff
-static const Clay_Color darkOrange = {0xbd, 0x6f, 0x3e, 0xff}; // #bd6f3eff
-static const Clay_Color darkYellow = {0xc1, 0x8f, 0x41, 0xff}; // #c18f41ff
-static const Clay_Color darkGreen = {0x8f, 0x9a, 0x52, 0xff};  // #8f9a52ff
-static const Clay_Color darkAqua = {0x72, 0x96, 0x6c, 0xff};   // #72966cff
-static const Clay_Color darkBlue = {0x68, 0x94, 0x8a, 0xff};   // #68948aff
-static const Clay_Color darkPurple = {0xab, 0x6c, 0x7d, 0xff}; // #ab6c7dff
+static const Clay_Color dark_red = {0xb8, 0x56, 0x51, 0xff};    // #b85651ff
+static const Clay_Color dark_orange = {0xbd, 0x6f, 0x3e, 0xff}; // #bd6f3eff
+static const Clay_Color dark_yellow = {0xc1, 0x8f, 0x41, 0xff}; // #c18f41ff
+static const Clay_Color dark_green = {0x8f, 0x9a, 0x52, 0xff};  // #8f9a52ff
+static const Clay_Color dark_aqua = {0x72, 0x96, 0x6c, 0xff};   // #72966cff
+static const Clay_Color dark_blue = {0x68, 0x94, 0x8a, 0xff};   // #68948aff
+static const Clay_Color dark_purple = {0xab, 0x6c, 0x7d, 0xff}; // #ab6c7dff
 
-static const Clay_Color selGreen = {0x3b, 0x44, 0x39, 0xff}; // #3b4439ff
-static const Clay_Color selRed = {0x4c, 0x34, 0x32, 0xff};   // #4c3432ff
-static const Clay_Color selBlue = {0x37, 0x41, 0x41, 0xff};  // #374141ff
+static const Clay_Color sel_green = {0x3b, 0x44, 0x39, 0xff}; // #3b4439ff
+static const Clay_Color sel_red = {0x4c, 0x34, 0x32, 0xff};   // #4c3432ff
+static const Clay_Color sel_blue = {0x37, 0x41, 0x41, 0xff};  // #374141ff
 
-static const Clay_Color diffGreen = {0x34, 0x38, 0x1b, 0xff}; // #34381bff
-static const Clay_Color diffRed = {0x40, 0x21, 0x20, 0xff};   // #402120ff
-static const Clay_Color diffBlue = {0x0e, 0x36, 0x3e, 0xff};  // #0e363eff
+static const Clay_Color diff_green = {0x34, 0x38, 0x1b, 0xff}; // #34381bff
+static const Clay_Color diff_red = {0x40, 0x21, 0x20, 0xff};   // #402120ff
+static const Clay_Color diff_blue = {0x0e, 0x36, 0x3e, 0xff};  // #0e363eff
 
 static const Clay_Color shadow = {0x00, 0x00, 0x00, 0x70}; // #00000070
 
@@ -61,10 +61,10 @@ static const Clay_Color bg_l = bg3;
 static const Clay_Color fg_d = fg1;
 static const Clay_Color fg_l = fg;
 
-static const Clay_Color accent_color = darkRed;
+static const Clay_Color accent_color = dark_red;
 static const Clay_Color accent_color_hl = red;
 
-static const Clay_Color bigButtonColor = fg1;
-static const Clay_Color border_hl = darkOrange;
+static const Clay_Color big_button_color = fg1;
+static const Clay_Color border_hl = dark_orange;
 static const Clay_Color border = fg_l;
 #endif
