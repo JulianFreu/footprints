@@ -51,8 +51,7 @@ void apply_filter_values(GpxCollection *c) {
             c->tracks[i].visible_in_list = false;
         if (c->tracks[i].high_point - c->filters.high_point_low < -0.01 || c->tracks[i].high_point - c->filters.high_point_high > 0.01)
             c->tracks[i].visible_in_list = false;
-        if (iso8601_to_utc(c->tracks[i].start_time_raw) < range_start ||
-            iso8601_to_utc(c->tracks[i].end_time_raw) > range_end)
+        if (c->tracks[i].start_utc < range_start || c->tracks[i].end_utc > range_end)
             c->tracks[i].visible_in_list = false;
     }
     int counter = 0;
