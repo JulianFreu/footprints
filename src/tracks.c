@@ -148,6 +148,18 @@ static void append_to_track_tile_cache(TrackTileTextureCache *cache, TrackTileTe
     cache->entries[cache->size++] = entry;
 }
 
+// Screen-space points for the selected track's polyline, reused across frames
+// and grown only when a longer track is selected.
+static SDL_Point *overlay_points = NULL;
+static int overlay_points_capacity = 0;
+
+// Releases the scratch buffer this module keeps between frames.
+void tracks_free_scratch(void) {
+    free(overlay_points);
+    overlay_points = NULL;
+    overlay_points_capacity = 0;
+}
+
 void free_track_tile_cache(TrackTileTextureCache *cache) {
     for (int i = 0; i < cache->size; i++) {
         if (cache->entries[i].texture)
@@ -322,13 +334,25 @@ void update_selected_track_overlay(struct application *appl, GpxCollection *coll
 
     int zoom_factor = 1 << (MAX_ZOOM - zoom);
 
-    SDL_Point pts[track->total_points];
+    // This was a stack VLA sized by the track's point count, which puts
+    // hundreds of kilobytes on the stack for a long recording.
+    if (track->total_points > overlay_points_capacity) {
+        SDL_Point *grown = realloc(overlay_points, track->total_points * sizeof(SDL_Point));
+        if (!grown) {
+            SDL_SetRenderTarget(appl->renderer, NULL);
+            SDL_DestroyTexture(overlay);
+            return;
+        }
+        overlay_points = grown;
+        overlay_points_capacity = track->total_points;
+    }
+
     for (int i = 0; i < track->total_points; i++) {
-        pts[i].x = ((track->points[i].world_x - appl->world_x) / zoom_factor) + (appl->window_width / 2);
-        pts[i].y = ((track->points[i].world_y - appl->world_y) / zoom_factor) + (appl->window_height / 2);
+        overlay_points[i].x = ((track->points[i].world_x - appl->world_x) / zoom_factor) + (appl->window_width / 2);
+        overlay_points[i].y = ((track->points[i].world_y - appl->world_y) / zoom_factor) + (appl->window_height / 2);
     }
     SDL_Color color = {.a = 255, .r = 255, .g = 255, .b = 0};
-    draw_smooth_thick_polyline(appl->renderer, pts, track->total_points, 10.0f, color);
+    draw_smooth_thick_polyline(appl->renderer, overlay_points, track->total_points, 10.0f, color);
 
     // Switch back to normal render target
     SDL_SetRenderTarget(appl->renderer, NULL);
