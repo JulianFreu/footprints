@@ -17,6 +17,7 @@ extern _Atomic bool download_in_progress;
 
 bool get_map_background(struct application *appl, GpxCollection *collection);
 void *download_tiles(void *arg);
+void download_thread_stop(struct fifo *download_queue);
 void conv_pixel_to_tile_and_offset(int pixel_x, int pixel_y, int source_zoom, int target_zoom,
                                    int *tile_x, int *tile_y,
                                    int *pixel_in_tile_x, int *pixel_in_tile_y);
