@@ -68,6 +68,20 @@ After building, run the executable directly:
 ./footprints
 ```
 
+### Map tiles
+
+Footprints uses OpenStreetMap tiles by default, which need no API key.
+
+To use Stadia Maps terrain tiles instead, provide a key and pass the flag:
+
+```bash
+cp src/api_key.h.example src/api_key.h
+# paste your key into src/api_key.h, then
+make && ./footprints -stadiamaps
+```
+
+`src/api_key.h` is gitignored, so your key stays out of version control.
+
 ## Usage
 
 At startup, Footprints scans the `gpx_files/` directory and automatically loads all GPX files it finds there.

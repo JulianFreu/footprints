@@ -1,0 +1,13 @@
+#ifndef API_KEY_H
+#define API_KEY_H
+
+// Copy this file to src/api_key.h and paste your key in.
+// Only needed when running with -stadiamaps; the default OpenStreetMap tiles
+// require no key.
+//
+//   cp src/api_key.h.example src/api_key.h
+//
+// src/api_key.h is gitignored so your key is never committed.
+static const char *api_key = "your-stadiamaps-api-key-here";
+
+#endif
