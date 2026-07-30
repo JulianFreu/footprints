@@ -154,6 +154,9 @@ static bool appl_cleanup(struct application *appl, GpxCollection *collection, in
     printf("Clean textures...\n");
     free_tile_cache(&(appl->tile_cache));
     free_track_tile_cache(&collection->track_tile_cache);
+    for (int zoom = 0; zoom <= MAX_ZOOM; zoom++)
+        SDL_DestroyTexture(appl->selected_track_overlay[zoom]);
+    tracks_free_scratch();
     printf("Clean tracks...\n");
     for (int i = 0; i < collection->total_tracks; i++)
         free(collection->tracks[i].points);
