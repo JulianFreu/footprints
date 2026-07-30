@@ -4,8 +4,13 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
 #include <SDL2/SDL_ttf.h>
+#include <pthread.h>
+#include <stdbool.h>
+#include <stdint.h>
 
+#ifndef M_PI
 #define M_PI 3.14159265358979323846
+#endif
 #define TILE_SIZE 256
 #define FIFO_DEPTH 16
 #define WINDOW_TITLE "footprints"
@@ -46,14 +51,7 @@ typedef enum {
 #define HIGH_LIMIT 0b1000000000000000
 #define LOW_LIMIT 0b0100000000000000
 
-typedef struct Clay_String {
-    // Set this boolean to true if the char* data underlying this string will live for the entire lifetime of the program.
-    // This will automatically be set for strings created with CLAY_STRING, as the macro requires a string literal.
-    bool isStaticallyAllocated;
-    int32_t length;
-    // The underlying character memory. Note: this will not be copied and will not extend the lifetime of the underlying memory.
-    const char *chars;
-} Clay_String;
+// Clay_String is owned by the vendored clay.h; it is not redeclared here.
 
 typedef struct AnimationState {
     bool opening;
