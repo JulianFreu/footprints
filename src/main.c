@@ -59,7 +59,7 @@ int main(int argc, char *argv[]) {
     };
     download_in_progress = false;
 
-    int order[gpxParser_count_gpx_files()];
+    int order[gpx_count_files()];
     GpxCollection collection = {.list_order = order};
 
     if (sdl_initialize(&appl))
@@ -71,7 +71,7 @@ int main(int argc, char *argv[]) {
     ui_load_icons(&appl);
     SDL_RenderPresent(appl.renderer);
 
-    gpxParser_parse_all_files(&collection);
+    gpx_parse_all_files(&collection);
 
     reset_filters(&collection.filters);
     apply_filter_values(&collection);
@@ -113,7 +113,7 @@ int main(int argc, char *argv[]) {
 
             get_map_background(&appl, &collection);
 
-            clay_draw_UI(&appl, &collection);
+            clay_draw_ui(&appl, &collection);
 
             SDL_RenderPresent(appl.renderer);
         }
@@ -156,7 +156,7 @@ bool appl_cleanup(struct application *appl, GpxCollection *collection, int exit_
     printf("Clean window...\n");
     SDL_DestroyWindow(appl->window);
     printf("Clean parser...\n");
-    gpxParser_cleanup();
+    gpx_parser_cleanup();
     printf("Clean SDL...\n");
     TTF_Quit();
     SDL_Quit();
