@@ -221,13 +221,18 @@ SDL_Texture *get_or_render_track_tile(struct application *appl, GpxCollection *c
     SDL_SetRenderDrawColor(appl->renderer, 0, 0, 0, 0);
     SDL_RenderClear(appl->renderer);
 
-    float max_heat = (float)collection->max_heat;
-    float min_heat = 1.0;
+    // Every point shares the same heat when the collection has no overlap at
+    // all -- a single track, or tracks that never come within HEAT_RADIUS_PIXELS
+    // of each other. The span is then zero, and dividing by it produced NaN,
+    // which compares false against both clamps and reached the cast as
+    // INT_MIN. Collapse that case onto the bottom of the ramp instead.
+    const float min_heat = 1.0f;
+    const float heat_span = (float)collection->max_heat - min_heat;
     for (int j = 0; j < ctp.point_count; j++) {
         float heat = (float)ctp.points[j].heat;
 
         // Normalize heat
-        float normalized = (heat - min_heat) / (max_heat - min_heat);
+        float normalized = (heat_span > 0.0f) ? (heat - min_heat) / heat_span : 0.0f;
         if (normalized < 0.0f)
             normalized = 0.0f;
         if (normalized > 1.0f)

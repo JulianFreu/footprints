@@ -182,6 +182,10 @@ static void appl_cleanup(struct application *appl, GpxCollection *collection) {
     printf("Clean parser...\n");
     gpx_parser_cleanup();
     printf("Clean SDL...\n");
+    for (size_t i = 0; i < sizeof(appl->fonts) / sizeof(appl->fonts[0]); i++) {
+        TTF_CloseFont(appl->fonts[i].font);
+        appl->fonts[i].font = NULL;
+    }
     TTF_Quit();
     SDL_Quit();
     IMG_Quit();
