@@ -1,5 +1,7 @@
 #include "filters.h"
 
+#include "time_util.h"
+
 #include <float.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,60 +17,11 @@ static void reverse_chars(char *str, char *rv_str, int size) {
     }
 }
 
-static time_t parse_iso8601(const char *datetime) {
-    struct tm tm = {0};
-    int year, month, day, hour, minute, second;
-
-    if (sscanf(datetime, "%d-%d-%dT%d:%d:%dZ",
-               &year, &month, &day, &hour, &minute, &second) != 6) {
-        fprintf(stderr, "Invalid ISO 8601 format\n");
-        return (time_t)-1;
-    }
-
-    tm.tm_year = year - 1900; // tm_year is years since 1900
-    tm.tm_mon = month - 1;    // tm_mon is months since January [0-11]
-    tm.tm_mday = day;
-    tm.tm_hour = hour;
-    tm.tm_min = minute;
-    tm.tm_sec = second;
-
-    // Convert to UTC time_t
-#if defined(_WIN32) || defined(_WIN64)
-    return _mkgmtime(&tm); // Windows equivalent of timegm
-#else
-    return timegm(&tm); // Linux/macOS
-#endif
-}
-
-/**
- * Parses a European date in format: DD.MM.YYYY
- * Example: 02.10.2020
- */
-static time_t parse_european_date(const char *date) {
-    struct tm tm = {0};
-    int day, month, year;
-
-    if (sscanf(date, "%d.%d.%d", &day, &month, &year) != 3) {
-        fprintf(stderr, "Invalid European date format\n");
-        return (time_t)-1;
-    }
-
-    tm.tm_year = year - 1900;
-    tm.tm_mon = month - 1;
-    tm.tm_mday = day;
-    tm.tm_hour = 0;
-    tm.tm_min = 0;
-    tm.tm_sec = 0;
-
-    // Convert to local time_t
-    return mktime(&tm);
-}
-
 void apply_filter_values(GpxCollection *c) {
     // Parse the two filter bounds once. These were re-parsed inside the loop,
     // once per track per call, and each failed parse logged to stderr.
-    const time_t range_start = parse_european_date(c->filters.start_date_str_filter);
-    const time_t range_end = parse_european_date(c->filters.end_date_str_filter);
+    const time_t range_start = european_date_to_utc(c->filters.start_date_str_filter);
+    const time_t range_end = european_date_to_utc(c->filters.end_date_str_filter);
 
     for (int i = 0; i < c->total_tracks; i++) {
         // default: visible
@@ -97,8 +50,8 @@ void apply_filter_values(GpxCollection *c) {
             c->tracks[i].visible_in_list = false;
         if (c->tracks[i].high_point - c->filters.high_point_low < -0.01 || c->tracks[i].high_point - c->filters.high_point_high > 0.01)
             c->tracks[i].visible_in_list = false;
-        if (parse_iso8601(c->tracks[i].start_time_raw) < range_start ||
-            parse_iso8601(c->tracks[i].end_time_raw) > range_end)
+        if (iso8601_to_utc(c->tracks[i].start_time_raw) < range_start ||
+            iso8601_to_utc(c->tracks[i].end_time_raw) > range_end)
             c->tracks[i].visible_in_list = false;
     }
     int counter = 0;
