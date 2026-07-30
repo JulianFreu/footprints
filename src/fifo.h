@@ -5,7 +5,6 @@
 #include "structs.h"
 #include "map.h"
 
-
 bool fifo_peek_data(struct fifo *fifo, MapTile *readData);
 bool fifo_pop_data(struct fifo *fifo);
 

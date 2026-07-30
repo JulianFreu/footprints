@@ -24,8 +24,7 @@
 #define DEG_TO_RAD (M_PI / 180.0)
 #define METERS_PER_DEG_LAT 111320.0
 
-typedef enum
-{
+typedef enum {
     ID,
     TYPE,
     DATE,
@@ -47,8 +46,7 @@ typedef enum
 #define HIGH_LIMIT 0b1000000000000000
 #define LOW_LIMIT 0b0100000000000000
 
-typedef struct Clay_String
-{
+typedef struct Clay_String {
     // Set this boolean to true if the char* data underlying this string will live for the entire lifetime of the program.
     // This will automatically be set for strings created with CLAY_STRING, as the macro requires a string literal.
     bool isStaticallyAllocated;
@@ -57,16 +55,14 @@ typedef struct Clay_String
     const char *chars;
 } Clay_String;
 
-typedef struct AnimationState
-{
+typedef struct AnimationState {
     bool opening;
     bool closing;
     float animation;
     int ticks;
 } AnimationState;
 
-typedef struct UIState
-{
+typedef struct UIState {
     AnimationState left_sidebar;
     AnimationState right_sidebar;
     AnimationState run_list;
@@ -77,8 +73,7 @@ typedef struct UIState
     uint16_t activeFilterID;
 } UIState;
 
-typedef struct MapTile
-{
+typedef struct MapTile {
     int tile_x;
     int tile_y;
     int zoom;
@@ -118,14 +113,12 @@ typedef struct
     TTF_Font *font;
 } SDL2_Font;
 
-struct MemoryStruct
-{
+struct MemoryStruct {
     char *memory;
     size_t size;
 };
 
-typedef struct TileTexture
-{
+typedef struct TileTexture {
     MapTile key;
     SDL_Texture *texture;
 } TileTexture;
@@ -137,8 +130,7 @@ typedef struct
     int capacity;
 } TileTextureCache;
 
-struct fifo
-{
+struct fifo {
     int read_p;
     int write_p;
     MapTile tile[FIFO_DEPTH];
@@ -147,8 +139,7 @@ struct fifo
     pthread_cond_t cond;
 };
 
-struct application
-{
+struct application {
     SDL_Window *window;
     SDL_Renderer *renderer;
     SDL_Texture *map;
@@ -179,8 +170,7 @@ struct application
     bool update_window;
 };
 
-typedef struct GpxPoint
-{
+typedef struct GpxPoint {
     double lat;
     double lon;
     int world_x;
@@ -191,16 +181,14 @@ typedef struct GpxPoint
     float partial_distance; // Bis hier zurückgelegte Strecke
 } GpxPoint;
 
-typedef enum
-{
+typedef enum {
     Run,
     Hike,
     Cycling,
     Other,
 } ActivityType;
 
-typedef struct GpxTrack
-{
+typedef struct GpxTrack {
     GpxPoint *points;
     int total_points;
     int track_id;
@@ -240,8 +228,7 @@ typedef struct GpxTrack
 
 } GpxTrack;
 
-typedef struct FilterSettings
-{
+typedef struct FilterSettings {
     char start_date_str[16];        // Display version: "15:02:15"
     char end_date_str[16];          // Display version: "15:02:15"
     char start_date_str_filter[16]; // Display version: "15:02:15"
@@ -292,8 +279,7 @@ typedef struct FilterSettings
 
 } FilterSettings;
 
-typedef struct GpxCollection
-{
+typedef struct GpxCollection {
     GpxTrack *tracks;
     int total_tracks;
     char total_visible_tracks_str[32];
@@ -305,8 +291,7 @@ typedef struct GpxCollection
     TrackTileTextureCache track_tile_cache;
 } GpxCollection;
 
-typedef struct KDNode
-{
+typedef struct KDNode {
     GpxPoint *point;
     int axis;
     struct KDNode *left, *right;
