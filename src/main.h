@@ -1,16 +1,14 @@
 #ifndef MAIN_H
 #define MAIN_H
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_image.h>
-#include <SDL2/SDL_ttf.h>
-#include "structs.h"
-#include "ui.h"
-#include "map.h"
-#include "gpxParser.h"
-#include "tracks.h"
+#include "app.h"
 #include "filters.h"
+#include "gpxParser.h"
+#include "gpx_types.h"
 #include "heat.h"
+#include "map.h"
+#include "tracks.h"
+#include "ui.h"
 
 bool sdl_initialize(struct application *appl);
 bool appl_cleanup(struct application *appl, GpxCollection *collection, int exit_status);

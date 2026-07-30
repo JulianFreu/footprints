@@ -32,7 +32,6 @@ typedef struct
 {
     MapTile key;
     SDL_Texture *texture;
-    bool valid;
 } TrackTileTexture;
 
 typedef struct

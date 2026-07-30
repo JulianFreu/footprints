@@ -27,8 +27,6 @@
 #define START_ZOOM 12
 #define START_WORLD_X 140750875
 #define START_WORLD_Y 89004498
-#define START_CENTER_LON 8.806735836249947
-#define START_CENTER_LAT 51.71909049285003
 
 // --- Heatmap ---
 // Radius in projected pixels within which two tracks count as overlapping.

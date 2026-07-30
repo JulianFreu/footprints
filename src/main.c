@@ -39,15 +39,11 @@ int main(int argc, char *argv[]) {
     struct application appl = {
         .window = NULL,
         .renderer = NULL,
-        .map = NULL,
-        .tex_tracks = NULL,
         .window_width = SCREEN_WIDTH,
         .window_height = SCREEN_HEIGHT,
         .zoom = START_ZOOM,
         .world_x = START_WORLD_X,
         .world_y = START_WORLD_Y,
-        .center_coord_x = START_CENTER_LON,
-        .center_coord_y = START_CENTER_LAT,
         .running = 1,
         .dragging = 0,
         .leftMouseButtonPressed = false,
@@ -144,8 +140,6 @@ bool appl_cleanup(struct application *appl, GpxCollection *collection, int exit_
     pthread_mutex_destroy(&appl->download_queue.lock);
     // pthread_cond_destroy(&appl->download_queue.cond);
     printf("Clean textures...\n");
-    SDL_DestroyTexture(appl->map);
-    SDL_DestroyTexture(appl->tex_tracks);
     free_tile_cache(&(appl->tile_cache));
     free_track_tile_cache(&collection->track_tile_cache);
     printf("Clean UI...\n");

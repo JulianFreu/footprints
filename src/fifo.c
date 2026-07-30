@@ -18,7 +18,6 @@ bool fifo_read_data(struct fifo *fifo, MapTile *readData) {
 }
 
 bool fifo_write_data(struct fifo *fifo, MapTile writeData) {
-    //    pthread_mutex_lock(&fifo->lock);
     bool writeSuccess = false;
     if (!fifo_is_full(fifo)) {
         fifo->tile[fifo->write_p] = writeData;
@@ -26,12 +25,10 @@ bool fifo_write_data(struct fifo *fifo, MapTile writeData) {
         writeSuccess = true;
         pthread_cond_signal(&fifo->cond); // wake up thread
     }
-    //pthread_mutex_unlock(&fifo->lock);
     return writeSuccess;
 }
 
 bool fifo_search_data(struct fifo *fifo, MapTile searchData) {
-    //pthread_mutex_lock(&fifo->lock);
     bool foundData = false;
     int search_p = fifo->read_p;
     while (search_p != fifo->write_p) {
@@ -43,7 +40,6 @@ bool fifo_search_data(struct fifo *fifo, MapTile searchData) {
         }
         search_p = fifo_next(search_p);
     }
-    //pthread_mutex_unlock(&fifo->lock);
     return foundData;
 }
 

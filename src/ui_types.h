@@ -30,7 +30,6 @@ typedef struct AnimationState {
 } AnimationState;
 
 typedef struct UIState {
-    AnimationState left_sidebar;
     AnimationState right_sidebar;
     AnimationState run_list;
     AnimationState filters_animation;

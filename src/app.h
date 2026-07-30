@@ -13,8 +13,6 @@
 struct application {
     SDL_Window *window;
     SDL_Renderer *renderer;
-    SDL_Texture *map;
-    SDL_Texture *tex_tracks;
     int window_width;
     int window_height;
     int zoom;
@@ -23,8 +21,6 @@ struct application {
     int wheel_y;
     int world_x;
     int world_y;
-    double center_coord_x;
-    double center_coord_y;
     int running;
     int dragging;
     bool leftMouseButtonPressed;
@@ -35,7 +31,6 @@ struct application {
     TileTextureCache tile_cache;
     SDL_Texture *selected_track_overlay[MAX_ZOOM + 1]; // +1 for zoom level 0 to 20
     int currentFPS;
-    SDL_Event event;
     Uint32 lastFrameTime;
     bool mouseOverUI;
     bool show_heat;

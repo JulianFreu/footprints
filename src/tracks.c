@@ -232,8 +232,7 @@ SDL_Texture *get_or_render_track_tile(struct application *appl, GpxCollection *c
     // Cache the rendered tile
     TrackTileTexture entry = {
         .key = key,
-        .texture = tex,
-        .valid = true};
+        .texture = tex};
     append_to_track_tile_cache(&collection->track_tile_cache, entry);
 
     free(ctp.points);
