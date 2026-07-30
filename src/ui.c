@@ -615,24 +615,86 @@ static void draw_run_list_entry(GpxTrack *track) {
     }
 }
 
+// Track ids of the rows that pass the filters, in display order. Rebuilt each
+// frame -- it is one comparison per track, against emitting a Clay element per
+// track -- and reused so the common case allocates nothing.
+static int *visible_rows = NULL;
+static int visible_rows_capacity = 0;
+
+static int collect_visible_rows(const GpxCollection *collection) {
+    if (collection->total_tracks > visible_rows_capacity) {
+        int *grown = realloc(visible_rows, (size_t)collection->total_tracks * sizeof(int));
+        if (!grown)
+            return 0;
+        visible_rows = grown;
+        visible_rows_capacity = collection->total_tracks;
+    }
+
+    int count = 0;
+    for (int i = 0; i < collection->total_tracks; i++) {
+        int track_id = collection->list_order[i];
+        if (collection->tracks[track_id].visible_in_list)
+            visible_rows[count++] = track_id;
+    }
+    return count;
+}
+
+// Stands in for the rows scrolled past, so the scrollbar and the content height
+// stay the same as if every row had been emitted. The container puts a childGap
+// after the spacer, which is part of the pitch being replaced.
+static void draw_run_list_spacer(int rows, int row_pitch, int id) {
+    if (rows <= 0)
+        return;
+    CLAY(CLAY_IDI_LOCAL("RunListSpacer", id),
+         {.layout = {.sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(rows * row_pitch - GAPS)}}}) {
+    }
+}
+
+// Only the rows actually on screen are handed to Clay. Every emitted row costs
+// eight text elements, and the renderer rasterises and uploads each one every
+// frame, so a library of several hundred tracks was paying for thousands of
+// glyph rasterisations per frame to draw the twenty-odd rows that are visible.
 static void draw_run_list_scroll_container(GpxCollection *collection, int height) {
+    const int row_pitch = LIST_ENTRY_HEIGHT + GAPS;
+    int visible_count = collect_visible_rows(collection);
+
     CLAY(CLAY_ID("RunListScrollContainer"),
          {
              .layout = {
                  .padding = CLAY_PADDING_ALL(GAPS),
                  .childGap = GAPS,
-                 .sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(height) /*CLAY_SIZING_GROW()*/},
+                 .sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(height)},
                  .layoutDirection = CLAY_TOP_TO_BOTTOM},
              .clip = {.vertical = true, .childOffset = Clay_GetScrollOffset()},
              .backgroundColor = bg,
          }) {
-        if (collection->total_tracks > 0) {
-            for (int i = 0; i < collection->total_tracks; i++) {
-                if (collection->tracks[collection->list_order[i]].visible_in_list) // check if filtered out
-                    draw_run_list_entry(&collection->tracks[collection->list_order[i]]);
-            }
-        }
+        // Must be read with the container open -- Clay resolves the offset
+        // against the currently open element.
+        float scroll_y = Clay_GetScrollOffset().y;
+
+        int first_row = (int)(-scroll_y / row_pitch);
+        if (first_row < 0)
+            first_row = 0;
+        if (first_row > visible_count)
+            first_row = visible_count;
+
+        // One extra row at each end so a partially scrolled row is still drawn.
+        int last_row = first_row + height / row_pitch + 2;
+        if (last_row > visible_count)
+            last_row = visible_count;
+
+        draw_run_list_spacer(first_row, row_pitch, 0);
+        for (int row = first_row; row < last_row; row++)
+            draw_run_list_entry(&collection->tracks[visible_rows[row]]);
+        draw_run_list_spacer(visible_count - last_row, row_pitch, 1);
     }
+}
+
+// Releases the row buffer kept between frames.
+static void free_visible_rows(void) {
+    free(visible_rows);
+    visible_rows = NULL;
+    visible_rows_capacity = 0;
 }
 
 static void continue_animation(struct AnimationState *anim_obj) {
@@ -687,6 +749,7 @@ void clay_init(struct application *appl) {
 }
 
 void clay_free_memory(void) {
+    free_visible_rows();
     free(clayMemory.memory);
     clayMemory.memory = NULL;
     clayMemory.capacity = 0;
