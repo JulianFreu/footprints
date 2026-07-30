@@ -1,17 +1,19 @@
 #ifndef MAP_H
 #define MAP_H
 
-#include <SDL2/SDL_image.h>
-#include <curl/curl.h>
-#include <math.h>
-#include <pthread.h>
-#include <sys/stat.h> // mkdir + stat
-#include <unistd.h>
+#include <stdbool.h>
 
 #include "app.h"
-#include "fifo.h"
 #include "gpx_types.h"
 #include "map_types.h"
+
+// Set once from the command line before the download thread starts; read by it
+// from then on.
+extern bool use_osm_tiles;
+
+// Written by the tile download thread, read by the main loop each frame to
+// decide whether the map still needs redrawing.
+extern _Atomic bool download_in_progress;
 
 bool get_map_background(struct application *appl, GpxCollection *collection);
 void *download_tiles(void *arg);

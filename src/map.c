@@ -1,12 +1,21 @@
 #include "map.h"
 
-#include "log.h"
+#include <curl/curl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h> // mkdir + stat
+#include <unistd.h>
+
+#include <SDL2/SDL_image.h>
 
 #include "api_key.h"
+#include "fifo.h"
+#include "log.h"
 #include "tracks.h" // get_or_render_track_tile
 
-extern bool use_osm_tiles;
-extern _Atomic bool download_in_progress;
+bool use_osm_tiles = true;
+_Atomic bool download_in_progress;
 
 void conv_pixel_to_tile_and_offset(int pixel_x, int pixel_y, int source_zoom, int target_zoom,
                                    int *tile_x, int *tile_y,
@@ -30,7 +39,7 @@ void conv_pixel_to_tile_and_offset(int pixel_x, int pixel_y, int source_zoom, in
         *pixel_in_tile_y += TILE_SIZE;
 }
 
-void ensure_directory(const char *path) {
+static void ensure_directory(const char *path) {
     struct stat st = {0};
     if (stat(path, &st) == -1) {
         mkdir(path, 0755);
@@ -146,7 +155,7 @@ bool tile_key_equal(MapTile a, MapTile b) {
     return a.tile_x == b.tile_x && a.tile_y == b.tile_y && a.zoom == b.zoom;
 }
 
-void append_to_tile_cache(TileTextureCache *cache, TileTexture entry) {
+static void append_to_tile_cache(TileTextureCache *cache, TileTexture entry) {
     if (cache->size >= cache->capacity) {
         cache->capacity = cache->capacity == 0 ? 64 : cache->capacity * 2;
         cache->entries = realloc(cache->entries, cache->capacity * sizeof(TileTexture));
@@ -165,7 +174,7 @@ void free_tile_cache(TileTextureCache *cache) {
     cache->capacity = 0;
 }
 
-SDL_Texture *get_cached_texture(struct application *appl, MapTile key, const char *path) {
+static SDL_Texture *get_cached_texture(struct application *appl, MapTile key, const char *path) {
     // Try to find the texture in the cache
     for (int i = 0; i < appl->tile_cache.size; i++) {
         if (tile_key_equal(appl->tile_cache.entries[i].key, key)) {
@@ -190,7 +199,7 @@ SDL_Texture *get_cached_texture(struct application *appl, MapTile key, const cha
     return texture;
 }
 
-int file_exists(const char *path) {
+static int file_exists(const char *path) {
     return access(path, F_OK) == 0;
 }
 

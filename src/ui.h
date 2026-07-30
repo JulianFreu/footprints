@@ -16,10 +16,14 @@
 #include "heat.h"
 #include "filters.h"
 
+// Animation and text-input state for the whole UI. Defined in ui.c; the event
+// loop in main.c both reads and drives it.
+extern UIState ui;
+
 float get_delta_time(Uint32 lastFrameTime);
 void clay_init(struct application *appl);
 void clay_draw_ui(struct application *appl, GpxCollection *collection);
-void clay_free_memory();
+void clay_free_memory(void);
 void ui_load_icons(struct application *appl);
 void ui_free_icons(struct application *appl);
 

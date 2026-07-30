@@ -1,12 +1,22 @@
-#include "main.h"
+#include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-// Written by the tile download thread, read by the main loop each frame.
-_Atomic bool download_in_progress;
-extern UIState ui;
-bool use_osm_tiles = true;
-SDL_Event event;
+#include "app.h"
+#include "filters.h"
+#include "gpxParser.h"
+#include "gpx_types.h"
+#include "heat.h"
+#include "map.h"
+#include "tracks.h"
+#include "ui.h"
 
-bool animation_in_progress(UIState ui) {
+static bool sdl_initialize(struct application *appl);
+static bool appl_cleanup(struct application *appl, GpxCollection *collection, int exit_status);
+static bool handle_events(struct application *appl, GpxCollection *collection);
+
+static bool animation_in_progress(UIState ui) {
     bool animation_in_progress = false;
     if (ui.right_sidebar.opening == true || ui.right_sidebar.closing == true)
         animation_in_progress = true;
@@ -18,7 +28,7 @@ bool animation_in_progress(UIState ui) {
     return animation_in_progress;
 }
 
-void append_to_input_buffer(UIState *ui, char c) {
+static void append_to_input_buffer(UIState *ui, char c) {
     // Leave space for null terminator
     if (ui->text_input_length < sizeof(ui->text_input_buffer) - 1) {
         ui->text_input_buffer[ui->text_input_length++] = c;
@@ -135,7 +145,7 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-bool appl_cleanup(struct application *appl, GpxCollection *collection, int exit_status) {
+static bool appl_cleanup(struct application *appl, GpxCollection *collection, int exit_status) {
     printf("Clean threads...\n");
     pthread_mutex_destroy(&appl->download_queue.lock);
     // pthread_cond_destroy(&appl->download_queue.cond);
@@ -159,7 +169,7 @@ bool appl_cleanup(struct application *appl, GpxCollection *collection, int exit_
     exit(exit_status);
 }
 
-bool sdl_initialize(struct application *appl) {
+static bool sdl_initialize(struct application *appl) {
     if (SDL_Init(SDL_INIT_VIDEO)) {
         fprintf(stderr, "Error initializing SDL: %s\n", SDL_GetError());
         return true;
@@ -200,9 +210,10 @@ bool sdl_initialize(struct application *appl) {
     return false;
 }
 
-bool handle_events(struct application *appl, GpxCollection *collection) {
+static bool handle_events(struct application *appl, GpxCollection *collection) {
     appl->wheel_y = 0; // reset to zero if no mousewheel action
 
+    SDL_Event event;
     while (SDL_PollEvent(&event)) {
         appl->update_window = true;
         if (event.type == SDL_QUIT) {

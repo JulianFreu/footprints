@@ -1,6 +1,6 @@
 #include "filters.h"
 
-void reverse_chars(char *str, char *rv_str, int size) {
+static void reverse_chars(char *str, char *rv_str, int size) {
     for (int i = 0; i < size; i++) {
         rv_str[i] = str[size - 1 - i];
     }
@@ -9,7 +9,7 @@ void reverse_chars(char *str, char *rv_str, int size) {
     }
 }
 
-time_t parse_iso8601(const char *datetime) {
+static time_t parse_iso8601(const char *datetime) {
     struct tm tm = {0};
     int year, month, day, hour, minute, second;
 
@@ -38,7 +38,7 @@ time_t parse_iso8601(const char *datetime) {
  * Parses a European date in format: DD.MM.YYYY
  * Example: 02.10.2020
  */
-time_t parse_european_date(const char *date) {
+static time_t parse_european_date(const char *date) {
     struct tm tm = {0};
     int day, month, year;
 
@@ -103,11 +103,11 @@ void apply_filter_values(GpxCollection *c) {
     snprintf(c->total_visible_tracks_str, sizeof(c->total_visible_tracks_str), "Shown: %d of %d Tracks", counter, c->total_tracks);
 }
 
-int digit(char c) {
+static int digit(char c) {
     return (c == '\0') ? 0 : (int)c - (int)'0';
 }
 
-float duration_str_to_duration_float(char *str) {
+static float duration_str_to_duration_float(char *str) {
     char rv_str[INPUT_BUFFER_SIZE];
     reverse_chars(str, rv_str, strlen(str));
     return digit(rv_str[0]) +
@@ -119,7 +119,7 @@ float duration_str_to_duration_float(char *str) {
            60 * 6000 * digit(rv_str[8]);
 }
 
-float pace_str_to_pace_float(char *str) {
+static float pace_str_to_pace_float(char *str) {
     char rv_str[INPUT_BUFFER_SIZE];
     reverse_chars(str, rv_str, strlen(str));
     return digit(rv_str[0]) +

@@ -36,8 +36,6 @@
 #define SETTINGS 3
 #define STATISTICS 4
 
-extern SDL_Event event;
-
 UIState ui = {
     .right_sidebar = {.opening = false, .closing = false, .animation = 0, .ticks = 0},
     .run_list = {.opening = false, .closing = false, .animation = 0, .ticks = 0},
@@ -49,7 +47,7 @@ static Clay_Arena clayMemory;
 static bool ui_new_track_selected = false;
 static int ui_track = -1;
 
-void clicked_type_filter(
+static void clicked_type_filter(
     Clay_ElementId elementId,
     Clay_PointerData pointerData,
     intptr_t userData) {
@@ -62,7 +60,7 @@ void clicked_type_filter(
     }
 }
 
-void draw_clay_text(const char *string, uint16_t fontSize, Clay_Color color, Clay_TextAlignment align) {
+static void draw_clay_text(const char *string, uint16_t fontSize, Clay_Color color, Clay_TextAlignment align) {
     Clay_String clayString = {
         .chars = string,
         .length = strlen(string),
@@ -70,7 +68,7 @@ void draw_clay_text(const char *string, uint16_t fontSize, Clay_Color color, Cla
     CLAY_TEXT(clayString, CLAY_TEXT_CONFIG({.fontSize = fontSize, .textColor = color, .textAlignment = align}));
 }
 
-void init_numbers_input() {
+static void init_numbers_input(void) {
     // clear buffer
     for (int i = 0; i < INPUT_BUFFER_SIZE; i++) {
         ui.text_input_buffer[i] = '\0';
@@ -79,7 +77,7 @@ void init_numbers_input() {
     ui.text_input_length = 0;
 }
 
-void clicked_filter_field(
+static void clicked_filter_field(
     Clay_ElementId elementId,
     Clay_PointerData pointerData,
     intptr_t userData) {
@@ -90,12 +88,12 @@ void clicked_filter_field(
     }
 }
 
-void clear_char_array(char *str, int size) {
+static void clear_char_array(char *str, int size) {
     for (int i = 0; i < size; i++)
         str[i] = '\0';
 }
 
-void format_pace_filter_str(char *str) {
+static void format_pace_filter_str(char *str) {
     if (ui.text_input_length < 7) {
         clear_char_array(str, INPUT_BUFFER_SIZE);
         snprintf(str, INPUT_BUFFER_SIZE, "%s", ui.text_input_buffer);
@@ -107,7 +105,7 @@ void format_pace_filter_str(char *str) {
     }
 }
 
-void format_date_filter_str(char *str) {
+static void format_date_filter_str(char *str) {
     if (ui.text_input_length < 9) {
         clear_char_array(str, INPUT_BUFFER_SIZE);
         str[0] = ui.text_input_buffer[0];
@@ -123,7 +121,7 @@ void format_date_filter_str(char *str) {
     }
 }
 
-void format_duration_filter_str(char *str) {
+static void format_duration_filter_str(char *str) {
     if (ui.text_input_length < 8) {
         clear_char_array(str, INPUT_BUFFER_SIZE);
         snprintf(str, INPUT_BUFFER_SIZE, "%s", ui.text_input_buffer);
@@ -143,14 +141,14 @@ void format_duration_filter_str(char *str) {
     }
 }
 
-void format_elev_filter_str(char *str) {
+static void format_elev_filter_str(char *str) {
     if (ui.text_input_length < 6) {
         clear_char_array(str, INPUT_BUFFER_SIZE);
         snprintf(str, INPUT_BUFFER_SIZE, "%s", ui.text_input_buffer);
     }
 }
 
-void format_distance_filter_str(char *str) {
+static void format_distance_filter_str(char *str) {
     if (ui.text_input_length == 0) {
         clear_char_array(str, INPUT_BUFFER_SIZE);
     } else if (ui.text_input_length == 1) {
@@ -174,7 +172,7 @@ void format_distance_filter_str(char *str) {
     }
 }
 
-void draw_input_field(uint16_t filter_id, FilterSettings *filters) {
+static void draw_input_field(uint16_t filter_id, FilterSettings *filters) {
     CLAY(CLAY_IDI_LOCAL("InputFieldFilter", filter_id),
          {
              .border = {.color = border, .width = (ui.text_input_mode && ui.activeFilterID == filter_id) ? (Clay_BorderWidth)CLAY_BORDER_OUTSIDE(3) : (Clay_BorderWidth)CLAY_BORDER_OUTSIDE(0)},
@@ -264,7 +262,7 @@ void draw_input_field(uint16_t filter_id, FilterSettings *filters) {
     }
 }
 
-void draw_filter_header() {
+static void draw_filter_header() {
     CLAY(CLAY_ID_LOCAL("Filter"),
          {
              .layout = {.padding = CLAY_PADDING_ALL(GAPS), .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(HEADER_HEIGHT)}, .layoutDirection = CLAY_LEFT_TO_RIGHT, .childGap = GAPS},
@@ -298,7 +296,7 @@ void draw_filter_header() {
     }
 }
 
-void draw_type_filter(ActivityType type, bool *show_type) {
+static void draw_type_filter(ActivityType type, bool *show_type) {
     Clay_Color background_color;
     Clay_Color background_color_hl;
     if (*show_type == true) {
@@ -327,7 +325,7 @@ void draw_type_filter(ActivityType type, bool *show_type) {
     }
 }
 
-void draw_type_filter_container(FilterSettings *filter) {
+static void draw_type_filter_container(FilterSettings *filter) {
     CLAY(CLAY_ID_LOCAL("TypesFilterContainer"),
          {
              .layout = {.padding = CLAY_PADDING_ALL(3 * GAPS), .childGap = GAPS, .sizing = {.width = CLAY_SIZING_FIXED(FILTERS_WIDTH / 2), .height = CLAY_SIZING_FIT(0)}, .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}, .layoutDirection = CLAY_TOP_TO_BOTTOM},
@@ -340,7 +338,7 @@ void draw_type_filter_container(FilterSettings *filter) {
     }
 }
 
-void draw_filter(uint16_t filter_id, FilterSettings *filters) {
+static void draw_filter(uint16_t filter_id, FilterSettings *filters) {
     CLAY(CLAY_IDI_LOCAL("Filter", filter_id),
          {
              .layout = {.sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(LIST_ENTRY_HEIGHT)}, .layoutDirection = CLAY_LEFT_TO_RIGHT, .childGap = GAPS},
@@ -400,7 +398,7 @@ void draw_filter(uint16_t filter_id, FilterSettings *filters) {
     }
 }
 
-int compare_by_type(const void *a, const void *b) {
+static int compare_by_type(const void *a, const void *b) {
     int i = *(const int *)a;
     int j = *(const int *)b;
 
@@ -410,7 +408,7 @@ int compare_by_type(const void *a, const void *b) {
     return (t1 < t2) - (t1 > t2); // sort by highest
 }
 
-int compare_by_start_time(const void *a, const void *b) {
+static int compare_by_start_time(const void *a, const void *b) {
     int i = *(const int *)a;
     int j = *(const int *)b;
 
@@ -420,7 +418,7 @@ int compare_by_start_time(const void *a, const void *b) {
     return -strcmp(t1, t2); // latest times come firstsd
 }
 
-int compare_by_distance(const void *a, const void *b) {
+static int compare_by_distance(const void *a, const void *b) {
     int idx1 = *(const int *)a;
     int idx2 = *(const int *)b;
 
@@ -430,7 +428,7 @@ int compare_by_distance(const void *a, const void *b) {
     return (d1 < d2) - (d1 > d2); // sort by highest
 }
 
-int compare_by_duration(const void *a, const void *b) {
+static int compare_by_duration(const void *a, const void *b) {
     int idx1 = *(const int *)a;
     int idx2 = *(const int *)b;
 
@@ -440,7 +438,7 @@ int compare_by_duration(const void *a, const void *b) {
     return (t1 < t2) - (t1 > t2);
 }
 
-int compare_by_pace(const void *a, const void *b) {
+static int compare_by_pace(const void *a, const void *b) {
     int idx1 = *(const int *)a;
     int idx2 = *(const int *)b;
 
@@ -450,7 +448,7 @@ int compare_by_pace(const void *a, const void *b) {
     return (p1 > p2) - (p1 < p2);
 }
 
-int compare_by_elev_up(const void *a, const void *b) {
+static int compare_by_elev_up(const void *a, const void *b) {
     int i = *(const int *)a;
     int j = *(const int *)b;
 
@@ -460,7 +458,7 @@ int compare_by_elev_up(const void *a, const void *b) {
     return (e1 < e2) - (e1 > e2);
 }
 
-int compare_by_elev_down(const void *a, const void *b) {
+static int compare_by_elev_down(const void *a, const void *b) {
     int i = *(const int *)a;
     int j = *(const int *)b;
 
@@ -469,7 +467,7 @@ int compare_by_elev_down(const void *a, const void *b) {
 
     return (e1 < e2) - (e1 > e2);
 }
-int compare_by_high_point(const void *a, const void *b) {
+static int compare_by_high_point(const void *a, const void *b) {
     int i = *(const int *)a;
     int j = *(const int *)b;
 
@@ -479,7 +477,7 @@ int compare_by_high_point(const void *a, const void *b) {
     return (h1 < h2) - (h1 > h2);
 }
 
-void sort_tracks(GpxCollection *collection, int (*compare)(const void *, const void *)) {
+static void sort_tracks(GpxCollection *collection, int (*compare)(const void *, const void *)) {
     g_collection = collection;
 
     int n = collection->total_tracks;
@@ -494,7 +492,7 @@ void sort_tracks(GpxCollection *collection, int (*compare)(const void *, const v
     g_collection = NULL; // clear global pointer for safety
 }
 
-void reverse_list_order(GpxCollection *collection) {
+static void reverse_list_order(GpxCollection *collection) {
     int *order = collection->list_order;
     int n = collection->total_tracks;
 
@@ -505,7 +503,7 @@ void reverse_list_order(GpxCollection *collection) {
     }
 }
 
-void sort_tracks_by(GpxCollection *collection, AttributeType criteria) {
+static void sort_tracks_by(GpxCollection *collection, AttributeType criteria) {
     if (collection->current_sorting == criteria) {
         reverse_list_order(collection);
     } else {
@@ -549,7 +547,7 @@ void sort_tracks_by(GpxCollection *collection, AttributeType criteria) {
     }
 }
 
-void clicked_list_headers(
+static void clicked_list_headers(
     Clay_ElementId elementId,
     Clay_PointerData pointerData,
     intptr_t userData) {
@@ -559,7 +557,7 @@ void clicked_list_headers(
     }
 }
 
-void clicked_calculate_heat(
+static void clicked_calculate_heat(
     Clay_ElementId elementId,
     Clay_PointerData pointerData,
     intptr_t userData) {
@@ -577,7 +575,7 @@ void clicked_calculate_heat(
         free_track_tile_cache(&collection->track_tile_cache);
     }
 }
-void clicked_show_filtered_tracks(
+static void clicked_show_filtered_tracks(
     Clay_ElementId elementId,
     Clay_PointerData pointerData,
     intptr_t userData) {
@@ -587,7 +585,7 @@ void clicked_show_filtered_tracks(
     }
 }
 
-void clicked_toggle_filter_view(
+static void clicked_toggle_filter_view(
     Clay_ElementId elementId,
     Clay_PointerData pointerData,
     intptr_t userData) {
@@ -601,7 +599,7 @@ void clicked_toggle_filter_view(
         }
     }
 }
-void clicked_run_entry(
+static void clicked_run_entry(
     Clay_ElementId elementId,
     Clay_PointerData pointerData,
     intptr_t userData) {
@@ -617,7 +615,7 @@ float get_delta_time(Uint32 lastFrameTime) {
     return deltaTime;
 }
 
-void draw_run_list_header_attribute(GpxCollection *collection, int width, const char *str, AttributeType sort_type) {
+static void draw_run_list_header_attribute(GpxCollection *collection, int width, const char *str, AttributeType sort_type) {
     CLAY(CLAY_IDI_LOCAL("RunListHeaderAttribute", sort_type), {.layout = {.sizing = {.width = width, .height = CLAY_SIZING_GROW(0)},
                                                                           .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
                                                                           .layoutDirection = CLAY_TOP_TO_BOTTOM},
@@ -656,7 +654,7 @@ void draw_run_list_header_attribute(GpxCollection *collection, int width, const 
     }
 }
 
-void draw_run_list_bottom(const char *total_visible_tracks, GpxCollection *collection) {
+static void draw_run_list_bottom(const char *total_visible_tracks, GpxCollection *collection) {
     CLAY(CLAY_ID("RunListBottom"), {.layout = {
                                         .padding = CLAY_PADDING_ALL(GAPS),
                                         .sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIT()},
@@ -681,7 +679,7 @@ void draw_run_list_bottom(const char *total_visible_tracks, GpxCollection *colle
     }
 }
 
-void draw_run_list_header(GpxCollection *collection) {
+static void draw_run_list_header(GpxCollection *collection) {
     CLAY(CLAY_ID("RunListHeader"), {.layout = {.padding = CLAY_PADDING_ALL(GAPS),
                                                .sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(HEADER_HEIGHT)},
                                                .layoutDirection = CLAY_LEFT_TO_RIGHT},
@@ -702,7 +700,7 @@ void draw_run_list_header(GpxCollection *collection) {
     }
 }
 
-void draw_run_entry_attribute(int width, const char *str, int id) {
+static void draw_run_entry_attribute(int width, const char *str, int id) {
     CLAY(CLAY_IDI_LOCAL("RunEntryAttribute", id),
          {.layout = {.sizing = {.width = CLAY_SIZING_FIXED(width), .height = CLAY_SIZING_FIXED(LIST_ENTRY_HEIGHT)},
                      .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}}}) {
@@ -711,7 +709,7 @@ void draw_run_entry_attribute(int width, const char *str, int id) {
     }
 }
 
-void draw_run_list_entry(GpxTrack *track) {
+static void draw_run_list_entry(GpxTrack *track) {
     CLAY(CLAY_IDI_LOCAL("RunListEntry", track->track_id),
          {
              .border = {.color = border, .width = (ui_track == track->track_id) ? (Clay_BorderWidth)CLAY_BORDER_OUTSIDE(2) : (Clay_BorderWidth)CLAY_BORDER_OUTSIDE(0)},
@@ -739,7 +737,7 @@ void draw_run_list_entry(GpxTrack *track) {
     }
 }
 
-void draw_run_list_scroll_container(GpxCollection *collection, int height) {
+static void draw_run_list_scroll_container(GpxCollection *collection, int height) {
     CLAY(CLAY_ID("RunListScrollContainer"),
          {
              .layout = {
@@ -759,7 +757,7 @@ void draw_run_list_scroll_container(GpxCollection *collection, int height) {
     }
 }
 
-void continue_animation(struct AnimationState *anim_obj) {
+static void continue_animation(struct AnimationState *anim_obj) {
     // ticks are used as radians in sin(), -> sin(90°) = 1 and sin(0°) = 0
     if (anim_obj->opening) {
         anim_obj->ticks += 4;
@@ -778,7 +776,7 @@ void continue_animation(struct AnimationState *anim_obj) {
     }
 }
 
-void clay_handle_error(Clay_ErrorData error) {
+static void clay_handle_error(Clay_ErrorData error) {
     // Convert error text (Clay_StringSlice) to null-terminated string
     char buffer[512];
     size_t len = error.errorText.length;
@@ -810,7 +808,7 @@ void clay_init(struct application *appl) {
     Clay_SetMeasureTextFunction(SDL2_MeasureText, appl->fonts);
 }
 
-void clay_free_memory() {
+void clay_free_memory(void) {
     free(clayMemory.memory);
     clayMemory.memory = NULL;
     clayMemory.capacity = 0;
@@ -856,12 +854,12 @@ void ui_free_icons(struct application *appl) {
     }
 }
 
-Clay_LayoutConfig MenuButtonLayout = {
+static const Clay_LayoutConfig MenuButtonLayout = {
     .sizing = {.width = CLAY_SIZING_FIXED(MENU_ICON_SIZE), .height = CLAY_SIZING_FIXED(MENU_ICON_SIZE)},
     .childGap = GAPS,
     .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
 };
-void clicked_menu_button(
+static void clicked_menu_button(
     Clay_ElementId elementId,
     Clay_PointerData pointerData,
     intptr_t userData) {
@@ -880,7 +878,7 @@ void clicked_menu_button(
     }
 }
 
-void draw_menu_button(SDL_Surface *icon, Clay_Color color, uint32_t button_id) {
+static void draw_menu_button(SDL_Surface *icon, Clay_Color color, uint32_t button_id) {
     CLAY(CLAY_IDI_LOCAL("MenuButton", button_id),
          {
              .layout = MenuButtonLayout,
@@ -897,7 +895,7 @@ void draw_menu_button(SDL_Surface *icon, Clay_Color color, uint32_t button_id) {
     }
 }
 
-void draw_sidebar_track_info(SDL_Surface *icon, const char *value, const char *unit, int id) {
+static void draw_sidebar_track_info(SDL_Surface *icon, const char *value, const char *unit, int id) {
     CLAY(CLAY_IDI_LOCAL("SidebarAttribute", id),
          {
              .layout = {

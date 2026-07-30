@@ -6,7 +6,7 @@
 
 #define HEAT_COLOR_COUNT 32
 
-SDL_Color heat_colors[HEAT_COLOR_COUNT] = {
+static SDL_Color heat_colors[HEAT_COLOR_COUNT] = {
     {0, 0, 4, 255}, // dark purple
     {1, 0, 33, 255},
     {12, 1, 57, 255},
@@ -107,9 +107,9 @@ static void draw_segment(SDL_Renderer *renderer,
 }
 
 // Draw a smooth, thick polyline connecting many points
-void draw_smooth_thick_polyline(SDL_Renderer *renderer,
-                                SDL_Point *points, int count,
-                                float thickness, SDL_Color color) {
+static void draw_smooth_thick_polyline(SDL_Renderer *renderer,
+                                       SDL_Point *points, int count,
+                                       float thickness, SDL_Color color) {
     if (count < 2)
         return;
 
@@ -133,7 +133,7 @@ void draw_smooth_thick_polyline(SDL_Renderer *renderer,
     draw_circle(renderer, points[count - 1].x, points[count - 1].y, thickness / 2.0f, color);
 }
 
-void append_to_track_tile_cache(TrackTileTextureCache *cache, TrackTileTexture entry) {
+static void append_to_track_tile_cache(TrackTileTextureCache *cache, TrackTileTexture entry) {
     if (cache->size >= cache->capacity) {
         cache->capacity = cache->capacity == 0 ? 64 : cache->capacity * 2;
         cache->entries = realloc(cache->entries, cache->capacity * sizeof(TrackTileTexture));
@@ -329,7 +329,7 @@ void update_selected_track_overlay(struct application *appl, GpxCollection *coll
     appl->selected_track_overlay[zoom] = overlay;
 }
 
-SDL_Texture *generate_elevation_profile_texture(SDL_Renderer *renderer, const GpxTrack track, int width, int height) {
+static SDL_Texture *generate_elevation_profile_texture(SDL_Renderer *renderer, const GpxTrack track, int width, int height) {
     if (!renderer || track.total_points < 2)
         return NULL;
 
@@ -419,7 +419,7 @@ SDL_Texture *generate_elevation_profile_texture(SDL_Renderer *renderer, const Gp
     return texture;
 }
 
-void save_elevation_profile_as_png(SDL_Renderer *renderer, const GpxTrack track, const char *filepath, int width, int height) {
+static void save_elevation_profile_as_png(SDL_Renderer *renderer, const GpxTrack track, const char *filepath, int width, int height) {
     // Create a target texture (RGBA)
     SDL_Texture *target = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, width, height);
     if (!target) {
