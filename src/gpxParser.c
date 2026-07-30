@@ -11,70 +11,7 @@
 #include <libxml/tree.h>
 
 #include "log.h"
-
-// Cross-platform ISO8601 parser: "YYYY-MM-DDTHH:MM:SS[.sss]Z"
-static time_t parse_iso8601_utc(const char *timestr) {
-    struct tm tm = {0};
-    int year, month, day, hour, min, sec;
-
-    // Parse time up to seconds — ignore milliseconds and 'Z'
-    if (sscanf(timestr, "%4d-%2d-%2dT%2d:%2d:%2d",
-               &year, &month, &day, &hour, &min, &sec) != 6) {
-        return (time_t)-1;
-    }
-
-    tm.tm_year = year - 1900; // years since 1900
-    tm.tm_mon = month - 1;    // months since January [0-11]
-    tm.tm_mday = day;
-    tm.tm_hour = hour;
-    tm.tm_min = min;
-    tm.tm_sec = sec;
-    tm.tm_isdst = 0; // not daylight saving time
-
-#if defined(_WIN32) || defined(_WIN64)
-    // Windows: mktime() is local time, so correct for UTC manually
-    time_t local = mktime(&tm);
-    if (local == (time_t)-1)
-        return (time_t)-1;
-
-    // Convert to UTC manually
-    struct tm *gmt = gmtime(&local);
-    if (!gmt)
-        return (time_t)-1;
-
-    time_t local_as_utc = mktime(gmt);
-    time_t offset = difftime(local_as_utc, local);
-
-    return local - offset;
-#else
-    // Linux/macOS: use timegm() if available
-    return timegm(&tm);
-#endif
-}
-
-static bool format_iso8601_display_strings(const char *iso8601, char *out_date, size_t date_size, char *out_time, size_t time_size) {
-    struct tm tm = {0};
-    int year, month, day, hour, min, sec;
-
-    // Parse: "YYYY-MM-DDTHH:MM:SS"
-    if (sscanf(iso8601, "%4d-%2d-%2dT%2d:%2d:%2d",
-               &year, &month, &day, &hour, &min, &sec) != 6) {
-        return false;
-    }
-
-    tm.tm_year = year - 1900;
-    tm.tm_mon = month - 1;
-    tm.tm_mday = day;
-    tm.tm_hour = hour;
-    tm.tm_min = min;
-    tm.tm_sec = sec;
-
-    // Format date and time strings
-    strftime(out_date, date_size, "%d.%m.%Y", &tm);
-    strftime(out_time, time_size, "%H:%M", &tm);
-
-    return true;
-}
+#include "time_util.h"
 
 static double haversine_distance(double lat1, double lon1, double lat2, double lon2) {
     double dlat = (lat2 - lat1) * M_PI / 180.0;
@@ -334,7 +271,7 @@ static void track_format_display_strings(GpxTrack *track) {
     snprintf(track->duration_str, sizeof(track->duration_str), "%02d:%02d:%02d", h, m, s);
 
     // time + date
-    format_iso8601_display_strings(
+    iso8601_to_display_strings(
         track->start_time_raw,
         track->start_date_str, sizeof(track->start_date_str),
         track->start_time_str, sizeof(track->start_time_str));
@@ -387,8 +324,8 @@ static bool gpx_parse_file(char *filename, GpxTrack *track) {
 
         bool found_start_time = false;
         if (gpx_extract_time(root_element, track, &found_start_time)) {
-            time_t start = parse_iso8601_utc(track->start_time_raw);
-            time_t end = parse_iso8601_utc(track->end_time_raw);
+            time_t start = iso8601_to_utc(track->start_time_raw);
+            time_t end = iso8601_to_utc(track->end_time_raw);
 
             if (start != (time_t)-1 && end != (time_t)-1 && end >= start) {
                 track->duration_secs = difftime(end, start);
