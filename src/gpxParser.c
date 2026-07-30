@@ -414,35 +414,6 @@ static bool gpx_parse_file(char *filename, GpxTrack *track) {
     return true;
 }
 
-int gpx_count_files(void) {
-    const char *folder_path = "./gpx_files"; // Folder containing GPX files
-    DIR *dir;
-    struct dirent *entry;
-
-    dir = opendir(folder_path);
-    if (dir == NULL) {
-        perror("opendir");
-        return false;
-    }
-    int gpx_file_counter = 0;
-    while ((entry = readdir(dir)) != NULL) {
-        // Skip "." and ".."
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
-            continue;
-
-        // only read .gpx files
-        if (strstr(entry->d_name, ".gpx") == NULL)
-            continue;
-
-        gpx_file_counter++;
-    }
-
-    printf("Found gpx files: %d\n", gpx_file_counter);
-
-    closedir(dir);
-    return gpx_file_counter;
-}
-
 bool gpx_parse_all_files(GpxCollection *collection) {
     const char *folder_path = "./gpx_files"; // Folder containing GPX files
     DIR *dir;
@@ -493,6 +464,23 @@ bool gpx_parse_all_files(GpxCollection *collection) {
         collection->total_tracks++;
     }
 
+    closedir(dir);
+
+    // list_order is sized from the tracks actually parsed rather than from a
+    // second scan of the directory. The two counts could disagree -- the
+    // directory can change between the scans, and the counting pass reported 0
+    // when it could not open the directory at all -- and the loop below then
+    // wrote past the end of the caller's array.
+    free(collection->list_order);
+    collection->list_order = NULL;
+    if (collection->total_tracks > 0) {
+        collection->list_order = malloc(collection->total_tracks * sizeof(int));
+        if (!collection->list_order) {
+            perror("malloc");
+            return false;
+        }
+    }
+
     for (int i = 0; i < collection->total_tracks; i++) {
         track_format_display_strings(&collection->tracks[i]);
 
@@ -501,7 +489,6 @@ bool gpx_parse_all_files(GpxCollection *collection) {
     }
     printf("Tracks: %d\n", collection->total_tracks);
 
-    closedir(dir);
     return true;
 }
 
