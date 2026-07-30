@@ -1,6 +1,6 @@
 gpx_files/*
 tilecache/*
-api_key.h
+src/api_key.h
 **/elev_profile.png
 
 # build output
@@ -8,3 +8,6 @@ build/
 build-debug/
 footprints
 footprints-debug
+
+# editor-local settings
+.vscode/
