@@ -1,166 +1,231 @@
-#include "main.h"
+#include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-bool download_in_progress;
-extern UIState ui;
-bool use_osm_tiles = true;
-SDL_Event event;
+#include <SDL2/SDL_image.h>
+#include <SDL2/SDL_ttf.h>
 
-bool animation_in_progress(UIState ui) {
-    bool animation_in_progress = false;
-    if (ui.right_sidebar.opening == true || ui.right_sidebar.closing == true)
-        animation_in_progress = true;
-    if (ui.run_list.opening == true || ui.run_list.closing == true)
-        animation_in_progress = true;
-    if (ui.filters_animation.opening == true || ui.filters_animation.closing == true)
-        animation_in_progress = true;
+#include "app.h"
+#include "background.h"
+#include "log.h"
+#include "filters.h"
+#include "gpx_parser.h"
+#include "gpx_types.h"
+#include "heat.h"
+#include "map.h"
+#include "tracks.h"
+#include "ui.h"
 
-    return animation_in_progress;
-}
+static bool sdl_initialize(struct application *appl);
+static void appl_cleanup(struct application *appl, GpxCollection *collection);
+static void dispatch_event(struct application *appl, GpxCollection *collection,
+                           SDL_Event event);
+static void handle_events(struct application *appl, GpxCollection *collection);
 
-void append_to_input_buffer(UIState *ui, char c) {
-    // Leave space for null terminator
-    if (ui->text_input_length < sizeof(ui->text_input_buffer) - 1) {
-        ui->text_input_buffer[ui->text_input_length++] = c;
-        ui->text_input_buffer[ui->text_input_length] = '\0';
-    }
+// Everything that happens between one frame and the next: input, and whatever
+// is still moving. Each part asks for a redraw itself, so the loop below never
+// has to enumerate what the program can animate.
+static void app_update(struct application *appl, GpxCollection *collection) {
+    // Neither is latched -- they are true for as long as the work lasts, so
+    // they are asked rather than remembered.
+    if (background_busy(&appl->background) || download_in_progress)
+        app_request_redraw(appl);
+
+    ui_update(appl, collection);
 }
 
 int main(int argc, char *argv[]) {
     if (argc > 1) {
         if (argc == 2 && strcmp(argv[1], "-stadiamaps") == 0) {
+            if (!map_has_api_key()) {
+                fprintf(stderr,
+                        "-stadiamaps needs an API key, and src/api_key.h is missing.\n"
+                        "  cp src/api_key.h.example src/api_key.h\n"
+                        "then paste your key into it and rebuild.\n");
+                return EXIT_FAILURE;
+            }
             printf("using stadiamaps\n");
             use_osm_tiles = false;
         } else {
-            printf("The only supported argument is \"-stadiamaps\"\n");
-            exit(1);
+            fprintf(stderr, "The only supported argument is \"-stadiamaps\"\n");
+            return EXIT_FAILURE;
         }
     }
     struct application appl = {
         .window = NULL,
         .renderer = NULL,
-        .map = NULL,
-        .tex_tracks = NULL,
         .window_width = SCREEN_WIDTH,
         .window_height = SCREEN_HEIGHT,
-        .zoom = 12,
-        .world_x = 140750875,
-        .world_y = 89004498,
-        .center_coord_x = 8.806735836249947,
-        .center_coord_y = 51.71909049285003,
+        .zoom = START_ZOOM,
+        .world_x = START_WORLD_X,
+        .world_y = START_WORLD_Y,
         .running = 1,
         .dragging = 0,
-        .leftMouseButtonPressed = false,
+        .left_mouse_button_pressed = false,
         .selected_track = -1,
+        .rendered_overlay_track = -1,
+        .overlay_key = {.track = -1},
         .download_queue.read_p = 0,
         .download_queue.write_p = 0,
+        .download_queue.tile_in_dl = {.tile_x = -1, .tile_y = -1, .zoom = -1},
         .show_heat = true,
-        .update_window = true,
+        .redraw_requested = true,
+        .map_transform = MAP_TRANSFORM_IDENTITY,
     };
     download_in_progress = false;
 
-    int order[gpxParser_count_gpx_files()];
-    GpxCollection collection = {.list_order = order};
+    GpxCollection collection = {0};
+    appl.collection = &collection;
 
-    if (sdl_initialize(&appl))
-        appl_cleanup(&appl, &collection, EXIT_FAILURE);
+    if (sdl_initialize(&appl)) {
+        appl_cleanup(&appl, &collection);
+        return EXIT_FAILURE;
+    }
 
     SDL_GetWindowSize(appl.window, &appl.window_width,
                       &appl.window_height);
     clay_init(&appl);
+    ui_load_icons(&appl);
     SDL_RenderPresent(appl.renderer);
 
-    gpxParser_parse_all_files(&collection);
-
     reset_filters(&collection.filters);
-    apply_filter_values(&collection);
 
-    calculate_heatmap(&collection);
-    printf("Maximum heat is %d\n", collection.max_heat);
+    // Reading the library and shading it are the two things slow enough to be
+    // worth watching, so they run on a worker while the window stays live.
+    background_start_load(&appl.background, &collection);
 
-    // start thread that will donwload missing tiles of the map
-    // the thread will constantly check the download queue for missing tiles and download them
+    // The tile downloader. It sleeps on the queue's condvar until the frame
+    // loop puts a missing tile there, so an idle map costs nothing.
+    map_init_events();
     pthread_mutex_init(&appl.download_queue.lock, NULL);
     pthread_cond_init(&appl.download_queue.cond, NULL);
-    pthread_t dl_thread;
-    if (pthread_create(&dl_thread, NULL, download_tiles, (void *)&(appl.download_queue))) {
+    if (pthread_create(&appl.download_thread, NULL, download_tiles, (void *)&(appl.download_queue))) {
         fprintf(stderr, "Failed to create download thread\n");
-        return 1;
+        appl_cleanup(&appl, &collection);
+        return EXIT_FAILURE;
     }
-    pthread_detach(dl_thread);
+    appl.download_thread_started = true;
 
-    appl.lastFrameTime = SDL_GetTicks();
-
-    Uint32 frameTime;
-    int fpsCounter = 0;
-    float fpsTimer = 0;
+    // Fixed for the life of the process, so it is asked for once rather than
+    // on every frame.
+    const double counter_frequency = (double)SDL_GetPerformanceFrequency();
+    appl.last_counter = SDL_GetPerformanceCounter();
 
     // Main-Loop
     while (appl.running) {
-        appl.lastFrameTime = SDL_GetTicks();
-        SDL_GetWindowSize(appl.window, &appl.window_width,
-                          &appl.window_height);
         handle_events(&appl, &collection);
 
-        if (appl.update_window || animation_in_progress(ui) || download_in_progress) {
-            appl.update_window = false;
+        Uint64 now = SDL_GetPerformanceCounter();
+        appl.delta_time = (float)((double)(now - appl.last_counter) / counter_frequency);
+        appl.last_counter = now;
+        if (appl.delta_time > MAX_FRAME_DELTA_SECONDS)
+            appl.delta_time = MAX_FRAME_DELTA_SECONDS;
+
+        // The worker owns the collection until it says otherwise; adopting the
+        // results is the main thread's job, and has to happen between frames
+        // rather than in the middle of one.
+        if (background_collect(&appl.background)) {
+            apply_filter_values(&collection);
+            tracks_invalidate_cache(&collection);
+            LOG_DEBUG("Maximum heat is %d\n", collection.max_heat);
+            app_request_redraw(&appl);
+        }
+
+        app_update(&appl, &collection);
+
+        bool busy = background_busy(&appl.background);
+
+        // Cleared before the frame rather than after it, so anything that asks
+        // for a redraw while drawing is honoured on the next one instead of
+        // being thrown away here.
+        if (appl.redraw_requested) {
+            appl.redraw_requested = false;
             SDL_RenderClear(appl.renderer);
 
-            update_track_info_graphs(&appl, collection);
+            // Layer order lives here, where the frame is composed, rather
+            // than inside whichever module happens to draw first.
+            VisibleTile tiles[MAX_VISIBLE_TILES];
+            int tile_count = map_visible_tiles(&appl, tiles, MAX_VISIBLE_TILES);
+            map_draw_tiles(&appl, tiles, tile_count);
 
-            update_selected_track_overlay(&appl, &collection);
+            // The map is safe to draw at any time; anything derived from the
+            // tracks is not, while the worker still has them.
+            if (!busy) {
+                update_track_info_graphs(&appl, &collection);
+                update_selected_track_overlay(&appl, &collection);
+                tracks_draw_heat_tiles(&appl, &collection, tiles, tile_count);
+                tracks_draw_selected_overlay(&appl);
+            }
 
-            get_map_background(&appl, &collection);
+            clay_draw_ui(&appl, &collection);
 
-            clay_draw_UI(&appl, &collection);
-
+            // Paced by the display: with vsync on, this is what makes a frame
+            // take a frame.
             SDL_RenderPresent(appl.renderer);
         }
 
-        // FPS counter
-        fpsTimer += get_delta_time(appl.lastFrameTime);
-        fpsCounter++;
-
-        if (fpsTimer >= 1.0f) {
-            appl.currentFPS = fpsCounter;
-            fpsCounter = 0;
-            fpsTimer = 0.0f;
-        }
-
-        frameTime = SDL_GetTicks() - appl.lastFrameTime;
-        if (frameTime < FRAME_DELAY_MS) {
-            SDL_Delay(FRAME_DELAY_MS - frameTime);
-        }
+        // Applies to every iteration, not just the drawing ones: a frame the
+        // loop declined to draw would otherwise spin. A renderer that waited
+        // for the display has already spent the frame and this does nothing --
+        // the cap is the floor under the frame rate, not the mechanism for
+        // hitting it.
+        Uint32 spent = (Uint32)((double)(SDL_GetPerformanceCounter() - appl.last_counter) *
+                                1000.0 / counter_frequency);
+        if (spent < FRAME_DELAY_MS)
+            SDL_Delay(FRAME_DELAY_MS - spent);
     }
 
-    appl_cleanup(&appl, &collection, EXIT_SUCCESS);
+    appl_cleanup(&appl, &collection);
 
-    return 0;
+    return EXIT_SUCCESS;
 }
 
-bool appl_cleanup(struct application *appl, GpxCollection *collection, int exit_status) {
-    printf("Clean threads...\n");
-    pthread_mutex_destroy(&appl->download_queue.lock);
-    // pthread_cond_destroy(&appl->download_queue.cond);
-    printf("Clean textures...\n");
-    SDL_DestroyTexture(appl->map);
-    SDL_DestroyTexture(appl->tex_tracks);
-    free_tile_cache(&(appl->tile_cache));
-    free_track_tile_cache(&collection->track_tile_cache);
-    printf("Clean UI...\n");
+static void appl_cleanup(struct application *appl, GpxCollection *collection) {
+    LOG_DEBUG("Clean threads...\n");
+    // Asks the worker to give up and waits for it, so nothing below frees
+    // memory it is still reading.
+    background_stop(&appl->background);
+    // Wake the download worker out of its wait and wait for it to return before
+    // tearing down the mutex and condvar it is blocked on.
+    if (appl->download_thread_started) {
+        download_thread_stop(&appl->download_queue);
+        pthread_join(appl->download_thread, NULL);
+        appl->download_thread_started = false;
+        pthread_mutex_destroy(&appl->download_queue.lock);
+        pthread_cond_destroy(&appl->download_queue.cond);
+    }
+    LOG_DEBUG("Clean textures...\n");
+    tile_cache_free(&appl->tile_cache);
+    tracks_free_collection_cache(collection);
+    SDL_DestroyTexture(appl->selected_track_overlay);
+    tracks_free_scratch(appl);
+    LOG_DEBUG("Clean tracks...\n");
+    for (int i = 0; i < collection->total_tracks; i++)
+        free(collection->tracks[i].points);
+    free(collection->tracks);
+    free(collection->list_order);
+    LOG_DEBUG("Clean UI...\n");
+    ui_free_icons(appl);
     clay_free_memory();
-    printf("Clean renderer...\n");
+    LOG_DEBUG("Clean renderer...\n");
     SDL_DestroyRenderer(appl->renderer);
-    printf("Clean window...\n");
+    LOG_DEBUG("Clean window...\n");
     SDL_DestroyWindow(appl->window);
-    printf("Clean SDL...\n");
+    LOG_DEBUG("Clean parser...\n");
+    gpx_parser_cleanup();
+    LOG_DEBUG("Clean SDL...\n");
+    for (size_t i = 0; i < sizeof(appl->fonts) / sizeof(appl->fonts[0]); i++) {
+        TTF_CloseFont(appl->fonts[i].font);
+        appl->fonts[i].font = NULL;
+    }
     TTF_Quit();
     SDL_Quit();
     IMG_Quit();
-    printf("exit...\n");
-    exit(exit_status);
+    LOG_DEBUG("exit...\n");
 }
 
-bool sdl_initialize(struct application *appl) {
+static bool sdl_initialize(struct application *appl) {
     if (SDL_Init(SDL_INIT_VIDEO)) {
         fprintf(stderr, "Error initializing SDL: %s\n", SDL_GetError());
         return true;
@@ -176,9 +241,15 @@ bool sdl_initialize(struct application *appl) {
     }
 
     appl->fonts[0] = (SDL2_Font){
-        .fontId = 0,
+        .font_id = 0,
         .font = font,
     };
+
+    // Sampled when a texture is created, not when one is drawn, so this has to
+    // be set before the renderer and before anything is loaded. Without it the
+    // map is point-sampled, and every tile drawn at anything but its own scale
+    // comes out blocky.
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
 
     int img_init = IMG_Init(IMG_INIT_PNG);
     if ((img_init & IMG_INIT_PNG) != IMG_INIT_PNG) {
@@ -192,7 +263,15 @@ bool sdl_initialize(struct application *appl) {
         return true;
     }
 
-    appl->renderer = SDL_CreateRenderer(appl->window, -1, 0);
+    // Vsync is what paces the drawing frames. Not every driver offers it, so a
+    // renderer without it is still worth having -- but then the loop has to
+    // pace itself, or it presents as fast as the machine allows.
+    appl->renderer = SDL_CreateRenderer(appl->window, -1,
+                                        SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    if (!appl->renderer) {
+        LOG_DEBUG("No accelerated vsync renderer (%s), falling back\n", SDL_GetError());
+        appl->renderer = SDL_CreateRenderer(appl->window, -1, 0);
+    }
     if (!appl->renderer) {
         fprintf(stderr, "Error creating renderer: %s\n", SDL_GetError());
         return true;
@@ -201,105 +280,106 @@ bool sdl_initialize(struct application *appl) {
     return false;
 }
 
-bool handle_events(struct application *appl, GpxCollection *collection) {
-    appl->wheel_y = 0; // reset to zero if no mousewheel action
+static void dispatch_event(struct application *appl, GpxCollection *collection,
+                           SDL_Event event) {
+    app_request_redraw(appl);
+    map_handle_event(&event);
 
-    while (SDL_PollEvent(&event)) {
-        appl->update_window = true;
-        if (event.type == SDL_QUIT) {
-            appl->running = 0;
-        } else if (ui.text_input_mode) {
-            if (event.type == SDL_KEYDOWN) {
-                SDL_Keycode key = event.key.keysym.sym;
+    if (event.type == SDL_QUIT) {
+        appl->running = 0;
+    } else if (event.type == SDL_WINDOWEVENT &&
+               event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
+        // Asked for here rather than every iteration: the size only ever
+        // changes on this event.
+        SDL_GetWindowSize(appl->window, &appl->window_width, &appl->window_height);
+    } else if (ui_text_input_active()) {
+        if (event.type == SDL_KEYDOWN) {
+            SDL_Keycode key = event.key.keysym.sym;
 
-                if (key >= SDLK_0 && key <= SDLK_9) {
-                    char digit = '0' + (key - SDLK_0);
-                    append_to_input_buffer(&ui, digit);
-                } else {
-                    // Exit input mode on any non-digit key
-                    ui.text_input_mode = false;
-                    ui.activeFilterID = 0;
-                    printf("%s\n", ui.text_input_buffer);
-                    save_filter_values(&collection->filters);
-                    apply_filter_values(collection);
-                }
-            } else if (event.type == SDL_MOUSEBUTTONDOWN) {
-                // Exit input mode on any mouse click
-                ui.text_input_mode = false;
-                ui.activeFilterID = 0;
-                printf("%s\n", ui.text_input_buffer);
-                save_filter_values(&collection->filters);
-                apply_filter_values(collection);
-            }
-        } else if (event.type == SDL_MOUSEWHEEL) {
-            appl->wheel_y = event.wheel.y;
+            if (key >= SDLK_0 && key <= SDLK_9)
+                ui_text_input_digit(collection, (char)('0' + (key - SDLK_0)));
+            else
+                ui_text_input_finish(collection); // any non-digit key commits
+        } else if (event.type == SDL_MOUSEBUTTONDOWN) {
+            ui_text_input_finish(collection); // so does clicking away
+        }
+    } else if (event.type == SDL_MOUSEWHEEL) {
+        appl->wheel_y = event.wheel.y;
 
-            if (!appl->mouseOverUI) {
-                int old_zoom = appl->zoom;
+        if (!appl->mouse_over_ui) {
+            int old_zoom = appl->zoom;
 
-                appl->zoom += event.wheel.y;
+            appl->zoom += event.wheel.y;
 
-                // Clamp zoom range
+            if (appl->zoom < MIN_ZOOM)
+                appl->zoom = MIN_ZOOM;
+            if (appl->zoom > MAX_ZOOM)
+                appl->zoom = MAX_ZOOM;
+
+            if (appl->zoom != old_zoom) {
+                // Take the world point under the cursor at the old zoom, then
+                // move the centre so the new zoom puts it back under the
+                // cursor. Read at the old zoom, so this happens before the
+                // centre moves.
+                int anchor_world_x, anchor_world_y;
+                appl->zoom = old_zoom;
+                map_screen_to_world(appl, (float)appl->mouse_x, (float)appl->mouse_y,
+                                    &anchor_world_x, &anchor_world_y);
+
+                appl->zoom = old_zoom + event.wheel.y;
                 if (appl->zoom < MIN_ZOOM)
                     appl->zoom = MIN_ZOOM;
                 if (appl->zoom > MAX_ZOOM)
                     appl->zoom = MAX_ZOOM;
 
-                if (appl->zoom != old_zoom) {
-                    int shift_before = MAX_ZOOM - old_zoom;
-                    int shift_after = MAX_ZOOM - appl->zoom;
-
-                    // World coordinate under the mouse BEFORE zoom
-                    int world_mouse_x = appl->world_x + (appl->mouse_x << shift_before) - (appl->window_width / 2 << shift_before);
-                    int world_mouse_y = appl->world_y + (appl->mouse_y << shift_before) - (appl->window_height / 2 << shift_before);
-
-                    // Recalculate world_x and world_y AFTER zoom to keep mouse on same map point
-                    appl->world_x = world_mouse_x - (appl->mouse_x << shift_after) + (appl->window_width / 2 << shift_after);
-                    appl->world_y = world_mouse_y - (appl->mouse_y << shift_after) + (appl->window_height / 2 << shift_after);
-                }
-            }
-        }
-
-        else if (event.type == SDL_MOUSEBUTTONDOWN) {
-            if (event.button.button == SDL_BUTTON_RIGHT) {
-                if (!appl->mouseOverUI)
-                    appl->dragging = 1;
-            }
-            if (event.button.button == SDL_BUTTON_LEFT) {
-                appl->leftMouseButtonPressed = true;
-            }
-        } else if (event.type == SDL_MOUSEBUTTONUP &&
-                   event.button.button == SDL_BUTTON_RIGHT) {
-            appl->dragging = 0;
-        } else if (event.type == SDL_MOUSEBUTTONUP &&
-                   event.button.button == SDL_BUTTON_LEFT) {
-            appl->leftMouseButtonPressed = false;
-            if (!appl->mouseOverUI) {
-                int click_world_x = appl->world_x + (event.button.x << (MAX_ZOOM - appl->zoom)) - (appl->window_width / 2 << MAX_ZOOM - appl->zoom);
-                int click_world_y = appl->world_y + (event.button.y << (MAX_ZOOM - appl->zoom)) - (appl->window_height / 2 << MAX_ZOOM - appl->zoom);
-                appl->selected_track = find_track_near_click(collection, click_world_x, click_world_y, appl->zoom, 10);
-            }
-        } else if (event.type == SDL_MOUSEMOTION && appl->dragging) {
-            appl->world_x -= (event.motion.xrel << (MAX_ZOOM - appl->zoom));
-            appl->world_y -= (event.motion.yrel << (MAX_ZOOM - appl->zoom));
-        } else if (event.type == SDL_MOUSEMOTION) {
-            appl->mouse_x = event.motion.x;
-            appl->mouse_y = event.motion.y;
-        } else if (event.type == SDL_KEYDOWN) {
-            if (event.key.keysym.sym == SDLK_TAB) {
-                if (ui.run_list.animation > 0) {
-                    ui.run_list.opening = false;
-                    ui.run_list.closing = true;
-                    ui.filters_animation.opening = false;
-                    ui.filters_animation.closing = true;
-                } else {
-                    ui.run_list.opening = true;
-                    ui.run_list.closing = false;
-                    ui.filters_animation.opening = true;
-                    ui.filters_animation.closing = false;
-                }
+                const int per_pixel = map_world_per_pixel(appl);
+                appl->world_x = anchor_world_x - (appl->mouse_x - appl->window_width / 2) * per_pixel;
+                appl->world_y = anchor_world_y - (appl->mouse_y - appl->window_height / 2) * per_pixel;
             }
         }
     }
-    return true;
+
+    else if (event.type == SDL_MOUSEBUTTONDOWN) {
+        if (event.button.button == SDL_BUTTON_RIGHT) {
+            if (!appl->mouse_over_ui)
+                appl->dragging = 1;
+        }
+        if (event.button.button == SDL_BUTTON_LEFT) {
+            appl->left_mouse_button_pressed = true;
+        }
+    } else if (event.type == SDL_MOUSEBUTTONUP &&
+               event.button.button == SDL_BUTTON_RIGHT) {
+        appl->dragging = 0;
+    } else if (event.type == SDL_MOUSEBUTTONUP &&
+               event.button.button == SDL_BUTTON_LEFT) {
+        appl->left_mouse_button_pressed = false;
+        if (!appl->mouse_over_ui) {
+            int click_world_x, click_world_y;
+            map_screen_to_world(appl, (float)event.button.x, (float)event.button.y,
+                                &click_world_x, &click_world_y);
+            appl->selected_track = find_track_near_click(collection, click_world_x, click_world_y, appl->zoom, 10);
+        }
+    } else if (event.type == SDL_MOUSEMOTION && appl->dragging) {
+        const int per_pixel = map_world_per_pixel(appl);
+        appl->world_x -= event.motion.xrel * per_pixel;
+        appl->world_y -= event.motion.yrel * per_pixel;
+    } else if (event.type == SDL_MOUSEMOTION) {
+        appl->mouse_x = event.motion.x;
+        appl->mouse_y = event.motion.y;
+    } else if (event.type == SDL_KEYDOWN) {
+        if (event.key.keysym.sym == SDLK_TAB)
+            ui_toggle_run_list();
+    }
+}
+
+// Drains the event queue. Polled rather than waited on: a frame the loop
+// declines to draw costs almost nothing, and SDL_WaitEventTimeout falls back to
+// a one-millisecond polling loop on any driver whose backend cannot wait on a
+// descriptor -- more wakeups than the frame cap it would replace, not fewer.
+static void handle_events(struct application *appl, GpxCollection *collection) {
+    appl->wheel_y = 0; // reset to zero if no mousewheel action
+
+    SDL_Event event;
+    while (SDL_PollEvent(&event))
+        dispatch_event(appl, collection, event);
 }

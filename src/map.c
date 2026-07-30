@@ -1,15 +1,136 @@
 #include "map.h"
-#include "api_key.h"
 
-extern bool use_osm_tiles;
-extern bool download_in_progress;
+#include <curl/curl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h> // mkdir + stat
+#include <unistd.h>
+
+#include <SDL2/SDL_image.h>
+
+#include "fifo.h"
+#include "log.h"
+
+// The Stadia Maps key is optional: it is only read when -stadiamaps is passed,
+// and the default OpenStreetMap tiles need no key at all. Including the header
+// unconditionally meant the build failed without it even for users who would
+// never use it.
+#if defined(__has_include)
+#if __has_include("api_key.h")
+#include "api_key.h"
+#define HAVE_API_KEY 1
+#endif
+#endif
+
+#ifndef HAVE_API_KEY
+static const char *api_key = NULL;
+#endif
+
+bool use_osm_tiles = true;
+_Atomic bool download_in_progress;
+
+// Tiles asked for and not yet in hand: queued, in flight, or lately failed and
+// cooling off.
+//
+// Without this a tile the provider will not give us -- a 404 above the
+// provider's coverage, or anything at all while the network is down -- was
+// re-queued on every frame for as long as it stayed on screen, because a
+// failed download is deliberately not written to disk and so never stops
+// looking missing. That is a request per tile per frame, indefinitely. It also
+// meant download_in_progress never went false, so the window redrew at the
+// frame rate forever and could not idle.
+typedef struct PendingTile {
+    MapTile tile;
+    Uint32 retry_at_ms; // when it may be asked for again
+} PendingTile;
+
+static PendingTile pending[TILE_PENDING_MAX];
+static int pending_count;
+
+// Pushed by the download worker when a tile lands, so the main thread stops
+// waiting on it. Registered on the main thread before the worker starts.
+static Uint32 tile_ready_event = (Uint32)-1;
+
+void map_init_events(void) {
+    Uint32 type = SDL_RegisterEvents(1);
+    if (type != (Uint32)-1)
+        tile_ready_event = type;
+}
+
+static int pending_find(MapTile tile) {
+    for (int i = 0; i < pending_count; i++)
+        if (tile_key_equal(pending[i].tile, tile))
+            return i;
+    return -1;
+}
+
+static void pending_remove_at(int index) {
+    pending[index] = pending[pending_count - 1];
+    pending_count--;
+}
+
+// Whether this tile should be left alone this frame.
+static bool pending_blocks(MapTile tile, Uint32 now_ms) {
+    int index = pending_find(tile);
+    if (index < 0)
+        return false;
+
+    if (now_ms >= pending[index].retry_at_ms) {
+        pending_remove_at(index); // cooled off; let it be asked for again
+        return false;
+    }
+    return true;
+}
+
+static void pending_add(MapTile tile, Uint32 now_ms) {
+    if (pending_count >= TILE_PENDING_MAX) {
+        // Full: drop whatever has been waiting longest rather than refuse to
+        // record this one, so the set cannot wedge.
+        int oldest = 0;
+        for (int i = 1; i < pending_count; i++)
+            if (pending[i].retry_at_ms < pending[oldest].retry_at_ms)
+                oldest = i;
+        pending_remove_at(oldest);
+    }
+    pending[pending_count++] = (PendingTile){
+        .tile = tile, .retry_at_ms = now_ms + TILE_RETRY_SECONDS * 1000};
+}
+
+void map_handle_event(const SDL_Event *event) {
+    if (tile_ready_event == (Uint32)-1 || event->type != tile_ready_event)
+        return;
+
+    MapTile tile = {.tile_x = (int)(intptr_t)event->user.data1,
+                    .tile_y = (int)(intptr_t)event->user.data2,
+                    .zoom = event->user.code};
+    int index = pending_find(tile);
+    if (index >= 0)
+        pending_remove_at(index); // the file is there now; pick it up next frame
+}
+
+// Called on the download thread.
+static void publish_tile_ready(MapTile tile) {
+    if (tile_ready_event == (Uint32)-1)
+        return;
+
+    SDL_Event event = {0};
+    event.type = tile_ready_event;
+    event.user.code = tile.zoom;
+    event.user.data1 = (void *)(intptr_t)tile.tile_x;
+    event.user.data2 = (void *)(intptr_t)tile.tile_y;
+    SDL_PushEvent(&event); // thread-safe
+}
+
+bool map_has_api_key(void) {
+    return api_key != NULL && api_key[0] != '\0';
+}
 
 void conv_pixel_to_tile_and_offset(int pixel_x, int pixel_y, int source_zoom, int target_zoom,
                                    int *tile_x, int *tile_y,
                                    int *pixel_in_tile_x, int *pixel_in_tile_y) {
     int zoom_diff = source_zoom - target_zoom;
 
-    // Convert world coordinates to target zoom level by shifting right
     int scaled_x = pixel_x >> zoom_diff;
     int scaled_y = pixel_y >> zoom_diff;
 
@@ -19,21 +140,50 @@ void conv_pixel_to_tile_and_offset(int pixel_x, int pixel_y, int source_zoom, in
     *pixel_in_tile_x = scaled_x % TILE_SIZE;
     *pixel_in_tile_y = scaled_y % TILE_SIZE;
 
-    // Ensure offsets are positive
+    // C's % takes the sign of the dividend, so a world coordinate left of the
+    // origin lands on a negative offset into its tile.
     if (*pixel_in_tile_x < 0)
         *pixel_in_tile_x += TILE_SIZE;
     if (*pixel_in_tile_y < 0)
         *pixel_in_tile_y += TILE_SIZE;
 }
 
-void ensure_directory(const char *path) {
+int map_world_per_pixel_at(int zoom) {
+    return 1 << (MAX_ZOOM - zoom);
+}
+
+int map_world_per_pixel(const struct application *appl) {
+    return map_world_per_pixel_at(appl->zoom);
+}
+
+// Both directions work in double and take the window centre as an integer.
+// A float cannot hold the product: a world span of 2^28 against a 24-bit
+// mantissa loses whole pixels at the low zooms, which showed up as clicks
+// selecting the wrong track. The integer centre is what the shifts did -- an
+// odd window is half a screen pixel off centre, and at zoom 5 half a screen
+// pixel is sixteen thousand world pixels.
+void map_world_to_screen(const struct application *appl, int world_x, int world_y,
+                         float *screen_x, float *screen_y) {
+    const double per_pixel = (double)map_world_per_pixel(appl);
+    *screen_x = (float)((double)(world_x - appl->world_x) / per_pixel + appl->window_width / 2);
+    *screen_y = (float)((double)(world_y - appl->world_y) / per_pixel + appl->window_height / 2);
+}
+
+void map_screen_to_world(const struct application *appl, float screen_x, float screen_y,
+                         int *world_x, int *world_y) {
+    const double per_pixel = (double)map_world_per_pixel(appl);
+    *world_x = appl->world_x + (int)(((double)screen_x - appl->window_width / 2) * per_pixel);
+    *world_y = appl->world_y + (int)(((double)screen_y - appl->window_height / 2) * per_pixel);
+}
+
+static void ensure_directory(const char *path) {
     struct stat st = {0};
     if (stat(path, &st) == -1) {
         mkdir(path, 0755);
     }
 }
 
-// Callback for curl
+// Appends one chunk of a curl transfer to the growable buffer behind `userp`.
 static size_t write_callback(void *contents, size_t size, size_t nmemb, void *userp) {
     size_t realsize = size * nmemb;
     struct MemoryStruct *mem = (struct MemoryStruct *)userp;
@@ -53,99 +203,191 @@ static size_t write_callback(void *contents, size_t size, size_t nmemb, void *us
 void *download_tiles(void *arg) {
     struct fifo *download_queue = (struct fifo *)arg;
     MapTile next_tile = {0};
+
+    // One handle for the lifetime of the thread. A fresh easy handle per tile
+    // threw away the connection and its TLS session, so every tile paid for a
+    // new handshake against the same host.
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+    CURL *curl = curl_easy_init();
+    if (!curl) {
+        fprintf(stderr, "Failed to initialize CURL\n");
+        curl_global_cleanup();
+        return NULL;
+    }
+
     while (true) {
         download_in_progress = false;
         pthread_mutex_lock(&download_queue->lock);
-        // Wait while the queue is empty
-        while (fifo_is_empty(download_queue))
+        while (fifo_is_empty(download_queue) && !download_queue->stop)
             pthread_cond_wait(&download_queue->cond, &download_queue->lock);
+
+        if (download_queue->stop) {
+            pthread_mutex_unlock(&download_queue->lock);
+            curl_easy_cleanup(curl);
+            curl_global_cleanup();
+            return NULL;
+        }
 
         download_in_progress = true;
         if (!fifo_read_data(download_queue, &next_tile))
             fprintf(stderr, "Something went wrong while reading from download queue\n");
 
+        // Publish what we are about to fetch, still under the lock. The tile is
+        // no longer in the queue but its file does not exist yet, so without
+        // this the main loop cannot tell it is already being fetched and
+        // re-queues it on every frame until the download lands.
+        download_queue->tile_in_dl = next_tile;
+
         pthread_mutex_unlock(&download_queue->lock);
 
-        char tile_path[256];
-        snprintf(tile_path, sizeof(tile_path), "tilecache/%d/%d/%d.png", next_tile.zoom,
-                 next_tile.tile_x, next_tile.tile_y);
+        char tile_path[TILE_PATH_MAX];
+        tile_cache_path(tile_path, sizeof(tile_path), next_tile);
 
-        printf("Start download for: %s\n", tile_path);
-        // Ensure that all needed directories exist
-        char zoom_dir[64], x_dir[64];
-        snprintf(zoom_dir, sizeof(zoom_dir), "tilecache/%d", next_tile.zoom);
-        snprintf(x_dir, sizeof(x_dir), "tilecache/%d/%d", next_tile.zoom, next_tile.tile_x);
-        ensure_directory("tilecache");
+        LOG_DEBUG("Start download for: %s\n", tile_path);
+        char zoom_dir[TILE_PATH_MAX], x_dir[TILE_PATH_MAX];
+        snprintf(zoom_dir, sizeof(zoom_dir), "%s/%d", TILE_CACHE_DIR, next_tile.zoom);
+        snprintf(x_dir, sizeof(x_dir), "%s/%d/%d", TILE_CACHE_DIR, next_tile.zoom, next_tile.tile_x);
+        ensure_directory(TILE_CACHE_DIR);
         ensure_directory(zoom_dir);
         ensure_directory(x_dir);
 
-        // Start the actual download
         struct MemoryStruct image_data;
-        char url[256];
-
-        CURL *curl = curl_easy_init();
+        char url[TILE_PATH_MAX];
         struct curl_slist *list = NULL;
-        if (!curl) {
-            fprintf(stderr, "Fehler beim Initialisieren von CURL\n");
-            continue; // oder break oder return
-        }
 
         image_data.memory = (char *)malloc(1);
         image_data.size = 0;
+
+        // Options set on the previous tile do not carry over to this one.
+        curl_easy_reset(curl);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &image_data);
 
         if (use_osm_tiles) {
             snprintf(url, sizeof(url), "https://tile.openstreetmap.org/%d/%d/%d.png",
                      next_tile.zoom, next_tile.tile_x, next_tile.tile_y);
             curl_easy_setopt(curl, CURLOPT_URL, url);
-            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
-            curl_easy_setopt(curl, CURLOPT_WRITEDATA, &image_data);
-            curl_easy_setopt(curl, CURLOPT_USERAGENT, "OSM-Viewer/1.0");
+            curl_easy_setopt(curl, CURLOPT_USERAGENT, TILE_USER_AGENT);
         } else // use stadiamaps; requires api key
         {
             snprintf(url, sizeof(url), "https://tiles.stadiamaps.com/tiles/stamen_terrain/%d/%d/%d.png",
                      next_tile.zoom, next_tile.tile_x, next_tile.tile_y);
-            char auth[256];
-            sprintf(auth, "Authorization: Stadia-Auth %s", api_key);
+            char auth[TILE_PATH_MAX];
+            // main() refuses -stadiamaps without a key, so this cannot be
+            // reached with a null one -- but the compiler cannot see that, and
+            // a null here would be a format-string crash rather than a
+            // failed download.
+            snprintf(auth, sizeof(auth), "Authorization: Stadia-Auth %s",
+                     map_has_api_key() ? api_key : "");
             list = curl_slist_append(list, auth);
 
             curl_easy_setopt(curl, CURLOPT_URL, url);
             curl_easy_setopt(curl, CURLOPT_HTTPHEADER, list);
-            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
-            curl_easy_setopt(curl, CURLOPT_WRITEDATA, &image_data);
         }
 
         CURLcode res = curl_easy_perform(curl);
-        curl_easy_cleanup(curl);
-        curl_slist_free_all(list); /* free the list */
+        curl_slist_free_all(list);
 
+        // Only cache the tile when the transfer actually succeeded. Writing a
+        // failed or empty response would make file_exists() report the tile as
+        // present, so it would render blank forever and never be retried.
         if (res != CURLE_OK) {
-            fprintf(stderr, "Fehler beim Laden: %s\n", curl_easy_strerror(res));
-        }
-
-        // save tile to tile cache
-        FILE *f = fopen(tile_path, "wb");
-        if (f) {
-            fwrite(image_data.memory, 1, image_data.size, f);
-            fclose(f);
+            fprintf(stderr, "Tile download failed (%s): %s\n", tile_path, curl_easy_strerror(res));
+        } else if (image_data.size == 0) {
+            fprintf(stderr, "Tile download returned no data: %s\n", tile_path);
+        } else {
+            FILE *f = fopen(tile_path, "wb");
+            if (f) {
+                fwrite(image_data.memory, 1, image_data.size, f);
+                fclose(f);
+                // Tell the main thread rather than leaving it to notice: it
+                // stops looking at a tile once it has asked for it, so nothing
+                // else would go back for this one until its retry came round.
+                publish_tile_ready(next_tile);
+            } else {
+                fprintf(stderr, "Could not write tile to cache: %s\n", tile_path);
+            }
         }
         free(image_data.memory);
+
+        // Clear the marker: either the file now exists, or the transfer failed
+        // and the tile should be eligible for queueing again.
+        pthread_mutex_lock(&download_queue->lock);
+        download_queue->tile_in_dl = (MapTile){.tile_x = -1, .tile_y = -1, .zoom = -1};
+        pthread_mutex_unlock(&download_queue->lock);
     }
+}
+
+// Asks the download worker to return from its wait. The caller joins the
+// thread afterwards; the queue's mutex and condvar must outlive that join.
+void download_thread_stop(struct fifo *download_queue) {
+    pthread_mutex_lock(&download_queue->lock);
+    download_queue->stop = true;
+    pthread_cond_signal(&download_queue->cond);
+    pthread_mutex_unlock(&download_queue->lock);
 }
 
 bool tile_key_equal(MapTile a, MapTile b) {
     return a.tile_x == b.tile_x && a.tile_y == b.tile_y && a.zoom == b.zoom;
 }
 
-void append_to_tile_cache(TileTextureCache *cache, TileTexture entry) {
-    if (cache->size >= cache->capacity) {
-        cache->capacity = cache->capacity == 0 ? 64 : cache->capacity * 2;
-        cache->entries = realloc(cache->entries, cache->capacity * sizeof(TileTexture));
+// Hands back the cached texture for `key`, or NULL. Touching the entry marks
+// it as the most recently used, which is what keeps eviction honest.
+SDL_Texture *tile_cache_lookup(TileTextureCache *cache, MapTile key) {
+    for (int i = 0; i < cache->size; i++) {
+        if (tile_key_equal(cache->entries[i].key, key)) {
+            cache->entries[i].last_used = ++cache->clock;
+            return cache->entries[i].texture;
+        }
     }
-    cache->entries[cache->size++] = entry;
+    return NULL;
 }
 
-void free_tile_cache(TileTextureCache *cache) {
-    printf("tile cache capacity before cleanup: %d\n", cache->capacity);
+// Drops the least recently used entry. Called only when the cache is full, so
+// the linear scan costs nothing next to the texture upload it makes room for.
+static void evict_least_recently_used(TileTextureCache *cache) {
+    int oldest = 0;
+    for (int i = 1; i < cache->size; i++)
+        if (cache->entries[i].last_used < cache->entries[oldest].last_used)
+            oldest = i;
+
+    SDL_DestroyTexture(cache->entries[oldest].texture);
+    cache->entries[oldest] = cache->entries[cache->size - 1];
+    cache->size--;
+}
+
+// Takes ownership of `texture` on success and hands back the entry it went
+// into, or NULL if it could not be stored -- the caller destroys it then. The
+// pointer is good only until the next insert: growing reallocs the array and
+// eviction moves the last entry into the hole.
+TileTexture *tile_cache_insert(TileTextureCache *cache, MapTile key, SDL_Texture *texture) {
+    // Each entry is a TILE_SIZE-square RGBA texture -- a quarter of a megabyte
+    // of video memory. Growing without a bound meant a long panning session
+    // consumed as much of it as the session was long.
+    if (cache->size >= TILE_CACHE_MAX_ENTRIES)
+        evict_least_recently_used(cache);
+
+    if (cache->size >= cache->capacity) {
+        int grown_capacity = (cache->capacity == 0) ? 64 : cache->capacity * 2;
+        if (grown_capacity > TILE_CACHE_MAX_ENTRIES)
+            grown_capacity = TILE_CACHE_MAX_ENTRIES;
+        TileTexture *grown = realloc(cache->entries, (size_t)grown_capacity * sizeof(TileTexture));
+        if (!grown) {
+            // The old array is still valid and still owned by the cache, so a
+            // failure here leaves the cache exactly as it was.
+            fprintf(stderr, "Could not grow tile cache\n");
+            return NULL;
+        }
+        cache->entries = grown;
+        cache->capacity = grown_capacity;
+    }
+
+    TileTexture *entry = &cache->entries[cache->size++];
+    *entry = (TileTexture){.key = key, .texture = texture, .last_used = ++cache->clock};
+    return entry;
+}
+
+void tile_cache_free(TileTextureCache *cache) {
     for (int i = 0; i < cache->size; i++) {
         if (cache->entries[i].texture)
             SDL_DestroyTexture(cache->entries[i].texture);
@@ -154,17 +396,22 @@ void free_tile_cache(TileTextureCache *cache) {
     cache->entries = NULL;
     cache->size = 0;
     cache->capacity = 0;
+    cache->clock = 0;
 }
 
-SDL_Texture *get_cached_texture(struct application *appl, MapTile key, const char *path) {
-    // Try to find the texture in the cache
-    for (int i = 0; i < appl->tile_cache.size; i++) {
-        if (tile_key_equal(appl->tile_cache.entries[i].key, key)) {
-            return appl->tile_cache.entries[i].texture;
-        }
-    }
+static int file_exists(const char *path) {
+    return access(path, F_OK) == 0;
+}
 
-    // Load it from disk
+// The one place the on-disk tile layout is spelled out. The download thread and
+// the render loop have to agree on it exactly, or tiles are fetched forever and
+// never found.
+void tile_cache_path(char *out, size_t size, MapTile tile) {
+    snprintf(out, size, "%s/%d/%d/%d.png", TILE_CACHE_DIR, tile.zoom, tile.tile_x, tile.tile_y);
+}
+
+// Decodes a tile PNG off disk and hands it to the cache, which takes ownership.
+static SDL_Texture *load_tile_texture(struct application *appl, MapTile key, const char *path) {
     SDL_Surface *surface = IMG_Load(path);
     if (!surface)
         return NULL;
@@ -174,97 +421,167 @@ SDL_Texture *get_cached_texture(struct application *appl, MapTile key, const cha
     if (!texture)
         return NULL;
 
-    // Store in cache
-    TileTexture entry = {key, texture};
-    append_to_tile_cache(&(appl->tile_cache), entry); // You implement this
+    // Set rather than inherited. What SDL_CreateTextureFromSurface leaves here
+    // depends on whether the decoded PNG had alpha, and a tile drawn with an
+    // alpha modulation needs it either way.
+    SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
 
+    if (!tile_cache_insert(&appl->tile_cache, key, texture)) {
+        SDL_DestroyTexture(texture);
+        return NULL;
+    }
     return texture;
 }
 
-int file_exists(const char *path) {
-    return access(path, F_OK) == 0;
+SDL_FRect map_transform_rect(const struct application *appl,
+                             float x, float y, float w, float h) {
+    const MapTransform *t = &appl->map_transform;
+    return (SDL_FRect){
+        .x = t->anchor_x + (x - t->anchor_x) * t->scale,
+        .y = t->anchor_y + (y - t->anchor_y) * t->scale,
+        .w = w * t->scale,
+        .h = h * t->scale};
 }
 
-bool get_map_background(struct application *appl, GpxCollection *collection) {
-    // How many tiles do we need?
-    int tiles_x = appl->window_width / TILE_SIZE + 2;
-    int tiles_y = appl->window_height / TILE_SIZE + 2;
+// The tiles covering the window at the current zoom, with where each one lands
+// on screen. Returned rather than drawn, so the caller decides what is layered
+// over what -- this module used to reach into the track renderer to composite
+// the heat overlay itself, which put the layer order in the wrong place and
+// made the map depend on the tracks.
+int map_visible_tiles(const struct application *appl, VisibleTile *out, int max_tiles) {
+    // Scaled down, a tile covers less of the window and more of them are
+    // needed to fill it.
+    const float scale = appl->map_transform.scale;
+    const float scaled_tile = (float)TILE_SIZE * scale;
+    int tiles_x = (int)((float)appl->window_width / scaled_tile) + 2;
+    int tiles_y = (int)((float)appl->window_height / scaled_tile) + 2;
 
-    // Calculate tile coordinate in the center
     int center_tile_x, center_tile_y;
     int tile_offset_x, tile_offset_y;
-
     conv_pixel_to_tile_and_offset(appl->world_x, appl->world_y, MAX_ZOOM, appl->zoom,
                                   &center_tile_x, &center_tile_y,
                                   &tile_offset_x, &tile_offset_y);
 
+    int tiles_at_zoom = 1 << appl->zoom;
+    int count = 0;
+
     for (int dx = -tiles_x / 2; dx <= tiles_x / 2; dx++) {
         for (int dy = -tiles_y / 2; dy <= tiles_y / 2; dy++) {
+            if (count >= max_tiles)
+                return count;
+
             int tile_x = center_tile_x + dx;
             int tile_y = center_tile_y + dy;
 
-            if (tile_x < 0 || tile_y < 0 || tile_x >= (1 << appl->zoom) ||
-                tile_y >= (1 << appl->zoom))
+            // Off the edge of the world at this zoom.
+            if (tile_x < 0 || tile_y < 0 || tile_x >= tiles_at_zoom || tile_y >= tiles_at_zoom)
                 continue;
 
-            char tile_path[256];
-            snprintf(tile_path, sizeof(tile_path), "tilecache/%d/%d/%d.png", appl->zoom,
-                     tile_x, tile_y);
+            // Both are linear in the tile index, so after the transform two
+            // neighbours still share an edge exactly and the grid has no
+            // seams to show.
+            float unscaled_x = (float)((tile_x - center_tile_x) * TILE_SIZE - tile_offset_x +
+                                       appl->window_width / 2);
+            float unscaled_y = (float)((tile_y - center_tile_y) * TILE_SIZE - tile_offset_y +
+                                       appl->window_height / 2);
+            SDL_FRect placed = map_transform_rect(appl, unscaled_x, unscaled_y,
+                                                  (float)TILE_SIZE, (float)TILE_SIZE);
 
-            if (!file_exists(tile_path)) {
-                // add tile to download queue if it is not in there already
-                MapTile tile2queue = {
-                    .tile_x = tile_x,
-                    .tile_y = tile_y,
-                    .zoom = appl->zoom,
-                };
-                pthread_mutex_lock(&appl->download_queue.lock);
-
-                bool already_queued = fifo_search_data(&appl->download_queue, tile2queue);
-                bool already_downloading = false;
-                if (appl->download_queue.tile_in_dl.tile_x == tile2queue.tile_x &&
-                    appl->download_queue.tile_in_dl.tile_y == tile2queue.tile_y &&
-                    appl->download_queue.tile_in_dl.zoom == tile2queue.zoom)
-                    already_downloading = true;
-
-                if (!already_queued && !already_downloading) {
-                    fifo_write_data(&appl->download_queue, tile2queue);
-                }
-
-                pthread_mutex_unlock(&appl->download_queue.lock);
-
-                //                pthread_mutex_lock(&appl->download_queue.lock);
-                //                if (!fifo_search_data(&(appl->download_queue), tile2queue))
-                //                {
-                //                    printf("adding tile to queue: %d/%d/%d\n", tile2queue.zoom, tile2queue.tile_x, tile2queue.tile_y);
-                //                    fifo_write_data(&(appl->download_queue), tile2queue);
-                //                }
-                //                pthread_mutex_unlock(&appl->download_queue.lock);
-            }
-
-            MapTile key = {tile_x, tile_y, appl->zoom};
-            SDL_Texture *texture = get_cached_texture(appl, key, tile_path);
-            int screen_x = (tile_x - center_tile_x) * TILE_SIZE - tile_offset_x + appl->window_width / 2;
-            int screen_y = (tile_y - center_tile_y) * TILE_SIZE - tile_offset_y + appl->window_height / 2;
-
-            if (texture) {
-                SDL_Rect dest = {screen_x, screen_y, TILE_SIZE, TILE_SIZE};
-                SDL_RenderCopy(appl->renderer, texture, NULL, &dest);
-            }
-
-            SDL_Texture *trackTex = get_or_render_track_tile(appl, collection, key);
-            if (trackTex) {
-                SDL_Rect dst = {
-                    .x = screen_x,
-                    .y = screen_y,
-                    .w = 256,
-                    .h = 256};
-                SDL_RenderCopy(appl->renderer, trackTex, NULL, &dst);
-            }
+            out[count++] = (VisibleTile){
+                .tile = {tile_x, tile_y, appl->zoom},
+                .screen_x = placed.x,
+                .screen_y = placed.y,
+                .size = placed.w};
         }
     }
-    if (appl->selected_track_overlay[appl->zoom]) {
-        SDL_RenderCopy(appl->renderer, appl->selected_track_overlay[appl->zoom], NULL, NULL);
+    return count;
+}
+
+// Queues a tile for download unless it is already queued or in flight. Reports
+// whether the tile is now somebody's problem, which is what decides if it goes
+// into the pending set: a tile that could not be enqueued must stay askable, or
+// nothing would ever go back for it.
+static bool queue_tile_download(struct application *appl, MapTile tile) {
+    pthread_mutex_lock(&appl->download_queue.lock);
+
+    bool already_queued = fifo_search_data(&appl->download_queue, tile);
+    bool already_downloading = tile_key_equal(appl->download_queue.tile_in_dl, tile);
+    bool accepted = already_queued || already_downloading ||
+                    fifo_write_data(&appl->download_queue, tile);
+
+    pthread_mutex_unlock(&appl->download_queue.lock);
+    return accepted;
+}
+
+// Draws the nearest ancestor of `key` that is in the cache, stretched over the
+// area the missing tile would have covered.
+//
+// Something has to be under a tile that is not there: without this, panning
+// into new ground leaves holes showing whatever the frame was cleared to until
+// the download lands.
+static bool draw_fallback_tile(struct application *appl, const VisibleTile *visible) {
+    for (int depth = 1; depth <= TILE_FALLBACK_DEPTH; depth++) {
+        MapTile ancestor = {.tile_x = visible->tile.tile_x >> depth,
+                            .tile_y = visible->tile.tile_y >> depth,
+                            .zoom = visible->tile.zoom - depth};
+        if (ancestor.zoom < 0)
+            return false;
+
+        SDL_Texture *texture = tile_cache_lookup(&appl->tile_cache, ancestor);
+        if (!texture)
+            continue;
+
+        // The part of the ancestor this tile occupies: one cell of a
+        // 2^depth square grid.
+        const int span = TILE_SIZE >> depth;
+        SDL_Rect source = {.x = (visible->tile.tile_x & ((1 << depth) - 1)) * span,
+                           .y = (visible->tile.tile_y & ((1 << depth) - 1)) * span,
+                           .w = span,
+                           .h = span};
+        SDL_FRect dest = {visible->screen_x, visible->screen_y, visible->size, visible->size};
+        SDL_RenderCopyF(appl->renderer, texture, &source, &dest);
+        return true;
     }
-    return true;
+    return false;
+}
+
+void map_draw_tiles(struct application *appl, const VisibleTile *tiles, int count) {
+    const Uint32 now_ms = SDL_GetTicks();
+    int decodes_left = TILE_DECODES_PER_FRAME;
+
+    for (int i = 0; i < count; i++) {
+        MapTile key = tiles[i].tile;
+
+        // Only a tile that is not already in video memory needs the filesystem
+        // consulted at all.
+        SDL_Texture *texture = tile_cache_lookup(&appl->tile_cache, key);
+        if (!texture && !pending_blocks(key, now_ms)) {
+            char tile_path[TILE_PATH_MAX];
+            tile_cache_path(tile_path, sizeof(tile_path), key);
+
+            if (file_exists(tile_path)) {
+                // The decode and upload are synchronous, so they are rationed:
+                // a pan that uncovers forty cached tiles at once would spend
+                // the whole frame on them. The rest keep their ancestor for a
+                // frame or two, which is only tolerable because there is one.
+                if (decodes_left > 0) {
+                    texture = load_tile_texture(appl, key, tile_path);
+                    decodes_left--;
+                } else {
+                    app_request_redraw(appl); // come back for the rest
+                }
+            } else if (queue_tile_download(appl, key)) {
+                pending_add(key, now_ms);
+            }
+        }
+
+        if (!texture)
+            draw_fallback_tile(appl, &tiles[i]);
+
+        if (texture) {
+            SDL_FRect dest = {tiles[i].screen_x, tiles[i].screen_y,
+                              tiles[i].size, tiles[i].size};
+            SDL_RenderCopyF(appl->renderer, texture, NULL, &dest);
+        }
+    }
 }

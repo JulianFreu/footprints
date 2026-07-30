@@ -1,0 +1,52 @@
+#ifndef UI_TYPES_H
+#define UI_TYPES_H
+
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_ttf.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#include "anim.h"
+#include "config.h"
+#include "filter_types.h"
+
+#define NO_ACTIVE_FILTER (-1)
+
+typedef struct UIState {
+    // Each runs 0 (shut) to 1 (open); the layout offsets are scaled by it.
+    Anim right_sidebar;
+    Anim run_list;
+    Anim filters;
+    bool text_input_mode;
+    char text_input_buffer[INPUT_BUFFER_SIZE];
+    size_t text_input_length;
+    // Packed filter field being edited, or NO_ACTIVE_FILTER. Zero is a valid
+    // packed id, so "none" needs its own value.
+    int active_filter_id;
+} UIState;
+
+typedef struct
+{
+    uint32_t font_id;
+    TTF_Font *font;
+} SDL2_Font;
+
+// Icon surfaces are decoded once at startup and handed to Clay by pointer every
+// frame. Clay does not take ownership, so these are freed in appl_cleanup.
+typedef struct
+{
+    SDL_Surface *menu_burger;
+    SDL_Surface *date;
+    SDL_Surface *clock;
+    SDL_Surface *duration;
+    SDL_Surface *pace;
+    SDL_Surface *distance;
+    SDL_Surface *elev_up;
+    SDL_Surface *elev_down;
+    SDL_Surface *peak;
+    // Regenerated only when the selected track changes, not per frame.
+    SDL_Surface *elev_profile;
+} UiIcons;
+
+#endif

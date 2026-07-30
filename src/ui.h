@@ -1,22 +1,32 @@
-#ifndef ui_h
-#define ui_h
+#ifndef UI_H
+#define UI_H
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_image.h>
-#include <SDL2/SDL_ttf.h>
-#include <stdlib.h>
-#include <string.h>
-#include <math.h>
-#include <unistd.h>
 
-#include "structs.h"
-#include "tracks.h"
-#include "heat.h"
-#include "filters.h"
+#include "app.h"
+#include "gpx_types.h"
+#include "ui_types.h"
 
-float get_delta_time(Uint32 lastFrameTime);
+// Animation and text-input state for the whole UI. Defined in ui.c; the event
+// loop in main.c both reads and drives it.
+extern UIState ui;
+
 void clay_init(struct application *appl);
-void clay_draw_UI(struct application *appl, GpxCollection *collection);
-void clay_free_memory();
+// Input and animation for this frame. Runs before the layout, and asks for
+// another frame while anything is still moving.
+void ui_update(struct application *appl, GpxCollection *collection);
+void clay_draw_ui(struct application *appl, GpxCollection *collection);
+void clay_free_memory(void);
+// Slides the run list and filter panel in or out, whichever is the reverse
+// of what they are doing now.
+void ui_toggle_run_list(void);
+// Text input for the filter fields. The event loop routes keystrokes here
+// rather than reaching into UIState itself.
+bool ui_text_input_active(void);
+void ui_text_input_digit(GpxCollection *collection, char digit);
+void ui_text_input_finish(GpxCollection *collection);
+
+void ui_load_icons(struct application *appl);
+void ui_free_icons(struct application *appl);
 
 #endif
