@@ -15,7 +15,7 @@
 #define EARTH_RADIUS_METERS 6371000.0
 
 bool gpx_parse_all_files(GpxCollection *collection);
-int gpx_count_files();
+int gpx_count_files(void);
 void gpx_parser_cleanup(void);
 
 #endif

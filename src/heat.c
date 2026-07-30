@@ -4,10 +4,10 @@
 
 // Axis the comparator sorts on. Set immediately before each qsort call.
 // Not thread safe -- build_kdtree must stay single threaded.
-int current_axis;
+static int current_axis;
 
 // qsort comparator, ordering by the axis in current_axis
-int compare_points(const void *a, const void *b) {
+static int compare_points(const void *a, const void *b) {
     GpxPoint *p1 = *(GpxPoint **)a;
     GpxPoint *p2 = *(GpxPoint **)b;
     double diff = (current_axis == 0) ? (p1->world_x - p2->world_x) : (p1->world_y - p2->world_y);
@@ -15,7 +15,7 @@ int compare_points(const void *a, const void *b) {
 }
 
 // Allocate a single k-d tree node
-KDNode *create_node(GpxPoint *point, int axis) {
+static KDNode *create_node(GpxPoint *point, int axis) {
     KDNode *node = (KDNode *)malloc(sizeof(KDNode));
     if (!node) {
         perror("malloc failed");
@@ -28,7 +28,7 @@ KDNode *create_node(GpxPoint *point, int axis) {
 }
 
 // Build the k-d tree recursively
-KDNode *build_kdtree(GpxPoint **points, int n, int depth) {
+static KDNode *build_kdtree(GpxPoint **points, int n, int depth) {
     if (n <= 0)
         return NULL;
     int axis = depth % 2;
@@ -41,7 +41,7 @@ KDNode *build_kdtree(GpxPoint **points, int n, int depth) {
     return node;
 }
 
-void free_kdtree(KDNode *node) {
+static void free_kdtree(KDNode *node) {
     if (node == NULL)
         return;
 
@@ -50,14 +50,14 @@ void free_kdtree(KDNode *node) {
     free(node); // only the node itself -- node->point is owned by the track
 }
 
-double squared_distance(GpxPoint p1, GpxPoint p2, float mercator_x_correction) {
+static double squared_distance(GpxPoint p1, GpxPoint p2, float mercator_x_correction) {
     // Flat projection; good enough at the radii we search over.
     long int dx = (p2.world_x - p1.world_x) * mercator_x_correction;
     long int dy = (p2.world_y - p1.world_y);
     return dx * dx + dy * dy;
 }
 
-float get_x_correction_factor(int world_y) {
+static float get_x_correction_factor(int world_y) {
     // Define band thresholds (in world_y) — precomputed
     if (world_y < 33000000)
         return 0.09;
@@ -80,7 +80,7 @@ float get_x_correction_factor(int world_y) {
 }
 
 // Collect the distinct track ids within radius2 of target
-void radius_search(KDNode *node, GpxPoint *target, double radius2, int *count, int *checked_ids, int total_tracks, float x_correction) {
+static void radius_search(KDNode *node, GpxPoint *target, double radius2, int *count, int *checked_ids, int total_tracks, float x_correction) {
     if (!node)
         return;
     if (node->point->track_id != target->track_id && squared_distance(*node->point, *target, x_correction) <= radius2) {
@@ -109,7 +109,7 @@ void radius_search(KDNode *node, GpxPoint *target, double radius2, int *count, i
     }
 }
 
-void print_progress_bar(int current, int total, int bar_width, struct timespec *start_time) {
+static void print_progress_bar(int current, int total, int bar_width, struct timespec *start_time) {
     if (total <= 0)
         return;
 
@@ -138,7 +138,7 @@ void print_progress_bar(int current, int total, int bar_width, struct timespec *
     fflush(stdout);
 }
 
-void *heatmap_worker(void *arg) {
+static void *heatmap_worker(void *arg) {
     HeatmapTask *task = (HeatmapTask *)arg;
 
     int progress_update_increments = 100;
