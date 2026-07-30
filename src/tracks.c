@@ -37,8 +37,7 @@ SDL_Color heat_colors[HEAT_COLOR_COUNT] = {
     {60, 255, 207, 255}};
 
 // Helper: draw a filled circle using triangles (smooth joint cap)
-static void draw_circle(SDL_Renderer *renderer, float cx, float cy, float radius, SDL_Color color)
-{
+static void draw_circle(SDL_Renderer *renderer, float cx, float cy, float radius, SDL_Color color) {
     const int segments = 24;
     SDL_Vertex verts[segments + 2];
     int indices[segments * 3];
@@ -49,8 +48,7 @@ static void draw_circle(SDL_Renderer *renderer, float cx, float cy, float radius
     verts[0].tex_coord.x = 0;
     verts[0].tex_coord.y = 0;
 
-    for (int i = 0; i <= segments; i++)
-    {
+    for (int i = 0; i <= segments; i++) {
         float theta = (float)i / segments * 2.0f * (float)M_PI;
         verts[i + 1].position.x = cx + cosf(theta) * radius;
         verts[i + 1].position.y = cy + sinf(theta) * radius;
@@ -58,8 +56,7 @@ static void draw_circle(SDL_Renderer *renderer, float cx, float cy, float radius
         verts[i + 1].tex_coord.x = 0;
         verts[i + 1].tex_coord.y = 0;
 
-        if (i > 0)
-        {
+        if (i > 0) {
             int idx = (i - 1) * 3;
             indices[idx + 0] = 0;
             indices[idx + 1] = i;
@@ -73,8 +70,7 @@ static void draw_circle(SDL_Renderer *renderer, float cx, float cy, float radius
 // Draw a single thick line segment
 static void draw_segment(SDL_Renderer *renderer,
                          float x1, float y1, float x2, float y2,
-                         float thickness, SDL_Color color)
-{
+                         float thickness, SDL_Color color) {
     float dx = x2 - x1;
     float dy = y2 - y1;
     float len = sqrtf(dx * dx + dy * dy);
@@ -109,24 +105,21 @@ static void draw_segment(SDL_Renderer *renderer,
 // Draw a smooth, thick polyline connecting many points
 void draw_smooth_thick_polyline(SDL_Renderer *renderer,
                                 SDL_Point *points, int count,
-                                float thickness, SDL_Color color)
-{
+                                float thickness, SDL_Color color) {
     if (count < 2)
         return;
 
     // Enable alpha blending
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
-    for (int i = 0; i < count - 1; i++)
-    {
+    for (int i = 0; i < count - 1; i++) {
         draw_segment(renderer,
                      points[i].x, points[i].y,
                      points[i + 1].x, points[i + 1].y,
                      thickness, color);
 
         // Round joint at each point (except first)
-        if (i > 0)
-        {
+        if (i > 0) {
             draw_circle(renderer, points[i].x, points[i].y, thickness / 2.0f, color);
         }
     }
@@ -136,20 +129,16 @@ void draw_smooth_thick_polyline(SDL_Renderer *renderer,
     draw_circle(renderer, points[count - 1].x, points[count - 1].y, thickness / 2.0f, color);
 }
 
-void append_to_track_tile_cache(TrackTileTextureCache *cache, TrackTileTexture entry)
-{
-    if (cache->size >= cache->capacity)
-    {
+void append_to_track_tile_cache(TrackTileTextureCache *cache, TrackTileTexture entry) {
+    if (cache->size >= cache->capacity) {
         cache->capacity = cache->capacity == 0 ? 64 : cache->capacity * 2;
         cache->entries = realloc(cache->entries, cache->capacity * sizeof(TrackTileTexture));
     }
     cache->entries[cache->size++] = entry;
 }
 
-void free_track_tile_cache(TrackTileTextureCache *cache)
-{
-    for (int i = 0; i < cache->size; i++)
-    {
+void free_track_tile_cache(TrackTileTextureCache *cache) {
+    for (int i = 0; i < cache->size; i++) {
         if (cache->entries[i].texture)
             SDL_DestroyTexture(cache->entries[i].texture);
     }
@@ -159,13 +148,10 @@ void free_track_tile_cache(TrackTileTextureCache *cache)
     cache->capacity = 0;
 }
 
-SDL_Texture *get_or_render_track_tile(struct application *appl, GpxCollection *collection, MapTile key)
-{
+SDL_Texture *get_or_render_track_tile(struct application *appl, GpxCollection *collection, MapTile key) {
     // Check if already cached
-    for (int i = 0; i < collection->track_tile_cache.size; i++)
-    {
-        if (tile_key_equal(collection->track_tile_cache.entries[i].key, key))
-        {
+    for (int i = 0; i < collection->track_tile_cache.size; i++) {
+        if (tile_key_equal(collection->track_tile_cache.entries[i].key, key)) {
             return collection->track_tile_cache.entries[i].texture;
         }
     }
@@ -177,23 +163,17 @@ SDL_Texture *get_or_render_track_tile(struct application *appl, GpxCollection *c
         .point_count = 0,
         .capacity = 0};
 
-    for (int t = 0; t < collection->total_tracks; t++)
-    {
-        if (collection->tracks[t].visible_in_list)
-        {
+    for (int t = 0; t < collection->total_tracks; t++) {
+        if (collection->tracks[t].visible_in_list) {
             GpxTrack *track = &collection->tracks[t];
-            for (int i = 0; i < track->total_points; i++)
-            {
+            for (int i = 0; i < track->total_points; i++) {
                 int world_x = track->points[i].world_x;
                 int world_y = track->points[i].world_y;
                 int tile_x, tile_y, pixel_in_tile_x, pixel_in_tile_y;
                 conv_pixel_to_tile_and_offset(world_x, world_y, MAX_ZOOM, key.zoom, &tile_x, &tile_y, &pixel_in_tile_x, &pixel_in_tile_y);
 
-                if (tile_x == key.tile_x && tile_y == key.tile_y)
-                {
-
-                    if (ctp.point_count >= ctp.capacity)
-                    {
+                if (tile_x == key.tile_x && tile_y == key.tile_y) {
+                    if (ctp.point_count >= ctp.capacity) {
                         ctp.capacity = ctp.capacity == 0 ? 16 : ctp.capacity * 2;
                         ctp.points = realloc(ctp.points, ctp.capacity * sizeof(HeatPoint));
                     }
@@ -208,8 +188,7 @@ SDL_Texture *get_or_render_track_tile(struct application *appl, GpxCollection *c
     }
 
     SDL_Texture *tex = SDL_CreateTexture(appl->renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, 256, 256);
-    if (!tex)
-    {
+    if (!tex) {
         free(ctp.points);
         return NULL;
     }
@@ -224,8 +203,7 @@ SDL_Texture *get_or_render_track_tile(struct application *appl, GpxCollection *c
     int blue = 0;
     float max_heat = (float)collection->max_heat;
     float min_heat = 1.0;
-    for (int j = 0; j < ctp.point_count; j++)
-    {
+    for (int j = 0; j < ctp.point_count; j++) {
         float heat = (float)ctp.points[j].heat;
 
         // Normalize heat
@@ -261,27 +239,22 @@ SDL_Texture *get_or_render_track_tile(struct application *appl, GpxCollection *c
     return tex;
 }
 
-int find_track_near_click(GpxCollection *collection, int click_world_x, int click_world_y, int current_zoom, int max_pixel_distance)
-{
+int find_track_near_click(GpxCollection *collection, int click_world_x, int click_world_y, int current_zoom, int max_pixel_distance) {
     int closest_track_id = -1;
     int64_t closest_distance_squared = max_pixel_distance * max_pixel_distance;
 
-    for (int i = 0; i < collection->total_tracks; i++)
-    {
-        if (collection->tracks[i].visible_in_list)
-        {
+    for (int i = 0; i < collection->total_tracks; i++) {
+        if (collection->tracks[i].visible_in_list) {
             GpxTrack *track = &collection->tracks[i];
 
-            for (int j = 0; j < track->total_points; j++)
-            {
+            for (int j = 0; j < track->total_points; j++) {
                 GpxPoint *pt = &track->points[j];
 
                 int64_t dx = (pt->world_x - click_world_x) >> (MAX_ZOOM - current_zoom);
                 int64_t dy = (pt->world_y - click_world_y) >> (MAX_ZOOM - current_zoom);
                 int64_t dist_squared = dx * dx + dy * dy;
 
-                if (0 < dist_squared && dist_squared < closest_distance_squared)
-                {
+                if (0 < dist_squared && dist_squared < closest_distance_squared) {
                     closest_distance_squared = dist_squared;
                     closest_track_id = track->track_id;
                 }
@@ -291,13 +264,10 @@ int find_track_near_click(GpxCollection *collection, int click_world_x, int clic
     return closest_track_id; // will be -1 when there was no track nearby
 }
 
-void update_selected_track_overlay(struct application *appl, GpxCollection *collection)
-{
+void update_selected_track_overlay(struct application *appl, GpxCollection *collection) {
     int zoom = appl->zoom;
-    if (appl->selected_track < 0 || appl->selected_track >= collection->total_tracks)
-    {
-        if (appl->selected_track_overlay[zoom])
-        {
+    if (appl->selected_track < 0 || appl->selected_track >= collection->total_tracks) {
+        if (appl->selected_track_overlay[zoom]) {
             SDL_DestroyTexture(appl->selected_track_overlay[zoom]);
             appl->selected_track_overlay[zoom] = NULL;
         }
@@ -305,8 +275,7 @@ void update_selected_track_overlay(struct application *appl, GpxCollection *coll
     }
 
     // destroy old texture
-    if (appl->selected_track_overlay[zoom])
-    {
+    if (appl->selected_track_overlay[zoom]) {
         SDL_DestroyTexture(appl->selected_track_overlay[zoom]);
         appl->selected_track_overlay[zoom] = NULL;
     }
@@ -318,8 +287,7 @@ void update_selected_track_overlay(struct application *appl, GpxCollection *coll
                                              appl->window_width,
                                              appl->window_height);
 
-    if (!overlay)
-    {
+    if (!overlay) {
         SDL_Log("Fehler beim Erstellen der Overlay-Textur: %s", SDL_GetError());
         return;
     }
@@ -333,10 +301,8 @@ void update_selected_track_overlay(struct application *appl, GpxCollection *coll
 
     // Find track
     GpxTrack *track = NULL;
-    for (int i = 0; i < collection->total_tracks; i++)
-    {
-        if (collection->tracks[i].track_id == appl->selected_track)
-        {
+    for (int i = 0; i < collection->total_tracks; i++) {
+        if (collection->tracks[i].track_id == appl->selected_track) {
             track = &collection->tracks[i];
             break;
         }
@@ -347,8 +313,7 @@ void update_selected_track_overlay(struct application *appl, GpxCollection *coll
     int zoom_factor = 1 << (MAX_ZOOM - zoom);
 
     SDL_Point pts[track->total_points];
-    for (int i = 0; i < track->total_points; i++)
-    {
+    for (int i = 0; i < track->total_points; i++) {
         pts[i].x = ((track->points[i].world_x - appl->world_x) / zoom_factor) + (appl->window_width / 2);
         pts[i].y = ((track->points[i].world_y - appl->world_y) / zoom_factor) + (appl->window_height / 2);
     }
@@ -361,8 +326,7 @@ void update_selected_track_overlay(struct application *appl, GpxCollection *coll
     appl->selected_track_overlay[zoom] = overlay;
 }
 
-SDL_Texture *generate_elevation_profile_texture(SDL_Renderer *renderer, const GpxTrack track, int width, int height)
-{
+SDL_Texture *generate_elevation_profile_texture(SDL_Renderer *renderer, const GpxTrack track, int width, int height) {
     if (!renderer || track.total_points < 2)
         return NULL;
 
@@ -370,8 +334,7 @@ SDL_Texture *generate_elevation_profile_texture(SDL_Renderer *renderer, const Gp
                                              SDL_PIXELFORMAT_RGBA8888,
                                              SDL_TEXTUREACCESS_TARGET,
                                              width, height);
-    if (!texture)
-    {
+    if (!texture) {
         fprintf(stderr, "SDL_CreateTexture failed: %s\n", SDL_GetError());
         return NULL;
     }
@@ -385,8 +348,7 @@ SDL_Texture *generate_elevation_profile_texture(SDL_Renderer *renderer, const Gp
     // Calculate min and max height plus some margin
     float min_elev = track.points[0].elevation;
     float max_elev = track.points[0].elevation;
-    for (int i = 1; i < track.total_points; i++)
-    {
+    for (int i = 1; i < track.total_points; i++) {
         if (track.points[i].elevation < min_elev)
             min_elev = track.points[i].elevation;
         if (track.points[i].elevation > max_elev)
@@ -395,22 +357,20 @@ SDL_Texture *generate_elevation_profile_texture(SDL_Renderer *renderer, const Gp
     if (max_elev == min_elev)
         max_elev += 1.0f;
 
-    min_elev -= (max_elev - min_elev)/10;
-    max_elev += (max_elev - min_elev)/10;
+    min_elev -= (max_elev - min_elev) / 10;
+    max_elev += (max_elev - min_elev) / 10;
 
     float total_distance_m = track.points[track.total_points - 1].partial_distance;
 
     // Prepare points for polygon
     SDL_Point *polygon_points = malloc(sizeof(SDL_Point) * (track.total_points + 2));
-    if (!polygon_points)
-    {
+    if (!polygon_points) {
         SDL_SetRenderTarget(renderer, prev_target);
         SDL_DestroyTexture(texture);
         return NULL;
     }
 
-    for (int i = 0; i < track.total_points; i++)
-    {
+    for (int i = 0; i < track.total_points; i++) {
         int x = (int)((track.points[i].partial_distance / total_distance_m) * width);
         int y = height - (int)(((track.points[i].elevation - min_elev) / (max_elev - min_elev)) * height);
         polygon_points[i] = (SDL_Point){x, y};
@@ -423,16 +383,14 @@ SDL_Texture *generate_elevation_profile_texture(SDL_Renderer *renderer, const Gp
     SDL_SetRenderDrawColor(renderer, 150, 200, 255, 255); // fill color
     SDL_RenderDrawLines(renderer, polygon_points, track.total_points + 2);
 
-    for (int i = 1; i < track.total_points; i++)
-    {
+    for (int i = 1; i < track.total_points; i++) {
         int x1 = (int)((track.points[i - 1].partial_distance / total_distance_m) * width);
         int y1 = height - (int)(((track.points[i - 1].elevation - min_elev) / (max_elev - min_elev)) * height);
         int x2 = (int)((track.points[i].partial_distance / total_distance_m) * width);
         int y2 = height - (int)(((track.points[i].elevation - min_elev) / (max_elev - min_elev)) * height);
 
         // Fill area underneath two points tirangle + quad
-        for (int x = x1; x <= x2; x++)
-        {
+        for (int x = x1; x <= x2; x++) {
             float t = (float)(x - x1) / (x2 - x1);
             int y = (int)((1 - t) * y1 + t * y2);
             SDL_RenderDrawLine(renderer, x, y, x, height);
@@ -448,12 +406,10 @@ SDL_Texture *generate_elevation_profile_texture(SDL_Renderer *renderer, const Gp
     return texture;
 }
 
-void save_elevation_profile_as_png(SDL_Renderer *renderer, const GpxTrack track, const char *filepath, int width, int height)
-{
+void save_elevation_profile_as_png(SDL_Renderer *renderer, const GpxTrack track, const char *filepath, int width, int height) {
     // Create a target texture (RGBA)
     SDL_Texture *target = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, width, height);
-    if (!target)
-    {
+    if (!target) {
         SDL_Log("Failed to create target texture: %s", SDL_GetError());
         return;
     }
@@ -473,8 +429,7 @@ void save_elevation_profile_as_png(SDL_Renderer *renderer, const GpxTrack track,
 
     // Create surface to copy pixels into
     SDL_Surface *surface = SDL_CreateRGBSurfaceWithFormat(0, width, height, 32, SDL_PIXELFORMAT_RGBA32);
-    if (!surface)
-    {
+    if (!surface) {
         SDL_Log("Failed to create surface: %s", SDL_GetError());
         SDL_SetRenderTarget(renderer, prev_target);
         SDL_DestroyTexture(target);
@@ -485,8 +440,7 @@ void save_elevation_profile_as_png(SDL_Renderer *renderer, const GpxTrack track,
     SDL_RenderReadPixels(renderer, NULL, SDL_PIXELFORMAT_RGBA32, surface->pixels, surface->pitch);
 
     // Save surface as PNG
-    if (IMG_SavePNG(surface, filepath) != 0)
-    {
+    if (IMG_SavePNG(surface, filepath) != 0) {
         SDL_Log("Failed to save PNG: %s", IMG_GetError());
     }
 
@@ -496,11 +450,9 @@ void save_elevation_profile_as_png(SDL_Renderer *renderer, const GpxTrack track,
     SDL_DestroyTexture(target);
 }
 
-void update_track_info_graphs(struct application *appl, GpxCollection collection)
-{
-  static int prev_selected_track = -1;
-  if (appl->selected_track >= 0 && prev_selected_track != appl->selected_track)
-  {
-    save_elevation_profile_as_png(appl->renderer, collection.tracks[appl->selected_track], "resources/elev_profile.png", 200, 100);
-  }
+void update_track_info_graphs(struct application *appl, GpxCollection collection) {
+    static int prev_selected_track = -1;
+    if (appl->selected_track >= 0 && prev_selected_track != appl->selected_track) {
+        save_elevation_profile_as_png(appl->renderer, collection.tracks[appl->selected_track], "resources/elev_profile.png", 200, 100);
+    }
 }

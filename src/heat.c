@@ -4,8 +4,7 @@
 int current_axis;
 
 // Vergleichsfunktion für qsort
-int compare_points(const void *a, const void *b)
-{
+int compare_points(const void *a, const void *b) {
     GpxPoint *p1 = *(GpxPoint **)a;
     GpxPoint *p2 = *(GpxPoint **)b;
     double diff = (current_axis == 0) ? (p1->world_x - p2->world_x) : (p1->world_y - p2->world_y);
@@ -13,11 +12,9 @@ int compare_points(const void *a, const void *b)
 }
 
 // Erstelle einen neuen Knoten
-KDNode *create_node(GpxPoint *point, int axis)
-{
+KDNode *create_node(GpxPoint *point, int axis) {
     KDNode *node = (KDNode *)malloc(sizeof(KDNode));
-    if (!node)
-    {
+    if (!node) {
         perror("malloc failed");
         exit(EXIT_FAILURE);
     }
@@ -28,8 +25,7 @@ KDNode *create_node(GpxPoint *point, int axis)
 }
 
 // Baue den k-d-Tree rekursiv
-KDNode *build_kdtree(GpxPoint **points, int n, int depth)
-{
+KDNode *build_kdtree(GpxPoint **points, int n, int depth) {
     if (n <= 0)
         return NULL;
     int axis = depth % 2;
@@ -42,8 +38,7 @@ KDNode *build_kdtree(GpxPoint **points, int n, int depth)
     return node;
 }
 
-void free_kdtree(KDNode *node)
-{
+void free_kdtree(KDNode *node) {
     if (node == NULL)
         return;
 
@@ -52,16 +47,14 @@ void free_kdtree(KDNode *node)
     free(node); // Nur der KDNode selbst, nicht node->point!
 }
 
-double squared_distance(GpxPoint p1, GpxPoint p2, float mercator_x_correction)
-{
+double squared_distance(GpxPoint p1, GpxPoint p2, float mercator_x_correction) {
     // einfache flache projektion
     long int dx = (p2.world_x - p1.world_x) * mercator_x_correction;
     long int dy = (p2.world_y - p1.world_y);
     return dx * dx + dy * dy;
 }
 
-float get_x_correction_factor(int world_y)
-{
+float get_x_correction_factor(int world_y) {
     // Define band thresholds (in world_y) — precomputed
     if (world_y < 33000000)
         return 0.09;
@@ -84,45 +77,36 @@ float get_x_correction_factor(int world_y)
 }
 
 // Radius-Suche
-void radius_search(KDNode *node, GpxPoint *target, double radius2, int *count, int *checked_ids, int total_tracks, float x_correction)
-{
+void radius_search(KDNode *node, GpxPoint *target, double radius2, int *count, int *checked_ids, int total_tracks, float x_correction) {
     if (!node)
         return;
-    if (node->point->track_id != target->track_id && squared_distance(*node->point, *target, x_correction) <= radius2)
-    {
+    if (node->point->track_id != target->track_id && squared_distance(*node->point, *target, x_correction) <= radius2) {
         bool idAlreadyChecked = false;
-        for (int i = 0; i < *count; i++)
-        {
-            if (node->point->track_id == checked_ids[i])
-            {
+        for (int i = 0; i < *count; i++) {
+            if (node->point->track_id == checked_ids[i]) {
                 idAlreadyChecked = true;
                 break;
             }
         }
-        if (!idAlreadyChecked && *count < total_tracks)
-        {
+        if (!idAlreadyChecked && *count < total_tracks) {
             checked_ids[*count] = node->point->track_id;
             (*count)++;
         }
     }
     int axis = node->axis;
     float diff = (axis == 0) ? target->world_x - node->point->world_x : target->world_y - node->point->world_y;
-    if (diff <= 0)
-    {
+    if (diff <= 0) {
         radius_search(node->left, target, radius2, count, checked_ids, total_tracks, x_correction);
         if (diff * diff <= radius2)
             radius_search(node->right, target, radius2, count, checked_ids, total_tracks, x_correction);
-    }
-    else
-    {
+    } else {
         radius_search(node->right, target, radius2, count, checked_ids, total_tracks, x_correction);
         if (diff * diff <= radius2)
             radius_search(node->left, target, radius2, count, checked_ids, total_tracks, x_correction);
     }
 }
 
-void print_progress_bar(int current, int total, int bar_width, struct timespec *start_time)
-{
+void print_progress_bar(int current, int total, int bar_width, struct timespec *start_time) {
     struct timespec current_time;
     clock_gettime(CLOCK_MONOTONIC, &current_time);
     double elapsed = (current_time.tv_sec - start_time->tv_sec) +
@@ -136,8 +120,7 @@ void print_progress_bar(int current, int total, int bar_width, struct timespec *
     float progress = (float)current / total;
     int pos = (int)(bar_width * progress);
     printf("\r[");
-    for (int i = 0; i < bar_width; ++i)
-    {
+    for (int i = 0; i < bar_width; ++i) {
         if (i < pos)
             printf("=");
         else if (i == pos)
@@ -149,21 +132,18 @@ void print_progress_bar(int current, int total, int bar_width, struct timespec *
     fflush(stdout);
 }
 
-void *heatmap_worker(void *arg)
-{
+void *heatmap_worker(void *arg) {
     HeatmapTask *task = (HeatmapTask *)arg;
 
     int progress_update_increments = 100;
 
     int *checked_ids = (int *)malloc(task->total_tracks * sizeof(int));
-    if (!checked_ids)
-    {
+    if (!checked_ids) {
         fprintf(stderr, "Thread malloc failed\n");
         return NULL;
     }
 
-    for (int i = task->start; i < task->end; i++)
-    {
+    for (int i = task->start; i < task->end; i++) {
         float x_correction = get_x_correction_factor(task->points[i]->world_y);
         // search for points in range
         int count = 0;
@@ -172,15 +152,13 @@ void *heatmap_worker(void *arg)
         task->points[i]->heat = count;
 
         pthread_mutex_lock(task->max_mutex);
-        if (count > *(task->thread_max_heat))
-        {
+        if (count > *(task->thread_max_heat)) {
             *(task->thread_max_heat) = count;
         }
         pthread_mutex_unlock(task->max_mutex);
 
         task->thread_progress++;
-        if (task->thread_progress >= progress_update_increments)
-        {
+        if (task->thread_progress >= progress_update_increments) {
             pthread_mutex_lock(task->progress_mutex);
             *(task->total_progress) += task->thread_progress;
             task->thread_progress = 0;
@@ -195,14 +173,11 @@ void *heatmap_worker(void *arg)
     return NULL;
 }
 
-bool calculate_heatmap(GpxCollection *collection)
-{
+bool calculate_heatmap(GpxCollection *collection) {
     // convert gpx track collection a single big point collection
     int total_points = 0;
-    for (int i = 0; i < collection->total_tracks; i++)
-    {
-        if (collection->tracks[i].visible_in_list == true)
-        {
+    for (int i = 0; i < collection->total_tracks; i++) {
+        if (collection->tracks[i].visible_in_list == true) {
             total_points = total_points + collection->tracks[i].total_points;
             printf("%d points in track %d\n", collection->tracks[i].total_points, i);
         }
@@ -210,18 +185,14 @@ bool calculate_heatmap(GpxCollection *collection)
     printf("There are %d data points in total\n", total_points);
     printf("Collecting all points in one array\n");
     GpxPoint **points = (GpxPoint **)malloc(total_points * sizeof(GpxPoint *));
-    if (!points)
-    {
+    if (!points) {
         perror("malloc failed");
         return false;
     }
     int i = 0;
-    for (int track_id = 0; track_id < collection->total_tracks; track_id++)
-    {
-        if (collection->tracks[track_id].visible_in_list == true)
-        {
-            for (int point_id = 0; point_id < collection->tracks[track_id].total_points; point_id++)
-            {
+    for (int track_id = 0; track_id < collection->total_tracks; track_id++) {
+        if (collection->tracks[track_id].visible_in_list == true) {
+            for (int point_id = 0; point_id < collection->tracks[track_id].total_points; point_id++) {
                 points[i] = &collection->tracks[track_id].points[point_id];
                 i++;
             }
@@ -246,8 +217,7 @@ bool calculate_heatmap(GpxCollection *collection)
     int total_progress = 0;
     int chunk_size = total_points / NUM_THREADS;
 
-    for (int t = 0; t < NUM_THREADS; t++)
-    {
+    for (int t = 0; t < NUM_THREADS; t++) {
         tasks[t].points = points;
         tasks[t].start = t * chunk_size;
         tasks[t].end = (t == NUM_THREADS - 1) ? total_points : (t + 1) * chunk_size;
@@ -260,20 +230,17 @@ bool calculate_heatmap(GpxCollection *collection)
         tasks[t].thread_progress = 0;
         tasks[t].total_progress = &total_progress;
 
-        if (pthread_create(&threads[t], NULL, heatmap_worker, &tasks[t]) != 0)
-        {
+        if (pthread_create(&threads[t], NULL, heatmap_worker, &tasks[t]) != 0) {
             perror("pthread_create failed");
             free_kdtree(tree);
             free(points);
             return false;
         }
     }
-    while (true)
-    {
+    while (true) {
         pthread_mutex_lock(&progress_mutex);
         print_progress_bar(total_progress, total_points, 30, &start_time);
-        if (total_progress >= total_points)
-        {
+        if (total_progress >= total_points) {
             pthread_mutex_unlock(&progress_mutex);
             break;
         }
@@ -281,8 +248,7 @@ bool calculate_heatmap(GpxCollection *collection)
         usleep(100000);
     }
 
-    for (int t = 0; t < NUM_THREADS; t++)
-    {
+    for (int t = 0; t < NUM_THREADS; t++) {
         pthread_join(threads[t], NULL);
     }
 
