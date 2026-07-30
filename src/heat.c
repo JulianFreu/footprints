@@ -176,6 +176,16 @@ void *heatmap_worker(void *arg) {
     return NULL;
 }
 
+// Number of heat workers to run: one per online core, clamped to a sane range.
+static int heat_worker_count(void) {
+    long cores = sysconf(_SC_NPROCESSORS_ONLN);
+    if (cores < 1)
+        cores = 1;
+    if (cores > 64)
+        cores = 64;
+    return (int)cores;
+}
+
 bool calculate_heatmap(GpxCollection *collection) {
     // convert gpx track collection a single big point collection
     int total_points = 0;
@@ -202,28 +212,42 @@ bool calculate_heatmap(GpxCollection *collection) {
         }
     }
 
+    if (total_points == 0) {
+        free(points);
+        collection->max_heat = 0;
+        printf("No visible points; nothing to calculate\n");
+        return true;
+    }
+
     struct timespec start_time, end_time;
-    clock_gettime(CLOCK_MONOTONIC, &start_time); // Startzeit messen
+    clock_gettime(CLOCK_MONOTONIC, &start_time);
     printf("Building kdtree\n");
-    float radius = 200.0f;
-    float radius2 = radius * radius;
+    float radius2 = HEAT_RADIUS_PIXELS * HEAT_RADIUS_PIXELS;
     KDNode *tree = build_kdtree(points, total_points, 0);
 
-    printf("Calculating heat in %d threads\n", NUM_THREADS);
+    // One worker per core, but never more workers than points -- a fixed count
+    // left every thread but the last with an empty range on small datasets,
+    // because total_points / NUM_THREADS truncated to 0.
+    int thread_count = heat_worker_count();
+    if (thread_count > total_points)
+        thread_count = total_points;
 
-    pthread_t threads[NUM_THREADS];
-    HeatmapTask tasks[NUM_THREADS];
+    printf("Calculating heat in %d threads\n", thread_count);
+
+    pthread_t threads[thread_count];
+    HeatmapTask tasks[thread_count];
     pthread_mutex_t max_mutex = PTHREAD_MUTEX_INITIALIZER;
     pthread_mutex_t progress_mutex = PTHREAD_MUTEX_INITIALIZER;
     int max_heat = 0;
 
     int total_progress = 0;
-    int chunk_size = total_points / NUM_THREADS;
 
-    for (int t = 0; t < NUM_THREADS; t++) {
+    for (int t = 0; t < thread_count; t++) {
         tasks[t].points = points;
-        tasks[t].start = t * chunk_size;
-        tasks[t].end = (t == NUM_THREADS - 1) ? total_points : (t + 1) * chunk_size;
+        // Spread the remainder over the first few workers instead of piling it
+        // all onto the last one.
+        tasks[t].start = (int)((int64_t)total_points * t / thread_count);
+        tasks[t].end = (int)((int64_t)total_points * (t + 1) / thread_count);
         tasks[t].tree = tree;
         tasks[t].radius2 = radius2;
         tasks[t].total_tracks = collection->total_tracks;
@@ -251,7 +275,7 @@ bool calculate_heatmap(GpxCollection *collection) {
         usleep(100000);
     }
 
-    for (int t = 0; t < NUM_THREADS; t++) {
+    for (int t = 0; t < thread_count; t++) {
         pthread_join(threads[t], NULL);
     }
 

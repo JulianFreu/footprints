@@ -59,6 +59,11 @@ time_t parse_european_date(const char *date) {
 }
 
 void apply_filter_values(GpxCollection *c) {
+    // Parse the two filter bounds once. These were re-parsed inside the loop,
+    // once per track per call, and each failed parse logged to stderr.
+    const time_t range_start = parse_european_date(c->filters.start_date_str_filter);
+    const time_t range_end = parse_european_date(c->filters.end_date_str_filter);
+
     for (int i = 0; i < c->total_tracks; i++) {
         // default: visible
         c->tracks[i].visible_in_list = true;
@@ -86,7 +91,8 @@ void apply_filter_values(GpxCollection *c) {
             c->tracks[i].visible_in_list = false;
         if (c->tracks[i].high_point - c->filters.high_point_low < -0.01 || c->tracks[i].high_point - c->filters.high_point_high > 0.01)
             c->tracks[i].visible_in_list = false;
-        if (parse_iso8601(c->tracks[i].start_time_raw) < parse_european_date(c->filters.start_date_str_filter) || parse_iso8601(c->tracks[i].end_time_raw) > parse_european_date(c->filters.end_date_str_filter))
+        if (parse_iso8601(c->tracks[i].start_time_raw) < range_start ||
+            parse_iso8601(c->tracks[i].end_time_raw) > range_end)
             c->tracks[i].visible_in_list = false;
     }
     int counter = 0;
