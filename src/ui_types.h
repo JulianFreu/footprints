@@ -8,19 +8,7 @@
 #include <stdint.h>
 
 #include "config.h"
-
-// Filter identifiers. The low bits select which attribute a filter edits; the
-// two high bits select which end of its range, so a field is addressed as
-// e.g. FILTER_DISTANCE | HIGH_LIMIT.
-#define FILTER_DISTANCE 0b0000000000000001
-#define FILTER_DATE 0b0000000000000010
-#define FILTER_DURATION 0b0000000000000100
-#define FILTER_UPHILL 0b0000000000001000
-#define FILTER_DOWNHILL 0b0000000000010000
-#define FILTER_PEAK 0b0000000000100000
-#define FILTER_PACE 0b0000000001000000
-#define HIGH_LIMIT 0b1000000000000000
-#define LOW_LIMIT 0b0100000000000000
+#include "filter_types.h"
 
 typedef struct AnimationState {
     bool opening;

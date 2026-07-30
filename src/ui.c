@@ -108,8 +108,8 @@ static void clear_char_array(char *str, int size) {
 
 static void format_pace_filter_str(char *str) {
     if (ui.text_input_length < 7) {
-        clear_char_array(str, INPUT_BUFFER_SIZE);
-        snprintf(str, INPUT_BUFFER_SIZE, "%s", ui.text_input_buffer);
+        clear_char_array(str, FILTER_TEXT_SIZE);
+        snprintf(str, FILTER_TEXT_SIZE, "%s", ui.text_input_buffer);
         if (ui.text_input_length > 2) {
             str[ui.text_input_length] = str[ui.text_input_length - 1];
             str[ui.text_input_length - 1] = str[ui.text_input_length - 2];
@@ -120,7 +120,7 @@ static void format_pace_filter_str(char *str) {
 
 static void format_date_filter_str(char *str) {
     if (ui.text_input_length < 9) {
-        clear_char_array(str, INPUT_BUFFER_SIZE);
+        clear_char_array(str, FILTER_TEXT_SIZE);
         str[0] = ui.text_input_buffer[0];
         str[1] = ui.text_input_buffer[1];
         str[2] = '.';
@@ -136,8 +136,8 @@ static void format_date_filter_str(char *str) {
 
 static void format_duration_filter_str(char *str) {
     if (ui.text_input_length < 8) {
-        clear_char_array(str, INPUT_BUFFER_SIZE);
-        snprintf(str, INPUT_BUFFER_SIZE, "%s", ui.text_input_buffer);
+        clear_char_array(str, FILTER_TEXT_SIZE);
+        snprintf(str, FILTER_TEXT_SIZE, "%s", ui.text_input_buffer);
         if (ui.text_input_length > 2) {
             str[ui.text_input_length] = str[ui.text_input_length - 1];
             str[ui.text_input_length - 1] = str[ui.text_input_length - 2];
@@ -156,36 +156,63 @@ static void format_duration_filter_str(char *str) {
 
 static void format_elev_filter_str(char *str) {
     if (ui.text_input_length < 6) {
-        clear_char_array(str, INPUT_BUFFER_SIZE);
-        snprintf(str, INPUT_BUFFER_SIZE, "%s", ui.text_input_buffer);
+        clear_char_array(str, FILTER_TEXT_SIZE);
+        snprintf(str, FILTER_TEXT_SIZE, "%s", ui.text_input_buffer);
     }
 }
 
 static void format_distance_filter_str(char *str) {
     if (ui.text_input_length == 0) {
-        clear_char_array(str, INPUT_BUFFER_SIZE);
+        clear_char_array(str, FILTER_TEXT_SIZE);
     } else if (ui.text_input_length == 1) {
-        clear_char_array(str, INPUT_BUFFER_SIZE);
+        clear_char_array(str, FILTER_TEXT_SIZE);
         str[0] = '0';
         str[1] = '.';
         str[2] = '0';
         str[3] = ui.text_input_buffer[0];
     } else if (ui.text_input_length == 2) {
-        clear_char_array(str, INPUT_BUFFER_SIZE);
+        clear_char_array(str, FILTER_TEXT_SIZE);
         str[0] = '0';
         str[1] = '.';
         str[2] = ui.text_input_buffer[0];
         str[3] = ui.text_input_buffer[1];
     } else if (ui.text_input_length < 7) {
-        clear_char_array(str, INPUT_BUFFER_SIZE);
-        snprintf(str, INPUT_BUFFER_SIZE, "%s", ui.text_input_buffer);
+        clear_char_array(str, FILTER_TEXT_SIZE);
+        snprintf(str, FILTER_TEXT_SIZE, "%s", ui.text_input_buffer);
         str[ui.text_input_length - 2] = '.';
         str[ui.text_input_length - 1] = ui.text_input_buffer[ui.text_input_length - 2];
         str[ui.text_input_length] = ui.text_input_buffer[ui.text_input_length - 1];
     }
 }
 
+// Lays typed digits out into the field's display form. Which layout applies
+// comes from the field's FilterFormat, so a new filter reusing an existing
+// shape needs nothing here.
+static void format_filter_input(char *str, FilterFormat format) {
+    switch (format) {
+    case FILTER_FORMAT_DATE:
+        format_date_filter_str(str);
+        break;
+    case FILTER_FORMAT_DISTANCE:
+        format_distance_filter_str(str);
+        break;
+    case FILTER_FORMAT_DURATION:
+        format_duration_filter_str(str);
+        break;
+    case FILTER_FORMAT_PACE:
+        format_pace_filter_str(str);
+        break;
+    case FILTER_FORMAT_ELEVATION:
+        format_elev_filter_str(str);
+        break;
+    }
+}
+
 static void draw_input_field(uint16_t filter_id, FilterSettings *filters) {
+    const FilterField *field = filter_field_lookup(filter_id);
+    if (!field)
+        return;
+
     CLAY(CLAY_IDI_LOCAL("InputFieldFilter", filter_id),
          {
              .border = {.color = border, .width = (ui.text_input_mode && ui.activeFilterID == filter_id) ? (Clay_BorderWidth)CLAY_BORDER_OUTSIDE(3) : (Clay_BorderWidth)CLAY_BORDER_OUTSIDE(0)},
@@ -195,83 +222,12 @@ static void draw_input_field(uint16_t filter_id, FilterSettings *filters) {
              .backgroundColor = Clay_Hovered() ? blue : darkBlue,
              .cornerRadius = CORNER_RADIUS,
          }) {
-        int font_size = 12;
-        Clay_Color color = bg1;
         Clay_OnHover(clicked_filter_field, filter_id);
-        switch (filter_id) {
-        case FILTER_DATE | HIGH_LIMIT:
-            if (filter_id == ui.activeFilterID)
-                format_date_filter_str(filters->end_date_str);
-            draw_clay_text(filters->end_date_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
-            break;
-        case FILTER_DATE | LOW_LIMIT:
-            if (filter_id == ui.activeFilterID)
-                format_date_filter_str(filters->start_date_str);
-            draw_clay_text(filters->start_date_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
-            break;
-        case FILTER_DISTANCE | HIGH_LIMIT:
-            if (filter_id == ui.activeFilterID)
-                format_distance_filter_str(filters->distance_high_str);
-            draw_clay_text(filters->distance_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
-            break;
-        case FILTER_DISTANCE | LOW_LIMIT:
-            if (filter_id == ui.activeFilterID)
-                format_distance_filter_str(filters->distance_low_str);
-            draw_clay_text(filters->distance_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
-            break;
-        case FILTER_DURATION | HIGH_LIMIT:
-            if (filter_id == ui.activeFilterID)
-                format_duration_filter_str(filters->duration_high_str);
-            draw_clay_text(filters->duration_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
-            break;
-        case FILTER_DURATION | LOW_LIMIT:
-            if (filter_id == ui.activeFilterID)
-                format_duration_filter_str(filters->duration_low_str);
-            draw_clay_text(filters->duration_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
-            break;
-        case FILTER_PACE | HIGH_LIMIT:
-            if (filter_id == ui.activeFilterID)
-                format_pace_filter_str(filters->pace_high_str);
-            draw_clay_text(filters->pace_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
-            break;
-        case FILTER_PACE | LOW_LIMIT:
-            if (filter_id == ui.activeFilterID)
-                format_pace_filter_str(filters->pace_low_str);
-            draw_clay_text(filters->pace_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
-            break;
-        case FILTER_UPHILL | HIGH_LIMIT:
-            if (filter_id == ui.activeFilterID)
-                format_elev_filter_str(filters->elev_up_high_str);
-            draw_clay_text(filters->elev_up_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
-            break;
-        case FILTER_UPHILL | LOW_LIMIT:
-            if (filter_id == ui.activeFilterID)
-                format_elev_filter_str(filters->elev_up_low_str);
-            draw_clay_text(filters->elev_up_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
-            break;
-        case FILTER_DOWNHILL | HIGH_LIMIT:
-            if (filter_id == ui.activeFilterID)
-                format_elev_filter_str(filters->elev_down_high_str);
-            draw_clay_text(filters->elev_down_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
-            break;
-        case FILTER_DOWNHILL | LOW_LIMIT:
-            if (filter_id == ui.activeFilterID)
-                format_elev_filter_str(filters->elev_down_low_str);
-            draw_clay_text(filters->elev_down_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
-            break;
-        case FILTER_PEAK | HIGH_LIMIT:
-            if (filter_id == ui.activeFilterID)
-                format_elev_filter_str(filters->high_point_high_str);
-            draw_clay_text(filters->high_point_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
-            break;
-        case FILTER_PEAK | LOW_LIMIT:
-            if (filter_id == ui.activeFilterID)
-                format_elev_filter_str(filters->high_point_low_str);
-            draw_clay_text(filters->high_point_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
-            break;
-        default:
-            break;
-        }
+
+        char *text = filter_field_text(filters, field);
+        if (filter_id == ui.activeFilterID)
+            format_filter_input(text, field->format);
+        draw_clay_text(text, 12, bg1, CLAY_TEXT_ALIGN_CENTER);
     }
 }
 
@@ -366,31 +322,7 @@ static void draw_filter(uint16_t filter_id, FilterSettings *filters) {
                  .backgroundColor = bg1,
                  .cornerRadius = CORNER_RADIUS,
              }) {
-            switch (filter_id) {
-            case FILTER_DISTANCE:
-                draw_clay_text("distance", 16, fg1, CLAY_TEXT_ALIGN_CENTER);
-                break;
-            case FILTER_DURATION:
-                draw_clay_text("duration", 16, fg1, CLAY_TEXT_ALIGN_CENTER);
-                break;
-            case FILTER_PACE:
-                draw_clay_text("pace", 16, fg1, CLAY_TEXT_ALIGN_CENTER);
-                break;
-            case FILTER_DATE:
-                draw_clay_text("date", 16, fg1, CLAY_TEXT_ALIGN_CENTER);
-                break;
-            case FILTER_UPHILL:
-                draw_clay_text("up", 16, fg1, CLAY_TEXT_ALIGN_CENTER);
-                break;
-            case FILTER_DOWNHILL:
-                draw_clay_text("down", 16, fg1, CLAY_TEXT_ALIGN_CENTER);
-                break;
-            case FILTER_PEAK:
-                draw_clay_text("peak", 16, fg1, CLAY_TEXT_ALIGN_CENTER);
-                break;
-            default:
-                break;
-            }
+            draw_clay_text(filter_display_name(filter_id), 16, fg1, CLAY_TEXT_ALIGN_CENTER);
         }
         CLAY(CLAY_IDI_LOCAL("greater", filter_id),
              {
