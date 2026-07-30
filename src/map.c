@@ -1,5 +1,7 @@
 #include "map.h"
+
 #include "api_key.h"
+#include "tracks.h" // get_or_render_track_tile
 
 extern bool use_osm_tiles;
 extern _Atomic bool download_in_progress;

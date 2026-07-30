@@ -1,5 +1,7 @@
 #include "tracks.h"
 
+#include "map.h" // conv_pixel_to_tile_and_offset, tile_key_equal
+
 #define HEAT_COLOR_COUNT 32
 
 SDL_Color heat_colors[HEAT_COLOR_COUNT] = {

@@ -2,8 +2,9 @@
 #define FIFO_H
 
 #include <pthread.h>
-#include "structs.h"
-#include "map.h"
+#include <stdbool.h>
+
+#include "map_types.h"
 
 bool fifo_peek_data(struct fifo *fifo, MapTile *readData);
 bool fifo_pop_data(struct fifo *fifo);

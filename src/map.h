@@ -1,14 +1,17 @@
 #ifndef MAP_H
 #define MAP_H
 
-#include <unistd.h>
-#include <math.h>
+#include <SDL2/SDL_image.h>
 #include <curl/curl.h>
-#include <sys/stat.h> // für mkdir + stat
+#include <math.h>
 #include <pthread.h>
-#include "structs.h"
+#include <sys/stat.h> // mkdir + stat
+#include <unistd.h>
+
+#include "app.h"
 #include "fifo.h"
-#include "tracks.h"
+#include "gpx_types.h"
+#include "map_types.h"
 
 bool get_map_background(struct application *appl, GpxCollection *collection);
 void *download_tiles(void *arg);
