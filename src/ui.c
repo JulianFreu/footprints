@@ -1,5 +1,7 @@
 #include "ui.h"
 
+#include "log.h"
+
 #define CLAY_IMPLEMENTATION
 #include "clay.h"
 #include "clay_renderer_sdl.c"
@@ -87,7 +89,7 @@ void Handle_ClickedOn_Filter(
     if (pointerData.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME) {
         init_numbers_input();
         ui.activeFilterID = (uint16_t)userData;
-        printf("start number input\n");
+        LOG_DEBUG("start number input\n");
     }
 }
 
@@ -862,14 +864,6 @@ Clay_LayoutConfig MenuButtonLayout = {
     .childGap = GAPS,
     .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
 };
-
-//Clay_LayoutConfig littleButtonLayout = {
-//    .sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIT()},
-//    .padding = {GAPS, GAPS, GAPS, GAPS},
-//    .childGap = GAPS,
-//    .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
-//    .layoutDirection = CLAY_TOP_TO_BOTTOM};
-
 void clicked_menu_button(
     Clay_ElementId elementId,
     Clay_PointerData pointerData,

@@ -122,9 +122,6 @@ float duration_str_to_duration_float(char *str) {
 float pace_str_to_pace_float(char *str) {
     char rv_str[INPUT_BUFFER_SIZE];
     reverse_chars(str, rv_str, strlen(str));
-    for (int i = 0; i < INPUT_BUFFER_SIZE; i++) {
-        printf("rv[%d]; %c\n", i, rv_str[i]);
-    }
     return digit(rv_str[0]) +
            10 * digit(rv_str[1]) +
            60 * digit(rv_str[3]) +

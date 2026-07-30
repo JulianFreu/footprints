@@ -1,5 +1,7 @@
 #include "gpxParser.h"
 
+#include "log.h"
+
 // Cross-platform ISO8601 parser: "YYYY-MM-DDTHH:MM:SS[.sss]Z"
 time_t parse_iso8601_utc(const char *timestr) {
     struct tm tm = {0};
@@ -160,13 +162,13 @@ bool gpxParser_extract_act_type(xmlNode *node, GpxTrack *track) {
 
                     if (strcmp(type_str, "Running") == 0) {
                         track->act_type = Run;
-                        printf("run\n");
+                        LOG_DEBUG("run\n");
                     } else if (strcmp(type_str, "Hiking") == 0 || strcmp(type_str, "hiking") == 0) {
                         track->act_type = Hike;
-                        printf("hike\n");
+                        LOG_DEBUG("hike\n");
                     } else if (strcmp(type_str, "Cycling") == 0) {
                         track->act_type = Cycling;
-                        printf("cycle\n");
+                        LOG_DEBUG("cycle\n");
                     } else
                         track->act_type = Other;
                 }
@@ -343,7 +345,7 @@ void gpxTrack_calculate_strings_for_UI(GpxTrack *track) {
 }
 
 bool gpxParser_parse_file(char *filename, GpxTrack *track) {
-    printf("Parsing: %s\n", filename);
+    LOG_DEBUG("Parsing: %s\n", filename);
     xmlDocPtr doc;
     xmlNode *root_element;
     LIBXML_TEST_VERSION
@@ -362,16 +364,16 @@ bool gpxParser_parse_file(char *filename, GpxTrack *track) {
 
     if (gpxParser_extract_coords(root_element, track)) {
         gpxTrack_calculate_mid_point(track);
-        printf("Mid_x: %d, Mid_y: %d\n", track->mid_x, track->mid_y);
+        LOG_DEBUG("Mid_x: %d, Mid_y: %d\n", track->mid_x, track->mid_y);
 
         gpxTrack_CalculateDistance(track);
-        printf("Track distance: %.2f km\n", track->distance);
+        LOG_DEBUG("Track distance: %.2f km\n", track->distance);
 
         gpxTrack_calculate_elevation_gain_loss(track);
-        printf("Highest elevation: %.2f m\n", track->high_point);
-        printf("Lowest elevation: %.2f m\n", track->low_point);
-        printf("Total elevation up: %.2f m\n", track->elev_up);
-        printf("Total elevation down: %.2f m\n", track->elev_down);
+        LOG_DEBUG("Highest elevation: %.2f m\n", track->high_point);
+        LOG_DEBUG("Lowest elevation: %.2f m\n", track->low_point);
+        LOG_DEBUG("Total elevation up: %.2f m\n", track->elev_up);
+        LOG_DEBUG("Total elevation down: %.2f m\n", track->elev_down);
 
         bool found_start_time = false;
         if (gpxParser_extract_time(root_element, track, &found_start_time)) {
@@ -387,11 +389,11 @@ bool gpxParser_parse_file(char *filename, GpxTrack *track) {
                 track->duration_secs = 0.0f;
                 track->secs_per_km = 0.0f;
             }
-            printf("start_time: %s\n", track->start_time_raw);
-            printf("end_time: %s\n", track->end_time_raw);
-            printf("duration_secs: %f\n", track->duration_secs);
-            printf("distance: %f\n", track->distance);
-            printf("secs_per_km: %f\n", track->secs_per_km);
+            LOG_DEBUG("start_time: %s\n", track->start_time_raw);
+            LOG_DEBUG("end_time: %s\n", track->end_time_raw);
+            LOG_DEBUG("duration_secs: %f\n", track->duration_secs);
+            LOG_DEBUG("distance: %f\n", track->distance);
+            LOG_DEBUG("secs_per_km: %f\n", track->secs_per_km);
         }
     }
 
@@ -477,7 +479,7 @@ bool gpxParser_parse_all_files(GpxCollection *collection) {
 
         // Call your GPX parsing function here
         gpxParser_parse_file(full_path, current);
-        printf("Tracks %d has %d data points\n", collection->total_tracks, collection->tracks[collection->total_tracks].total_points);
+        LOG_DEBUG("Tracks %d has %d data points\n", collection->total_tracks, collection->tracks[collection->total_tracks].total_points);
         collection->total_tracks++;
     }
 

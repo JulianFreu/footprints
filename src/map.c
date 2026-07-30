@@ -1,5 +1,7 @@
 #include "map.h"
 
+#include "log.h"
+
 #include "api_key.h"
 #include "tracks.h" // get_or_render_track_tile
 
@@ -72,7 +74,7 @@ void *download_tiles(void *arg) {
         snprintf(tile_path, sizeof(tile_path), "tilecache/%d/%d/%d.png", next_tile.zoom,
                  next_tile.tile_x, next_tile.tile_y);
 
-        printf("Start download for: %s\n", tile_path);
+        LOG_DEBUG("Start download for: %s\n", tile_path);
         // Ensure that all needed directories exist
         char zoom_dir[64], x_dir[64];
         snprintf(zoom_dir, sizeof(zoom_dir), "tilecache/%d", next_tile.zoom);
@@ -153,7 +155,6 @@ void append_to_tile_cache(TileTextureCache *cache, TileTexture entry) {
 }
 
 void free_tile_cache(TileTextureCache *cache) {
-    printf("tile cache capacity before cleanup: %d\n", cache->capacity);
     for (int i = 0; i < cache->size; i++) {
         if (cache->entries[i].texture)
             SDL_DestroyTexture(cache->entries[i].texture);
@@ -240,14 +241,6 @@ bool get_map_background(struct application *appl, GpxCollection *collection) {
                 }
 
                 pthread_mutex_unlock(&appl->download_queue.lock);
-
-                //                pthread_mutex_lock(&appl->download_queue.lock);
-                //                if (!fifo_search_data(&(appl->download_queue), tile2queue))
-                //                {
-                //                    printf("adding tile to queue: %d/%d/%d\n", tile2queue.zoom, tile2queue.tile_x, tile2queue.tile_y);
-                //                    fifo_write_data(&(appl->download_queue), tile2queue);
-                //                }
-                //                pthread_mutex_unlock(&appl->download_queue.lock);
             }
 
             MapTile key = {tile_x, tile_y, appl->zoom};

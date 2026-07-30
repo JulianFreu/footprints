@@ -1,5 +1,7 @@
 #include "tracks.h"
 
+#include "log.h"
+
 #include "map.h" // conv_pixel_to_tile_and_offset, tile_key_equal
 
 #define HEAT_COLOR_COUNT 32
@@ -200,9 +202,6 @@ SDL_Texture *get_or_render_track_tile(struct application *appl, GpxCollection *c
     SDL_SetRenderDrawColor(appl->renderer, 0, 0, 0, 0);
     SDL_RenderClear(appl->renderer);
 
-    int red = 255;
-    int green = 0;
-    int blue = 0;
     float max_heat = (float)collection->max_heat;
     float min_heat = 1.0;
     for (int j = 0; j < ctp.point_count; j++) {
