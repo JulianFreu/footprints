@@ -33,8 +33,6 @@
 // --- Heatmap ---
 // Radius in projected pixels within which two tracks count as overlapping.
 #define HEAT_RADIUS_PIXELS 200.0f
-// Worker threads used for the heat calculation.
-#define NUM_THREADS 24
 
 // --- UI ---
 #define INPUT_BUFFER_SIZE 16

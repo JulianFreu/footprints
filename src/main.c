@@ -43,11 +43,11 @@ int main(int argc, char *argv[]) {
         .tex_tracks = NULL,
         .window_width = SCREEN_WIDTH,
         .window_height = SCREEN_HEIGHT,
-        .zoom = 12,
-        .world_x = 140750875,
-        .world_y = 89004498,
-        .center_coord_x = 8.806735836249947,
-        .center_coord_y = 51.71909049285003,
+        .zoom = START_ZOOM,
+        .world_x = START_WORLD_X,
+        .world_y = START_WORLD_Y,
+        .center_coord_x = START_CENTER_LON,
+        .center_coord_y = START_CENTER_LAT,
         .running = 1,
         .dragging = 0,
         .leftMouseButtonPressed = false,
@@ -280,8 +280,8 @@ bool handle_events(struct application *appl, GpxCollection *collection) {
                    event.button.button == SDL_BUTTON_LEFT) {
             appl->leftMouseButtonPressed = false;
             if (!appl->mouseOverUI) {
-                int click_world_x = appl->world_x + (event.button.x << (MAX_ZOOM - appl->zoom)) - (appl->window_width / 2 << MAX_ZOOM - appl->zoom);
-                int click_world_y = appl->world_y + (event.button.y << (MAX_ZOOM - appl->zoom)) - (appl->window_height / 2 << MAX_ZOOM - appl->zoom);
+                int click_world_x = appl->world_x + (event.button.x << (MAX_ZOOM - appl->zoom)) - ((appl->window_width / 2) << (MAX_ZOOM - appl->zoom));
+                int click_world_y = appl->world_y + (event.button.y << (MAX_ZOOM - appl->zoom)) - ((appl->window_height / 2) << (MAX_ZOOM - appl->zoom));
                 appl->selected_track = find_track_near_click(collection, click_world_x, click_world_y, appl->zoom, 10);
             }
         } else if (event.type == SDL_MOUSEMOTION && appl->dragging) {

@@ -192,86 +192,72 @@ void draw_input_field(uint16_t filter_id, FilterSettings *filters) {
         case FILTER_DATE | HIGH_LIMIT:
             if (filter_id == ui.activeFilterID)
                 formatDateFilterStr(filters->end_date_str);
-            if (filters->end_date_str != NULL)
-                draw_clay_text(filters->end_date_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text(filters->end_date_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_DATE | LOW_LIMIT:
             if (filter_id == ui.activeFilterID)
                 formatDateFilterStr(filters->start_date_str);
-            if (filters->start_date_str != NULL)
-                draw_clay_text(filters->start_date_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text(filters->start_date_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_DISTANCE | HIGH_LIMIT:
             if (filter_id == ui.activeFilterID)
                 formatDistanceFilterStr(filters->distance_high_str);
-            if (filters->distance_high_str != NULL)
-                draw_clay_text(filters->distance_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text(filters->distance_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_DISTANCE | LOW_LIMIT:
             if (filter_id == ui.activeFilterID)
                 formatDistanceFilterStr(filters->distance_low_str);
-            if (filters->distance_low_str != NULL)
-                draw_clay_text(filters->distance_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text(filters->distance_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_DURATION | HIGH_LIMIT:
             if (filter_id == ui.activeFilterID)
                 formatDurationFilterStr(filters->duration_high_str);
-            if (filters->duration_high_str != NULL)
-                draw_clay_text(filters->duration_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text(filters->duration_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_DURATION | LOW_LIMIT:
             if (filter_id == ui.activeFilterID)
                 formatDurationFilterStr(filters->duration_low_str);
-            if (filters->duration_low_str != NULL)
-                draw_clay_text(filters->duration_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text(filters->duration_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_PACE | HIGH_LIMIT:
             if (filter_id == ui.activeFilterID)
                 formatPaceFilterStr(filters->pace_high_str);
-            if (filters->pace_high_str != NULL)
-                draw_clay_text(filters->pace_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text(filters->pace_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_PACE | LOW_LIMIT:
             if (filter_id == ui.activeFilterID)
                 formatPaceFilterStr(filters->pace_low_str);
-            if (filters->pace_low_str != NULL)
-                draw_clay_text(filters->pace_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text(filters->pace_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_UPHILL | HIGH_LIMIT:
             if (filter_id == ui.activeFilterID)
                 formatElevFilterStr(filters->elev_up_high_str);
-            if (filters->elev_up_high_str != NULL)
-                draw_clay_text(filters->elev_up_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text(filters->elev_up_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_UPHILL | LOW_LIMIT:
             if (filter_id == ui.activeFilterID)
                 formatElevFilterStr(filters->elev_up_low_str);
-            if (filters->elev_up_low_str != NULL)
-                draw_clay_text(filters->elev_up_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text(filters->elev_up_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_DOWNHILL | HIGH_LIMIT:
             if (filter_id == ui.activeFilterID)
                 formatElevFilterStr(filters->elev_down_high_str);
-            if (filters->elev_down_high_str != NULL)
-                draw_clay_text(filters->elev_down_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text(filters->elev_down_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_DOWNHILL | LOW_LIMIT:
             if (filter_id == ui.activeFilterID)
                 formatElevFilterStr(filters->elev_down_low_str);
-            if (filters->elev_down_low_str != NULL)
-                draw_clay_text(filters->elev_down_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text(filters->elev_down_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_PEAK | HIGH_LIMIT:
             if (filter_id == ui.activeFilterID)
                 formatElevFilterStr(filters->high_point_high_str);
-            if (filters->high_point_high_str != NULL)
-                draw_clay_text(filters->high_point_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text(filters->high_point_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_PEAK | LOW_LIMIT:
             if (filter_id == ui.activeFilterID)
                 formatElevFilterStr(filters->high_point_low_str);
-            if (filters->high_point_low_str != NULL)
-                draw_clay_text(filters->high_point_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text(filters->high_point_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         default:
             break;
@@ -1140,7 +1126,13 @@ void clay_draw_UI(struct application *appl, GpxCollection *collection) {
                 Clay_OnHover(clicked_show_filtered_tracks, (intptr_t)&collection->track_tile_cache);
                 draw_clay_text("Show Filtered Tracks", 16, darkAqua, CLAY_TEXT_ALIGN_CENTER);
             }
-            if (pre_showRuns == collection->filters.showRuns || pre_showHikes == collection->filters.showHikes || pre_showCycling == collection->filters.showCycling || pre_showOther == collection->filters.showOther)
+            // Re-filter only when a type toggle actually changed. This read
+            // `==` joined by `||`, i.e. "if anything is unchanged", which was
+            // true on nearly every frame.
+            if (pre_showRuns != collection->filters.showRuns ||
+                pre_showHikes != collection->filters.showHikes ||
+                pre_showCycling != collection->filters.showCycling ||
+                pre_showOther != collection->filters.showOther)
                 apply_filter_values(collection);
         }
     }
