@@ -9,7 +9,7 @@
 #include <time.h>
 #include <libxml/parser.h>
 #include <libxml/tree.h>
-#include "structs.h"
+#include "gpx_types.h"
 #include "map.h"
 
 #define EARTH_RADIUS_METERS 6371000.0

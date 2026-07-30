@@ -9,7 +9,9 @@
 #include <math.h>
 #include <unistd.h>
 
-#include "structs.h"
+#include "app.h"
+#include "gpx_types.h"
+#include "ui_types.h"
 #include "tracks.h"
 #include "heat.h"
 #include "filters.h"

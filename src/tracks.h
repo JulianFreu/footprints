@@ -1,14 +1,17 @@
 #ifndef TRACKS_H
 #define TRACKS_H
 
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_image.h>
+#include <math.h>
 #include <stdbool.h>
-#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
-#include <SDL2/SDL.h>
-#include "structs.h"
-#include "map.h"
+#include <string.h>
+
+#include "app.h"
+#include "gpx_types.h"
+#include "map_types.h"
 
 void free_track_tile_cache(TrackTileTextureCache *cache);
 void update_track_info_graphs(struct application *appl, const GpxCollection *collection);
