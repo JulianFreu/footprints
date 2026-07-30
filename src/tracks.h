@@ -10,6 +10,7 @@
 
 void free_track_tile_cache(TrackTileTextureCache *cache);
 void tracks_free_scratch(void);
+const char *activity_type_label(ActivityType type);
 void update_track_info_graphs(struct application *appl, const GpxCollection *collection);
 SDL_Texture *get_or_render_track_tile(struct application *appl, GpxCollection *collection, MapTile key);
 int find_track_near_click(GpxCollection *collection, int click_x, int click_y, int current_zoom, int max_pixel_distance);

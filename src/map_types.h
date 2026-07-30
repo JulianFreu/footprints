@@ -41,6 +41,9 @@ typedef struct
     int capacity;
 } TrackTileTextureCache;
 
+// Both texture caches are a plain grow-only array of fixed-size entries, so
+// they share one growth routine; see tile_cache_reserve in map.c.
+
 typedef struct TileTexture {
     MapTile key;
     SDL_Texture *texture;

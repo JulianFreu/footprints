@@ -140,18 +140,33 @@ static void draw_smooth_thick_polyline(SDL_Renderer *renderer,
     draw_circle(renderer, points[count - 1].x, points[count - 1].y, thickness / 2.0f, color);
 }
 
-static void append_to_track_tile_cache(TrackTileTextureCache *cache, TrackTileTexture entry) {
-    if (cache->size >= cache->capacity) {
-        cache->capacity = cache->capacity == 0 ? 64 : cache->capacity * 2;
-        cache->entries = realloc(cache->entries, cache->capacity * sizeof(TrackTileTexture));
-    }
+static bool append_to_track_tile_cache(TrackTileTextureCache *cache, TrackTileTexture entry) {
+    if (!tile_cache_reserve((void **)&cache->entries, cache->size, &cache->capacity,
+                            sizeof(TrackTileTexture)))
+        return false;
     cache->entries[cache->size++] = entry;
+    return true;
 }
 
 // Screen-space points for the selected track's polyline, reused across frames
 // and grown only when a longer track is selected.
 static SDL_Point *overlay_points = NULL;
 static int overlay_points_capacity = 0;
+
+// The one place activity types are spelled for display.
+const char *activity_type_label(ActivityType type) {
+    switch (type) {
+    case Run:
+        return "Run";
+    case Hike:
+        return "Hike";
+    case Cycling:
+        return "Cycling";
+    case Other:
+        break;
+    }
+    return "Other";
+}
 
 // Releases the scratch buffer this module keeps between frames.
 void tracks_free_scratch(void) {
@@ -257,7 +272,11 @@ SDL_Texture *get_or_render_track_tile(struct application *appl, GpxCollection *c
     TrackTileTexture entry = {
         .key = key,
         .texture = tex};
-    append_to_track_tile_cache(&collection->track_tile_cache, entry);
+    if (!append_to_track_tile_cache(&collection->track_tile_cache, entry)) {
+        SDL_DestroyTexture(tex);
+        free(ctp.points);
+        return NULL;
+    }
 
     free(ctp.points);
     return tex;

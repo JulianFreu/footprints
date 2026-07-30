@@ -327,14 +327,7 @@ static void draw_type_filter(ActivityType type, bool *show_type) {
              .cornerRadius = CORNER_RADIUS,
          }) {
         Clay_OnHover(clicked_type_filter, (intptr_t)show_type);
-        if (type == Run)
-            draw_clay_text("Run", 16, bg, CLAY_TEXT_ALIGN_CENTER);
-        else if (type == Cycling)
-            draw_clay_text("Cycling", 16, bg, CLAY_TEXT_ALIGN_CENTER);
-        else if (type == Hike)
-            draw_clay_text("Hike", 16, bg, CLAY_TEXT_ALIGN_CENTER);
-        else
-            draw_clay_text("Other", 16, bg, CLAY_TEXT_ALIGN_CENTER);
+        draw_clay_text(activity_type_label(type), 16, bg, CLAY_TEXT_ALIGN_CENTER);
     }
 }
 
@@ -411,87 +404,55 @@ static void draw_filter(uint16_t filter_id, FilterSettings *filters) {
     }
 }
 
-static int compare_by_type(const void *a, const void *b) {
-    int i = *(const int *)a;
-    int j = *(const int *)b;
-
-    int t1 = g_collection->tracks[i].act_type;
-    int t2 = g_collection->tracks[j].act_type;
-
-    return (t1 < t2) - (t1 > t2); // sort by highest
+// Sort key for the numeric attributes. All of them sort descending, so one
+// comparator covers the lot; type and date need their own orderings and are
+// handled directly in compare_tracks.
+static float track_sort_key(const GpxTrack *track, AttributeType criteria) {
+    switch (criteria) {
+    case DISTANCE:
+        return track->distance;
+    case DURATION:
+        return track->duration_secs;
+    case PACE:
+        return track->secs_per_km;
+    case UPHILL:
+        return track->elev_up;
+    case DOWNHILL:
+        return track->elev_down;
+    case HIGHPOINT:
+        return track->high_point;
+    default:
+        return 0.0f;
+    }
 }
 
-static int compare_by_start_time(const void *a, const void *b) {
-    int i = *(const int *)a;
-    int j = *(const int *)b;
+// Criteria the active qsort is ordering by. qsort gives the comparator no
+// user-data channel, so this and g_collection are set by sort_tracks around
+// the call and cleared afterwards; sorting must stay single threaded.
+static AttributeType g_sort_criteria = ID;
 
-    const char *t1 = g_collection->tracks[i].start_time_raw;
-    const char *t2 = g_collection->tracks[j].start_time_raw;
+static int compare_tracks(const void *a, const void *b) {
+    const GpxTrack *t1 = &g_collection->tracks[*(const int *)a];
+    const GpxTrack *t2 = &g_collection->tracks[*(const int *)b];
 
-    return -strcmp(t1, t2); // latest times come firstsd
+    if (g_sort_criteria == TYPE) {
+        int a_type = t1->act_type, b_type = t2->act_type;
+        return (a_type < b_type) - (a_type > b_type);
+    }
+    if (g_sort_criteria == DATE)
+        return -strcmp(t1->start_time_raw, t2->start_time_raw); // latest first
+
+    // Pace is "lower is better", so it reads ascending; the rest descending.
+    float k1 = track_sort_key(t1, g_sort_criteria);
+    float k2 = track_sort_key(t2, g_sort_criteria);
+    if (g_sort_criteria == PACE)
+        return (k1 > k2) - (k1 < k2);
+    return (k1 < k2) - (k1 > k2);
 }
 
-static int compare_by_distance(const void *a, const void *b) {
-    int idx1 = *(const int *)a;
-    int idx2 = *(const int *)b;
-
-    float d1 = g_collection->tracks[idx1].distance;
-    float d2 = g_collection->tracks[idx2].distance;
-
-    return (d1 < d2) - (d1 > d2); // sort by highest
-}
-
-static int compare_by_duration(const void *a, const void *b) {
-    int idx1 = *(const int *)a;
-    int idx2 = *(const int *)b;
-
-    float t1 = g_collection->tracks[idx1].duration_secs;
-    float t2 = g_collection->tracks[idx2].duration_secs;
-
-    return (t1 < t2) - (t1 > t2);
-}
-
-static int compare_by_pace(const void *a, const void *b) {
-    int idx1 = *(const int *)a;
-    int idx2 = *(const int *)b;
-
-    float p1 = g_collection->tracks[idx1].secs_per_km;
-    float p2 = g_collection->tracks[idx2].secs_per_km;
-
-    return (p1 > p2) - (p1 < p2);
-}
-
-static int compare_by_elev_up(const void *a, const void *b) {
-    int i = *(const int *)a;
-    int j = *(const int *)b;
-
-    float e1 = g_collection->tracks[i].elev_up;
-    float e2 = g_collection->tracks[j].elev_up;
-
-    return (e1 < e2) - (e1 > e2);
-}
-
-static int compare_by_elev_down(const void *a, const void *b) {
-    int i = *(const int *)a;
-    int j = *(const int *)b;
-
-    float e1 = g_collection->tracks[i].elev_down;
-    float e2 = g_collection->tracks[j].elev_down;
-
-    return (e1 < e2) - (e1 > e2);
-}
-static int compare_by_high_point(const void *a, const void *b) {
-    int i = *(const int *)a;
-    int j = *(const int *)b;
-
-    float h1 = g_collection->tracks[i].high_point;
-    float h2 = g_collection->tracks[j].high_point;
-
-    return (h1 < h2) - (h1 > h2);
-}
-
-static void sort_tracks(GpxCollection *collection, int (*compare)(const void *, const void *)) {
+static void sort_tracks(GpxCollection *collection, AttributeType criteria) {
     g_collection = collection;
+    g_sort_criteria = criteria;
 
     int n = collection->total_tracks;
 
@@ -499,8 +460,7 @@ static void sort_tracks(GpxCollection *collection, int (*compare)(const void *, 
     for (int i = 0; i < n; ++i)
         collection->list_order[i] = i;
 
-    // Sort the indices using the provided compare function
-    qsort(collection->list_order, n, sizeof(int), compare);
+    qsort(collection->list_order, n, sizeof(int), compare_tracks);
 
     g_collection = NULL; // clear global pointer for safety
 }
@@ -516,47 +476,27 @@ static void reverse_list_order(GpxCollection *collection) {
     }
 }
 
+// Clicking the column that is already sorted flips the order.
 static void sort_tracks_by(GpxCollection *collection, AttributeType criteria) {
     if (collection->current_sorting == criteria) {
         reverse_list_order(collection);
-    } else {
-        switch (criteria) {
-        case TYPE:
-            sort_tracks(collection, compare_by_type);
-            collection->current_sorting = TYPE;
-            break;
-        case DATE:
-            sort_tracks(collection, compare_by_start_time);
-            collection->current_sorting = DATE;
-            break;
-        case DISTANCE:
-            sort_tracks(collection, compare_by_distance);
-            collection->current_sorting = DISTANCE;
-            break;
-        case DURATION:
-            sort_tracks(collection, compare_by_duration);
-            collection->current_sorting = DURATION;
-            break;
-        case PACE:
-            sort_tracks(collection, compare_by_pace);
-            collection->current_sorting = PACE;
-            break;
-        case UPHILL:
-            sort_tracks(collection, compare_by_elev_up);
-            collection->current_sorting = UPHILL;
-            break;
-        case DOWNHILL:
-            sort_tracks(collection, compare_by_elev_down);
-            collection->current_sorting = DOWNHILL;
-            break;
-        case HIGHPOINT:
-            sort_tracks(collection, compare_by_high_point);
-            collection->current_sorting = HIGHPOINT;
-            break;
-        default:
-            fprintf(stderr, "Unknown sort criteria\n");
-            break;
-        }
+        return;
+    }
+    switch (criteria) {
+    case TYPE:
+    case DATE:
+    case DISTANCE:
+    case DURATION:
+    case PACE:
+    case UPHILL:
+    case DOWNHILL:
+    case HIGHPOINT:
+        sort_tracks(collection, criteria);
+        collection->current_sorting = criteria;
+        break;
+    default:
+        fprintf(stderr, "Unknown sort criteria\n");
+        break;
     }
 }
 
@@ -731,14 +671,7 @@ static void draw_run_list_entry(GpxTrack *track) {
              .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS),
          }) {
         Clay_OnHover(clicked_run_entry, track->track_id);
-        if (track->act_type == Run)
-            draw_run_entry_attribute(WIDTH_TYPE, "Run", track->track_id * 8 + 0);
-        else if (track->act_type == Hike)
-            draw_run_entry_attribute(WIDTH_TYPE, "Hike", track->track_id * 8 + 0);
-        else if (track->act_type == Cycling)
-            draw_run_entry_attribute(WIDTH_TYPE, "Cycling", track->track_id * 8 + 0);
-        else
-            draw_run_entry_attribute(WIDTH_TYPE, "Other", track->track_id * 8 + 0);
+        draw_run_entry_attribute(WIDTH_TYPE, activity_type_label(track->act_type), track->track_id * 8 + 0);
 
         draw_run_entry_attribute(WIDTH_DATE, track->start_date_str, track->track_id * 8 + 1);
         draw_run_entry_attribute(WIDTH_DISTANCE, track->distance_str, track->track_id * 8 + 2);
@@ -1049,14 +982,7 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
             draw_sidebar_track_info(appl->icons.elev_down, track->elev_down_str, "m", 6);
             draw_sidebar_track_info(appl->icons.peak, track->high_point_str, "m", 7);
 
-            const char *type_label = "Other";
-            if (track->act_type == Run)
-                type_label = "Run";
-            else if (track->act_type == Hike)
-                type_label = "Hike";
-            else if (track->act_type == Cycling)
-                type_label = "Cycling";
-            draw_sidebar_track_info(appl->icons.peak, type_label, " ", 8);
+            draw_sidebar_track_info(appl->icons.peak, activity_type_label(track->act_type), " ", 8);
 
             // Reloaded by update_track_info_graphs when the selection changes.
             if (appl->icons.elev_profile) {

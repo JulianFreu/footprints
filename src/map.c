@@ -181,11 +181,28 @@ bool tile_key_equal(MapTile a, MapTile b) {
     return a.tile_x == b.tile_x && a.tile_y == b.tile_y && a.zoom == b.zoom;
 }
 
-static void append_to_tile_cache(TileTextureCache *cache, TileTexture entry) {
-    if (cache->size >= cache->capacity) {
-        cache->capacity = cache->capacity == 0 ? 64 : cache->capacity * 2;
-        cache->entries = realloc(cache->entries, cache->capacity * sizeof(TileTexture));
+bool tile_cache_reserve(void **entries, int size, int *capacity, size_t entry_size) {
+    if (size < *capacity)
+        return true;
+
+    int grown_capacity = (*capacity == 0) ? 64 : *capacity * 2;
+    void *grown = realloc(*entries, (size_t)grown_capacity * entry_size);
+    if (!grown) {
+        // realloc's return was previously assigned straight back over the
+        // cache pointer, so a failure here leaked the old array and left a
+        // NULL that the very next line indexed into.
+        fprintf(stderr, "Could not grow tile cache\n");
+        return false;
     }
+    *entries = grown;
+    *capacity = grown_capacity;
+    return true;
+}
+
+static void append_to_tile_cache(TileTextureCache *cache, TileTexture entry) {
+    if (!tile_cache_reserve((void **)&cache->entries, cache->size, &cache->capacity,
+                            sizeof(TileTexture)))
+        return;
     cache->entries[cache->size++] = entry;
 }
 
