@@ -474,48 +474,29 @@ static SDL_Texture *generate_elevation_profile_texture(SDL_Renderer *renderer, c
     return texture;
 }
 
-static void save_elevation_profile_as_png(SDL_Renderer *renderer, const GpxTrack track, const char *filepath, int width, int height) {
-    // Create a target texture (RGBA)
-    SDL_Texture *target = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, width, height);
-    if (!target) {
-        SDL_Log("Failed to create target texture: %s", SDL_GetError());
-        return;
-    }
+// Clay draws images from an SDL_Surface, so the profile has to come back off
+// the GPU one way or another -- but it used to do that by writing a PNG to
+// resources/ and immediately IMG_Load()ing it again. The readback below is the
+// only part that was ever needed.
+static SDL_Surface *render_elevation_profile_surface(SDL_Renderer *renderer, const GpxTrack track, int width, int height) {
+    SDL_Texture *profile = generate_elevation_profile_texture(renderer, track, width, height);
+    if (!profile)
+        return NULL;
 
-    // Set as render target
-    SDL_Texture *prev_target = SDL_GetRenderTarget(renderer);
-    SDL_SetRenderTarget(renderer, target);
-
-    // Clear background
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 0);
-    SDL_RenderClear(renderer);
-
-    // Draw the profile into the current render target (your existing function)
-    SDL_Texture *profile_tex = generate_elevation_profile_texture(renderer, track, width, height);
-    SDL_RenderCopy(renderer, profile_tex, NULL, NULL);
-    SDL_DestroyTexture(profile_tex);
-
-    // Create surface to copy pixels into
     SDL_Surface *surface = SDL_CreateRGBSurfaceWithFormat(0, width, height, 32, SDL_PIXELFORMAT_RGBA32);
     if (!surface) {
         SDL_Log("Failed to create surface: %s", SDL_GetError());
-        SDL_SetRenderTarget(renderer, prev_target);
-        SDL_DestroyTexture(target);
-        return;
+        SDL_DestroyTexture(profile);
+        return NULL;
     }
 
-    // Read pixels from the target texture into the surface
+    SDL_Texture *prev_target = SDL_GetRenderTarget(renderer);
+    SDL_SetRenderTarget(renderer, profile);
     SDL_RenderReadPixels(renderer, NULL, SDL_PIXELFORMAT_RGBA32, surface->pixels, surface->pitch);
-
-    // Save surface as PNG
-    if (IMG_SavePNG(surface, filepath) != 0) {
-        SDL_Log("Failed to save PNG: %s", IMG_GetError());
-    }
-
-    // Cleanup
-    SDL_FreeSurface(surface);
     SDL_SetRenderTarget(renderer, prev_target);
-    SDL_DestroyTexture(target);
+    SDL_DestroyTexture(profile);
+
+    return surface;
 }
 
 // Regenerates the elevation profile only when the selection actually changes.
@@ -537,7 +518,6 @@ void update_track_info_graphs(struct application *appl, const GpxCollection *col
     if (appl->selected_track < 0 || appl->selected_track >= collection->total_tracks)
         return;
 
-    save_elevation_profile_as_png(appl->renderer, collection->tracks[appl->selected_track],
-                                  "resources/elev_profile.png", 200, 100);
-    appl->icons.elev_profile = IMG_Load("resources/elev_profile.png");
+    appl->icons.elev_profile = render_elevation_profile_surface(
+        appl->renderer, collection->tracks[appl->selected_track], 200, 100);
 }

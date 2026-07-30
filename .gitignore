@@ -1,7 +1,6 @@
 gpx_files/*
 tilecache/*
 src/api_key.h
-**/elev_profile.png
 
 # build output
 build/
