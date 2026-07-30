@@ -99,7 +99,7 @@ void clear_char_array(char *str, int size) {
 void formatPaceFilterStr(char *str) {
     if (ui.text_input_length < 7) {
         clear_char_array(str, INPUT_BUFFER_SIZE);
-        sprintf(str, ui.text_input_buffer);
+        snprintf(str, INPUT_BUFFER_SIZE, "%s", ui.text_input_buffer);
         if (ui.text_input_length > 2) {
             str[ui.text_input_length] = str[ui.text_input_length - 1];
             str[ui.text_input_length - 1] = str[ui.text_input_length - 2];
@@ -127,7 +127,7 @@ void formatDateFilterStr(char *str) {
 void formatDurationFilterStr(char *str) {
     if (ui.text_input_length < 8) {
         clear_char_array(str, INPUT_BUFFER_SIZE);
-        sprintf(str, ui.text_input_buffer);
+        snprintf(str, INPUT_BUFFER_SIZE, "%s", ui.text_input_buffer);
         if (ui.text_input_length > 2) {
             str[ui.text_input_length] = str[ui.text_input_length - 1];
             str[ui.text_input_length - 1] = str[ui.text_input_length - 2];
@@ -147,7 +147,7 @@ void formatDurationFilterStr(char *str) {
 void formatElevFilterStr(char *str) {
     if (ui.text_input_length < 6) {
         clear_char_array(str, INPUT_BUFFER_SIZE);
-        sprintf(str, ui.text_input_buffer);
+        snprintf(str, INPUT_BUFFER_SIZE, "%s", ui.text_input_buffer);
     }
 }
 
@@ -168,7 +168,7 @@ void formatDistanceFilterStr(char *str) {
         str[3] = ui.text_input_buffer[1];
     } else if (ui.text_input_length < 7) {
         clear_char_array(str, INPUT_BUFFER_SIZE);
-        sprintf(str, ui.text_input_buffer);
+        snprintf(str, INPUT_BUFFER_SIZE, "%s", ui.text_input_buffer);
         str[ui.text_input_length - 2] = '.';
         str[ui.text_input_length - 1] = ui.text_input_buffer[ui.text_input_length - 2];
         str[ui.text_input_length] = ui.text_input_buffer[ui.text_input_length - 1];

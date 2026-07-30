@@ -228,7 +228,7 @@ SDL_Texture *get_or_render_track_tile(struct application *appl, GpxCollection *c
 
     SDL_SetRenderTarget(appl->renderer, NULL);
 
-    // Cachen
+    // Cache the rendered tile
     TrackTileTexture entry = {
         .key = key,
         .texture = tex,
@@ -288,7 +288,7 @@ void update_selected_track_overlay(struct application *appl, GpxCollection *coll
                                              appl->window_height);
 
     if (!overlay) {
-        SDL_Log("Fehler beim Erstellen der Overlay-Textur: %s", SDL_GetError());
+        SDL_Log("Failed to create overlay texture: %s", SDL_GetError());
         return;
     }
 
@@ -307,8 +307,11 @@ void update_selected_track_overlay(struct application *appl, GpxCollection *coll
             break;
         }
     }
-    if (!track)
+    if (!track) {
+        SDL_SetRenderTarget(appl->renderer, NULL);
+        SDL_DestroyTexture(overlay);
         return;
+    }
 
     int zoom_factor = 1 << (MAX_ZOOM - zoom);
 
@@ -361,6 +364,11 @@ SDL_Texture *generate_elevation_profile_texture(SDL_Renderer *renderer, const Gp
     max_elev += (max_elev - min_elev) / 10;
 
     float total_distance_m = track.points[track.total_points - 1].partial_distance;
+    if (total_distance_m <= 0.0f) {
+        SDL_SetRenderTarget(renderer, prev_target);
+        SDL_DestroyTexture(texture);
+        return NULL;
+    }
 
     // Prepare points for polygon
     SDL_Point *polygon_points = malloc(sizeof(SDL_Point) * (track.total_points + 2));
@@ -389,9 +397,14 @@ SDL_Texture *generate_elevation_profile_texture(SDL_Renderer *renderer, const Gp
         int x2 = (int)((track.points[i].partial_distance / total_distance_m) * width);
         int y2 = height - (int)(((track.points[i].elevation - min_elev) / (max_elev - min_elev)) * height);
 
-        // Fill area underneath two points tirangle + quad
+        // Fill the area underneath the segment. When both samples land on the
+        // same column there is nothing to interpolate across.
+        if (x2 == x1) {
+            SDL_RenderDrawLine(renderer, x1, y2, x1, height);
+            continue;
+        }
         for (int x = x1; x <= x2; x++) {
-            float t = (float)(x - x1) / (x2 - x1);
+            float t = (float)(x - x1) / (float)(x2 - x1);
             int y = (int)((1 - t) * y1 + t * y2);
             SDL_RenderDrawLine(renderer, x, y, x, height);
         }

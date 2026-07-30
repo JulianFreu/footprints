@@ -16,5 +16,6 @@
 
 bool gpxParser_parse_all_files(GpxCollection *collection);
 int gpxParser_count_gpx_files();
+void gpxParser_cleanup(void);
 
 #endif

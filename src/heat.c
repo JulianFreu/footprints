@@ -107,6 +107,9 @@ void radius_search(KDNode *node, GpxPoint *target, double radius2, int *count, i
 }
 
 void print_progress_bar(int current, int total, int bar_width, struct timespec *start_time) {
+    if (total <= 0)
+        return;
+
     struct timespec current_time;
     clock_gettime(CLOCK_MONOTONIC, &current_time);
     double elapsed = (current_time.tv_sec - start_time->tv_sec) +
