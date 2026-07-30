@@ -77,6 +77,12 @@ void *download_tiles(void *arg) {
         if (!fifo_read_data(download_queue, &next_tile))
             fprintf(stderr, "Something went wrong while reading from download queue\n");
 
+        // Publish what we are about to fetch, still under the lock. The tile is
+        // no longer in the queue but its file does not exist yet, so without
+        // this the main loop cannot tell it is already being fetched and
+        // re-queues it on every frame until the download lands.
+        download_queue->tile_in_dl = next_tile;
+
         pthread_mutex_unlock(&download_queue->lock);
 
         char tile_path[256];
@@ -148,6 +154,12 @@ void *download_tiles(void *arg) {
             }
         }
         free(image_data.memory);
+
+        // Clear the marker: either the file now exists, or the transfer failed
+        // and the tile should be eligible for queueing again.
+        pthread_mutex_lock(&download_queue->lock);
+        download_queue->tile_in_dl = (MapTile){.tile_x = -1, .tile_y = -1, .zoom = -1};
+        pthread_mutex_unlock(&download_queue->lock);
     }
 }
 
@@ -239,11 +251,7 @@ bool get_map_background(struct application *appl, GpxCollection *collection) {
                 pthread_mutex_lock(&appl->download_queue.lock);
 
                 bool already_queued = fifo_search_data(&appl->download_queue, tile2queue);
-                bool already_downloading = false;
-                if (appl->download_queue.tile_in_dl.tile_x == tile2queue.tile_x &&
-                    appl->download_queue.tile_in_dl.tile_y == tile2queue.tile_y &&
-                    appl->download_queue.tile_in_dl.zoom == tile2queue.zoom)
-                    already_downloading = true;
+                bool already_downloading = tile_key_equal(appl->download_queue.tile_in_dl, tile2queue);
 
                 if (!already_queued && !already_downloading) {
                     fifo_write_data(&appl->download_queue, tile2queue);

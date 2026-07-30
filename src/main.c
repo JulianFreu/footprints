@@ -63,6 +63,7 @@ int main(int argc, char *argv[]) {
         .selected_track = -1,
         .download_queue.read_p = 0,
         .download_queue.write_p = 0,
+        .download_queue.tile_in_dl = {.tile_x = -1, .tile_y = -1, .zoom = -1},
         .show_heat = true,
         .update_window = true,
     };
