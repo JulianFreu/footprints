@@ -58,10 +58,10 @@ typedef struct FilterSettings {
     float high_point_low;
     char high_point_low_str[FILTER_TEXT_SIZE];
 
-    bool showRuns;
-    bool showCycling;
-    bool showHikes;
-    bool showOther;
+    bool show_runs;
+    bool show_cycling;
+    bool show_hikes;
+    bool show_other;
 } FilterSettings;
 
 #endif

@@ -24,12 +24,12 @@ typedef struct UIState {
     bool text_input_mode;
     char text_input_buffer[INPUT_BUFFER_SIZE];
     size_t text_input_length;
-    uint16_t activeFilterID;
+    uint16_t active_filter_id;
 } UIState;
 
 typedef struct
 {
-    uint32_t fontId;
+    uint32_t font_id;
     TTF_Font *font;
 } SDL2_Font;
 

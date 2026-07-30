@@ -7,40 +7,40 @@ static int fifo_next(int index) {
     return (index + 1) % FIFO_DEPTH;
 }
 
-bool fifo_read_data(struct fifo *fifo, MapTile *readData) {
-    bool readSuccess = false;
+bool fifo_read_data(struct fifo *fifo, MapTile *read_data) {
+    bool read_success = false;
     if (fifo->read_p != fifo->write_p) {
-        *readData = fifo->tile[fifo->read_p];
+        *read_data = fifo->tile[fifo->read_p];
         fifo->read_p = fifo_next(fifo->read_p);
-        readSuccess = true;
+        read_success = true;
     }
-    return readSuccess;
+    return read_success;
 }
 
-bool fifo_write_data(struct fifo *fifo, MapTile writeData) {
-    bool writeSuccess = false;
+bool fifo_write_data(struct fifo *fifo, MapTile write_data) {
+    bool write_success = false;
     if (!fifo_is_full(fifo)) {
-        fifo->tile[fifo->write_p] = writeData;
+        fifo->tile[fifo->write_p] = write_data;
         fifo->write_p = fifo_next(fifo->write_p);
-        writeSuccess = true;
+        write_success = true;
         pthread_cond_signal(&fifo->cond); // wake up thread
     }
-    return writeSuccess;
+    return write_success;
 }
 
-bool fifo_search_data(struct fifo *fifo, MapTile searchData) {
-    bool foundData = false;
+bool fifo_search_data(struct fifo *fifo, MapTile search_data) {
+    bool found_data = false;
     int search_p = fifo->read_p;
     while (search_p != fifo->write_p) {
-        if (fifo->tile[search_p].tile_x == searchData.tile_x &&
-            fifo->tile[search_p].tile_y == searchData.tile_y &&
-            fifo->tile[search_p].zoom == searchData.zoom) {
-            foundData = true;
+        if (fifo->tile[search_p].tile_x == search_data.tile_x &&
+            fifo->tile[search_p].tile_y == search_data.tile_y &&
+            fifo->tile[search_p].zoom == search_data.zoom) {
+            found_data = true;
             break;
         }
         search_p = fifo_next(search_p);
     }
-    return foundData;
+    return found_data;
 }
 
 bool fifo_is_full(struct fifo *fifo) {

@@ -301,14 +301,14 @@ bool get_map_background(struct application *appl, GpxCollection *collection) {
                 SDL_RenderCopy(appl->renderer, texture, NULL, &dest);
             }
 
-            SDL_Texture *trackTex = get_or_render_track_tile(appl, collection, key);
-            if (trackTex) {
+            SDL_Texture *track_tex = get_or_render_track_tile(appl, collection, key);
+            if (track_tex) {
                 SDL_Rect dst = {
                     .x = screen_x,
                     .y = screen_y,
                     .w = 256,
                     .h = 256};
-                SDL_RenderCopy(appl->renderer, trackTex, NULL, &dst);
+                SDL_RenderCopy(appl->renderer, track_tex, NULL, &dst);
             }
         }
     }

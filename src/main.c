@@ -59,7 +59,7 @@ int main(int argc, char *argv[]) {
         .world_y = START_WORLD_Y,
         .running = 1,
         .dragging = 0,
-        .leftMouseButtonPressed = false,
+        .left_mouse_button_pressed = false,
         .selected_track = -1,
         .download_queue.read_p = 0,
         .download_queue.write_p = 0,
@@ -101,15 +101,15 @@ int main(int argc, char *argv[]) {
     }
     appl.download_thread_started = true;
 
-    appl.lastFrameTime = SDL_GetTicks();
+    appl.last_frame_time = SDL_GetTicks();
 
-    Uint32 frameTime;
-    int fpsCounter = 0;
-    float fpsTimer = 0;
+    Uint32 frame_time;
+    int fps_counter = 0;
+    float fps_timer = 0;
 
     // Main-Loop
     while (appl.running) {
-        appl.lastFrameTime = SDL_GetTicks();
+        appl.last_frame_time = SDL_GetTicks();
         SDL_GetWindowSize(appl.window, &appl.window_width,
                           &appl.window_height);
         handle_events(&appl, &collection);
@@ -130,18 +130,18 @@ int main(int argc, char *argv[]) {
         }
 
         // FPS counter
-        fpsTimer += get_delta_time(appl.lastFrameTime);
-        fpsCounter++;
+        fps_timer += get_delta_time(appl.last_frame_time);
+        fps_counter++;
 
-        if (fpsTimer >= 1.0f) {
-            appl.currentFPS = fpsCounter;
-            fpsCounter = 0;
-            fpsTimer = 0.0f;
+        if (fps_timer >= 1.0f) {
+            appl.current_fps = fps_counter;
+            fps_counter = 0;
+            fps_timer = 0.0f;
         }
 
-        frameTime = SDL_GetTicks() - appl.lastFrameTime;
-        if (frameTime < FRAME_DELAY_MS) {
-            SDL_Delay(FRAME_DELAY_MS - frameTime);
+        frame_time = SDL_GetTicks() - appl.last_frame_time;
+        if (frame_time < FRAME_DELAY_MS) {
+            SDL_Delay(FRAME_DELAY_MS - frame_time);
         }
     }
 
@@ -208,7 +208,7 @@ static bool sdl_initialize(struct application *appl) {
     }
 
     appl->fonts[0] = (SDL2_Font){
-        .fontId = 0,
+        .font_id = 0,
         .font = font,
     };
 
@@ -251,7 +251,7 @@ static bool handle_events(struct application *appl, GpxCollection *collection) {
                 } else {
                     // Exit input mode on any non-digit key
                     ui.text_input_mode = false;
-                    ui.activeFilterID = 0;
+                    ui.active_filter_id = 0;
                     printf("%s\n", ui.text_input_buffer);
                     save_filter_values(&collection->filters);
                     apply_filter_values(collection);
@@ -259,7 +259,7 @@ static bool handle_events(struct application *appl, GpxCollection *collection) {
             } else if (event.type == SDL_MOUSEBUTTONDOWN) {
                 // Exit input mode on any mouse click
                 ui.text_input_mode = false;
-                ui.activeFilterID = 0;
+                ui.active_filter_id = 0;
                 printf("%s\n", ui.text_input_buffer);
                 save_filter_values(&collection->filters);
                 apply_filter_values(collection);
@@ -267,7 +267,7 @@ static bool handle_events(struct application *appl, GpxCollection *collection) {
         } else if (event.type == SDL_MOUSEWHEEL) {
             appl->wheel_y = event.wheel.y;
 
-            if (!appl->mouseOverUI) {
+            if (!appl->mouse_over_ui) {
                 int old_zoom = appl->zoom;
 
                 appl->zoom += event.wheel.y;
@@ -295,19 +295,19 @@ static bool handle_events(struct application *appl, GpxCollection *collection) {
 
         else if (event.type == SDL_MOUSEBUTTONDOWN) {
             if (event.button.button == SDL_BUTTON_RIGHT) {
-                if (!appl->mouseOverUI)
+                if (!appl->mouse_over_ui)
                     appl->dragging = 1;
             }
             if (event.button.button == SDL_BUTTON_LEFT) {
-                appl->leftMouseButtonPressed = true;
+                appl->left_mouse_button_pressed = true;
             }
         } else if (event.type == SDL_MOUSEBUTTONUP &&
                    event.button.button == SDL_BUTTON_RIGHT) {
             appl->dragging = 0;
         } else if (event.type == SDL_MOUSEBUTTONUP &&
                    event.button.button == SDL_BUTTON_LEFT) {
-            appl->leftMouseButtonPressed = false;
-            if (!appl->mouseOverUI) {
+            appl->left_mouse_button_pressed = false;
+            if (!appl->mouse_over_ui) {
                 int click_world_x = appl->world_x + (event.button.x << (MAX_ZOOM - appl->zoom)) - ((appl->window_width / 2) << (MAX_ZOOM - appl->zoom));
                 int click_world_y = appl->world_y + (event.button.y << (MAX_ZOOM - appl->zoom)) - ((appl->window_height / 2) << (MAX_ZOOM - appl->zoom));
                 appl->selected_track = find_track_near_click(collection, click_world_x, click_world_y, appl->zoom, 10);

@@ -24,7 +24,7 @@ struct application {
     int world_y;
     int running;
     int dragging;
-    bool leftMouseButtonPressed;
+    bool left_mouse_button_pressed;
     int selected_track;
     struct fifo download_queue;
     pthread_t download_thread;
@@ -33,9 +33,9 @@ struct application {
     UiIcons icons;
     TileTextureCache tile_cache;
     SDL_Texture *selected_track_overlay[MAX_ZOOM + 1]; // +1 for zoom level 0 to 20
-    int currentFPS;
-    Uint32 lastFrameTime;
-    bool mouseOverUI;
+    int current_fps;
+    Uint32 last_frame_time;
+    bool mouse_over_ui;
     bool show_heat;
     bool update_window;
 };

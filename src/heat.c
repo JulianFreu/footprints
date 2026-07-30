@@ -94,14 +94,14 @@ static void radius_search(KDNode *node, GpxPoint *target, double radius2, int *c
     if (!node)
         return;
     if (node->point->track_id != target->track_id && squared_distance(*node->point, *target, x_correction) <= radius2) {
-        bool idAlreadyChecked = false;
+        bool id_already_checked = false;
         for (int i = 0; i < *count; i++) {
             if (node->point->track_id == checked_ids[i]) {
-                idAlreadyChecked = true;
+                id_already_checked = true;
                 break;
             }
         }
-        if (!idAlreadyChecked && *count < total_tracks) {
+        if (!id_already_checked && *count < total_tracks) {
             checked_ids[*count] = node->point->track_id;
             (*count)++;
         }

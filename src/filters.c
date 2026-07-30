@@ -29,13 +29,13 @@ void apply_filter_values(GpxCollection *c) {
         c->tracks[i].visible_in_list = true;
 
         // check type
-        if (c->tracks[i].act_type == Run && c->filters.showRuns == false)
+        if (c->tracks[i].act_type == Run && c->filters.show_runs == false)
             c->tracks[i].visible_in_list = false;
-        if (c->tracks[i].act_type == Cycling && c->filters.showCycling == false)
+        if (c->tracks[i].act_type == Cycling && c->filters.show_cycling == false)
             c->tracks[i].visible_in_list = false;
-        if (c->tracks[i].act_type == Hike && c->filters.showHikes == false)
+        if (c->tracks[i].act_type == Hike && c->filters.show_hikes == false)
             c->tracks[i].visible_in_list = false;
-        if (c->tracks[i].act_type == Other && c->filters.showOther == false)
+        if (c->tracks[i].act_type == Other && c->filters.show_other == false)
             c->tracks[i].visible_in_list = false;
 
         // check limits
@@ -202,9 +202,9 @@ void reset_filters(FilterSettings *filter) {
     for (size_t i = 0; i < FILTER_FIELD_COUNT; i++)
         filter_field_text(filter, &filter_fields[i])[0] = '\0';
 
-    filter->showCycling = true;
-    filter->showOther = true;
-    filter->showRuns = true;
-    filter->showHikes = true;
+    filter->show_cycling = true;
+    filter->show_other = true;
+    filter->show_runs = true;
+    filter->show_hikes = true;
     save_filter_values(filter);
 }
