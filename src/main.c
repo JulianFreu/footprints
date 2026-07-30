@@ -8,7 +8,7 @@
 
 #include "app.h"
 #include "filters.h"
-#include "gpxParser.h"
+#include "gpx_parser.h"
 #include "gpx_types.h"
 #include "heat.h"
 #include "map.h"

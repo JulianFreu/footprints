@@ -1,5 +1,5 @@
-#ifndef heat_h
-#define heat_h
+#ifndef HEAT_H
+#define HEAT_H
 
 #include <stdbool.h>
 

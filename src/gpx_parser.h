@@ -1,5 +1,5 @@
-#ifndef gpxParse_h
-#define gpxParse_h
+#ifndef GPX_PARSER_H
+#define GPX_PARSER_H
 
 #include <stdbool.h>
 

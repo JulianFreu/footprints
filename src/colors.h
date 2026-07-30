@@ -1,5 +1,5 @@
-#ifndef colors_h
-#define colors_h
+#ifndef COLORS_H
+#define COLORS_H
 
 #include "clay.h"
 

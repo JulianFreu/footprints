@@ -1,5 +1,5 @@
-#ifndef ui_h
-#define ui_h
+#ifndef UI_H
+#define UI_H
 
 #include <SDL2/SDL.h>
 

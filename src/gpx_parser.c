@@ -1,4 +1,4 @@
-#include "gpxParser.h"
+#include "gpx_parser.h"
 
 #include <dirent.h>
 #include <math.h>
