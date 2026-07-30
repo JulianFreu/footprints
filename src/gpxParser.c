@@ -245,9 +245,12 @@ bool gpxParser_extract_coords(xmlNode *node, GpxTrack *track) {
 void gpxTrack_calculate_mid_point(GpxTrack *track) {
     uint64_t mid_x = 0;
     uint64_t mid_y = 0;
+    if (track->total_points <= 0)
+        return;
+
     for (int i = 0; i < track->total_points; i++) {
-        mid_x += track->points->world_x;
-        mid_y += track->points->world_y;
+        mid_x += track->points[i].world_x;
+        mid_y += track->points[i].world_y;
     }
     track->mid_x = mid_x / track->total_points;
     track->mid_y = mid_y / track->total_points;

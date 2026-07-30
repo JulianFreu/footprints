@@ -130,14 +130,14 @@ float pace_str_to_pace_float(char *str) {
 void save_filter_values(FilterSettings *filter) {
     // date
     if (filter->start_date_str[0] != '\0')
-        sprintf(filter->start_date_str_filter, filter->start_date_str);
+        snprintf(filter->start_date_str_filter, sizeof(filter->start_date_str_filter), "%s", filter->start_date_str);
     else
-        sprintf(filter->start_date_str_filter, "01.01.1980\0");
+        snprintf(filter->start_date_str_filter, sizeof(filter->start_date_str_filter), "01.01.1980");
 
     if (filter->end_date_str[0] != '\0')
-        sprintf(filter->start_date_str_filter, filter->start_date_str);
+        snprintf(filter->end_date_str_filter, sizeof(filter->end_date_str_filter), "%s", filter->end_date_str);
     else
-        sprintf(filter->end_date_str_filter, "01.01.9000\0");
+        snprintf(filter->end_date_str_filter, sizeof(filter->end_date_str_filter), "01.01.9000");
 
     // uphill
     if (filter->elev_up_high_str[0] != '\0')
@@ -148,7 +148,7 @@ void save_filter_values(FilterSettings *filter) {
     if (filter->elev_up_low_str[0] != '\0')
         filter->elev_up_low = (float)atof(filter->elev_up_low_str);
     else
-        filter->elev_up_low = FLT_MIN;
+        filter->elev_up_low = -FLT_MAX;
 
     // downhill
     if (filter->elev_down_high_str[0] != '\0')
@@ -159,7 +159,7 @@ void save_filter_values(FilterSettings *filter) {
     if (filter->elev_down_low_str[0] != '\0')
         filter->elev_down_low = (float)atof(filter->elev_down_low_str);
     else
-        filter->elev_down_low = FLT_MIN;
+        filter->elev_down_low = -FLT_MAX;
 
     // high point
     if (filter->high_point_high_str[0] != '\0')
@@ -170,7 +170,7 @@ void save_filter_values(FilterSettings *filter) {
     if (filter->high_point_low_str[0] != '\0')
         filter->high_point_low = (float)atof(filter->high_point_low_str);
     else
-        filter->high_point_low = FLT_MIN;
+        filter->high_point_low = -FLT_MAX;
 
     // distance
     if (filter->distance_high_str[0] != '\0')
@@ -181,7 +181,7 @@ void save_filter_values(FilterSettings *filter) {
     if (filter->distance_low_str[0] != '\0')
         filter->distance_low = (float)atof(filter->distance_low_str);
     else
-        filter->distance_low = FLT_MIN;
+        filter->distance_low = -FLT_MAX;
 
     // duration
     if (filter->duration_high_str[0] != '\0')
@@ -192,7 +192,7 @@ void save_filter_values(FilterSettings *filter) {
     if (filter->duration_low_str[0] != '\0')
         filter->duration_secs_low = duration_str_to_duration_float(filter->duration_low_str);
     else
-        filter->duration_secs_low = FLT_MIN;
+        filter->duration_secs_low = -FLT_MAX;
 
     // pace
     if (filter->pace_high_str[0] != '\0')
@@ -204,7 +204,7 @@ void save_filter_values(FilterSettings *filter) {
         filter->secs_per_km_low = pace_str_to_pace_float(filter->pace_low_str);
         printf("min pace: %f s\n", filter->secs_per_km_low);
     } else
-        filter->secs_per_km_low = FLT_MIN;
+        filter->secs_per_km_low = -FLT_MAX;
 }
 
 void reset_filters(FilterSettings *filter) {
