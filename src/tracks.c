@@ -450,9 +450,26 @@ void save_elevation_profile_as_png(SDL_Renderer *renderer, const GpxTrack track,
     SDL_DestroyTexture(target);
 }
 
-void update_track_info_graphs(struct application *appl, GpxCollection collection) {
+// Regenerates the elevation profile only when the selection actually changes.
+// prev_selected_track was previously compared but never assigned, so this ran
+// every frame: two textures created, a full pixel readback, and a PNG written
+// to disk at the frame rate.
+void update_track_info_graphs(struct application *appl, const GpxCollection *collection) {
     static int prev_selected_track = -1;
-    if (appl->selected_track >= 0 && prev_selected_track != appl->selected_track) {
-        save_elevation_profile_as_png(appl->renderer, collection.tracks[appl->selected_track], "resources/elev_profile.png", 200, 100);
+
+    if (appl->selected_track == prev_selected_track)
+        return;
+    prev_selected_track = appl->selected_track;
+
+    if (appl->icons.elev_profile) {
+        SDL_FreeSurface(appl->icons.elev_profile);
+        appl->icons.elev_profile = NULL;
     }
+
+    if (appl->selected_track < 0 || appl->selected_track >= collection->total_tracks)
+        return;
+
+    save_elevation_profile_as_png(appl->renderer, collection->tracks[appl->selected_track],
+                                  "resources/elev_profile.png", 200, 100);
+    appl->icons.elev_profile = IMG_Load("resources/elev_profile.png");
 }

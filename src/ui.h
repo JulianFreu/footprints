@@ -18,5 +18,7 @@ float get_delta_time(Uint32 lastFrameTime);
 void clay_init(struct application *appl);
 void clay_draw_UI(struct application *appl, GpxCollection *collection);
 void clay_free_memory();
+void ui_load_icons(struct application *appl);
+void ui_free_icons(struct application *appl);
 
 #endif

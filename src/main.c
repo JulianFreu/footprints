@@ -67,6 +67,7 @@ int main(int argc, char *argv[]) {
     SDL_GetWindowSize(appl.window, &appl.window_width,
                       &appl.window_height);
     clay_init(&appl);
+    ui_load_icons(&appl);
     SDL_RenderPresent(appl.renderer);
 
     gpxParser_parse_all_files(&collection);
@@ -105,7 +106,7 @@ int main(int argc, char *argv[]) {
             appl.update_window = false;
             SDL_RenderClear(appl.renderer);
 
-            update_track_info_graphs(&appl, collection);
+            update_track_info_graphs(&appl, &collection);
 
             update_selected_track_overlay(&appl, &collection);
 
@@ -147,6 +148,7 @@ bool appl_cleanup(struct application *appl, GpxCollection *collection, int exit_
     free_tile_cache(&(appl->tile_cache));
     free_track_tile_cache(&collection->track_tile_cache);
     printf("Clean UI...\n");
+    ui_free_icons(appl);
     clay_free_memory();
     printf("Clean renderer...\n");
     SDL_DestroyRenderer(appl->renderer);
