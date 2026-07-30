@@ -1,5 +1,12 @@
 #include "tracks.h"
 
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include <SDL2/SDL_image.h>
+
 #include "log.h"
 
 #include "map.h" // conv_pixel_to_tile_and_offset, tile_key_equal

@@ -2,12 +2,7 @@
 #define TRACKS_H
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_image.h>
-#include <math.h>
 #include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
 #include "app.h"
 #include "gpx_types.h"

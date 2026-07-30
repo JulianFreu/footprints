@@ -2,19 +2,10 @@
 #define ui_h
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_image.h>
-#include <SDL2/SDL_ttf.h>
-#include <stdlib.h>
-#include <string.h>
-#include <math.h>
-#include <unistd.h>
 
 #include "app.h"
 #include "gpx_types.h"
 #include "ui_types.h"
-#include "tracks.h"
-#include "heat.h"
-#include "filters.h"
 
 // Animation and text-input state for the whole UI. Defined in ui.c; the event
 // loop in main.c both reads and drives it.

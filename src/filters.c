@@ -1,5 +1,11 @@
 #include "filters.h"
 
+#include <float.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
 static void reverse_chars(char *str, char *rv_str, int size) {
     for (int i = 0; i < size; i++) {
         rv_str[i] = str[size - 1 - i];

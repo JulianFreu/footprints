@@ -1,7 +1,6 @@
 #ifndef filters_h
 #define filters_h
 
-#include <time.h>
 #include "filter_types.h"
 #include "gpx_types.h"
 

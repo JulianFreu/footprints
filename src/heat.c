@@ -1,5 +1,15 @@
 #include "heat.h"
 
+#include <pthread.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <unistd.h>
+
+#include "heat_types.h"
+
 #include "log.h"
 
 // Axis the comparator sorts on. Set immediately before each qsort call.

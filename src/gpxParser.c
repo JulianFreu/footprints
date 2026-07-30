@@ -1,5 +1,15 @@
 #include "gpxParser.h"
 
+#include <dirent.h>
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+#include <libxml/parser.h>
+#include <libxml/tree.h>
+
 #include "log.h"
 
 // Cross-platform ISO8601 parser: "YYYY-MM-DDTHH:MM:SS[.sss]Z"
