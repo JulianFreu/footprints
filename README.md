@@ -43,11 +43,22 @@ Keep the description a few kebab-case words, not a full sentence.
 
 ### 3. Build from source
 
-Use the provided build script:
-
 ```bash
-./build.sh
+make
 ```
+
+Other targets:
+
+| Target             | What it does                                                        |
+|--------------------|---------------------------------------------------------------------|
+| `make`             | Optimised incremental build (`-O2 -Wall -Wextra`)                    |
+| `make debug`       | `footprints-debug` with AddressSanitizer + UBSan                     |
+| `make format`      | Apply `.clang-format` to all non-vendored sources                    |
+| `make check-format`| Fail if anything is unformatted                                      |
+| `make clean`       | Remove build output                                                  |
+
+`src/clay.h` and `src/clay_renderer_sdl.c` are vendored third-party code.
+They are excluded from formatting and should not be hand-edited.
 
 ### 4. Run the application
 
