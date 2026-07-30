@@ -39,7 +39,6 @@
 extern SDL_Event event;
 
 UIState ui = {
-    .left_sidebar = {.opening = false, .closing = false, .animation = 0, .ticks = 0},
     .right_sidebar = {.opening = false, .closing = false, .animation = 0, .ticks = 0},
     .run_list = {.opening = false, .closing = false, .animation = 0, .ticks = 0},
     .filters_animation = {.opening = false, .closing = false, .animation = 0, .ticks = 0}};
@@ -47,10 +46,8 @@ UIState ui = {
 static GpxCollection *g_collection = NULL; // tmp global pointer for compare functions
 static Clay_Arena clayMemory;
 
-char track_id_str[16];
-
-bool ui_new_track_selected = false;
-int ui_track = -1;
+static bool ui_new_track_selected = false;
+static int ui_track = -1;
 
 void clicked_type_filter(
     Clay_ElementId elementId,
