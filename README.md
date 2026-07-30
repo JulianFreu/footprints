@@ -106,6 +106,41 @@ To use the conversion script, install its dependencies first:
 pip install fitparse lxml
 ```
 
+## Code layout
+
+| File | Responsibility |
+|------|----------------|
+| `main.c` | Startup, the frame loop, SDL setup and teardown, input handling |
+| `gpx_parser.c` | Reads `gpx_files/`, builds the track collection, derives per-track stats |
+| `tracks.c` | Track rendering: heat tiles, the selected-track overlay, elevation profiles |
+| `map.c` | Tile URLs, the download thread, the tile texture cache, map background |
+| `fifo.c` | The bounded queue between the main loop and the download thread |
+| `heat.c` | k-d tree and the threaded heat calculation |
+| `filters.c` | The filter field table, parsing bounds, applying them to the collection |
+| `time_util.c` | The single place timestamps are parsed — everything is UTC |
+| `ui.c` | Clay layout: run list, filter panel, sidebar, menu |
+| `*_types.h` | Types only, so a module can include what it needs without the rest |
+| `config.h` | Compile-time tunables |
+
+### Conventions
+
+- Functions, struct members and locals are `snake_case`; typedef'd types are
+  `PascalCase`; macros and constants are `UPPER_SNAKE`.
+- Header guards are `UPPER_SNAKE` matching the filename, e.g. `GPX_PARSER_H`.
+- Anything not declared in a header is `static`. Running `nm` on a module's
+  object file should show its interface and nothing else.
+- A header includes only what its own declarations need; the `.c` file includes
+  what it uses.
+- Every timestamp is UTC, and is parsed through `time_util.h`.
+- Run `make format` before committing; `make check-format` must pass.
+
+### Adding a filter
+
+The filter fields are described by one table in `filters.c`. A new filter needs
+a `FILTER_*` bit in `filter_types.h`, a row per range end in that table, and a
+name in `filter_display_name`. If it reads like an existing field (plain number,
+duration, pace, date) nothing in `ui.c` changes.
+
 ## ToDo
 
 - Smooth fade-in of tiles after download
@@ -118,8 +153,8 @@ pip install fitparse lxml
 - Export the current heatmap view as a PNG for sharing
 - Yearly/monthly/weekly summary view (total distance, time, elevation per period — a "wrapped"-style recap)
 - Personal records (longest run, fastest pace, most elevation gain)
-- Interactive elevation profile on click instead of the current static PNG
-- A settings file for defaults (start location/zoom, tile cache path) instead of hardcoded values in `structs.h`
+- Interactive elevation profile on click instead of the current static image
+- A settings file for defaults (start location/zoom, tile cache path) instead of hardcoded values in `config.h`
 - GPS noise filtering (smooth out jumpy points before distance/pace calculations)
 - Multi-select in the run list for bulk delete/hide
 - A minimal config for map tile provider/API key setup instead of editing `api_key.h` by hand
