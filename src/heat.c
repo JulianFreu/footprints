@@ -1,9 +1,12 @@
 #include "heat.h"
 
-// Globale Variable für Sortierachse
+#include "log.h"
+
+// Axis the comparator sorts on. Set immediately before each qsort call.
+// Not thread safe -- build_kdtree must stay single threaded.
 int current_axis;
 
-// Vergleichsfunktion für qsort
+// qsort comparator, ordering by the axis in current_axis
 int compare_points(const void *a, const void *b) {
     GpxPoint *p1 = *(GpxPoint **)a;
     GpxPoint *p2 = *(GpxPoint **)b;
@@ -11,7 +14,7 @@ int compare_points(const void *a, const void *b) {
     return (diff > 0) - (diff < 0);
 }
 
-// Erstelle einen neuen Knoten
+// Allocate a single k-d tree node
 KDNode *create_node(GpxPoint *point, int axis) {
     KDNode *node = (KDNode *)malloc(sizeof(KDNode));
     if (!node) {
@@ -24,7 +27,7 @@ KDNode *create_node(GpxPoint *point, int axis) {
     return node;
 }
 
-// Baue den k-d-Tree rekursiv
+// Build the k-d tree recursively
 KDNode *build_kdtree(GpxPoint **points, int n, int depth) {
     if (n <= 0)
         return NULL;
@@ -44,11 +47,11 @@ void free_kdtree(KDNode *node) {
 
     free_kdtree(node->left);
     free_kdtree(node->right);
-    free(node); // Nur der KDNode selbst, nicht node->point!
+    free(node); // only the node itself -- node->point is owned by the track
 }
 
 double squared_distance(GpxPoint p1, GpxPoint p2, float mercator_x_correction) {
-    // einfache flache projektion
+    // Flat projection; good enough at the radii we search over.
     long int dx = (p2.world_x - p1.world_x) * mercator_x_correction;
     long int dy = (p2.world_y - p1.world_y);
     return dx * dx + dy * dy;
@@ -76,7 +79,7 @@ float get_x_correction_factor(int world_y) {
         return 0.09;
 }
 
-// Radius-Suche
+// Collect the distinct track ids within radius2 of target
 void radius_search(KDNode *node, GpxPoint *target, double radius2, int *count, int *checked_ids, int total_tracks, float x_correction) {
     if (!node)
         return;
@@ -192,11 +195,11 @@ bool calculate_heatmap(GpxCollection *collection) {
     for (int i = 0; i < collection->total_tracks; i++) {
         if (collection->tracks[i].visible_in_list == true) {
             total_points = total_points + collection->tracks[i].total_points;
-            printf("%d points in track %d\n", collection->tracks[i].total_points, i);
+            LOG_DEBUG("%d points in track %d\n", collection->tracks[i].total_points, i);
         }
     }
     printf("There are %d data points in total\n", total_points);
-    printf("Collecting all points in one array\n");
+    LOG_DEBUG("Collecting all points in one array\n");
     GpxPoint **points = (GpxPoint **)malloc(total_points * sizeof(GpxPoint *));
     if (!points) {
         perror("malloc failed");

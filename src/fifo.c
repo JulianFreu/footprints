@@ -7,26 +7,6 @@ static int fifo_next(int index) {
     return (index + 1) % FIFO_DEPTH;
 }
 
-// read data without moving the read pointer
-bool fifo_peek_data(struct fifo *fifo, MapTile *readData) {
-    bool peekSuccess = false;
-    if (fifo->read_p != fifo->write_p) {
-        *readData = fifo->tile[fifo->read_p];
-        //        fifo->read_p = fifo_next(fifo->read_p);
-        peekSuccess = true;
-    }
-    return peekSuccess;
-}
-bool fifo_pop_data(struct fifo *fifo) {
-    bool popSuccess = false;
-    if (fifo->read_p != fifo->write_p) {
-        //        *readData = fifo->tile[fifo->read_p];
-        fifo->read_p = fifo_next(fifo->read_p);
-        popSuccess = true;
-    }
-    return popSuccess;
-}
-
 bool fifo_read_data(struct fifo *fifo, MapTile *readData) {
     bool readSuccess = false;
     if (fifo->read_p != fifo->write_p) {
