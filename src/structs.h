@@ -111,6 +111,23 @@ typedef struct
     TTF_Font *font;
 } SDL2_Font;
 
+// Icon surfaces are decoded once at startup and handed to Clay by pointer every
+// frame. Clay does not take ownership, so these are freed in appl_cleanup.
+typedef struct
+{
+    SDL_Surface *menu_burger;
+    SDL_Surface *date;
+    SDL_Surface *clock;
+    SDL_Surface *duration;
+    SDL_Surface *pace;
+    SDL_Surface *distance;
+    SDL_Surface *elev_up;
+    SDL_Surface *elev_down;
+    SDL_Surface *peak;
+    // Regenerated only when the selected track changes, not per frame.
+    SDL_Surface *elev_profile;
+} UiIcons;
+
 struct MemoryStruct {
     char *memory;
     size_t size;
@@ -158,6 +175,7 @@ struct application {
     int selected_track;
     struct fifo download_queue;
     SDL2_Font fonts[1];
+    UiIcons icons;
     TileTextureCache tile_cache;
     SDL_Texture *selected_track_overlay[MAX_ZOOM + 1]; // +1 for zoom level 0 to 20
     int currentFPS;

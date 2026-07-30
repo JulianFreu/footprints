@@ -63,7 +63,7 @@ void clicked_type_filter(
     }
 }
 
-void draw_clay_text(char *string, uint16_t fontSize, Clay_Color color, Clay_TextAlignment align) {
+void draw_clay_text(const char *string, uint16_t fontSize, Clay_Color color, Clay_TextAlignment align) {
     Clay_String clayString = {
         .chars = string,
         .length = strlen(string),
@@ -632,7 +632,7 @@ float get_delta_time(Uint32 lastFrameTime) {
     return deltaTime;
 }
 
-void draw_run_list_header_attribute(GpxCollection *collection, int width, char *str, AttributeType sort_type) {
+void draw_run_list_header_attribute(GpxCollection *collection, int width, const char *str, AttributeType sort_type) {
     CLAY(CLAY_IDI_LOCAL("RunListHeaderAttribute", sort_type), {.layout = {.sizing = {.width = width, .height = CLAY_SIZING_GROW(0)},
                                                                           .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
                                                                           .layoutDirection = CLAY_TOP_TO_BOTTOM},
@@ -671,7 +671,7 @@ void draw_run_list_header_attribute(GpxCollection *collection, int width, char *
     }
 }
 
-void draw_run_list_bottom(char *total_visible_tracks, GpxCollection *collection) {
+void draw_run_list_bottom(const char *total_visible_tracks, GpxCollection *collection) {
     CLAY(CLAY_ID("RunListBottom"), {.layout = {
                                         .padding = CLAY_PADDING_ALL(GAPS),
                                         .sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIT()},
@@ -717,7 +717,7 @@ void draw_run_list_header(GpxCollection *collection) {
     }
 }
 
-void draw_run_entry_attribute(int width, char *str, int id) {
+void draw_run_entry_attribute(int width, const char *str, int id) {
     CLAY(CLAY_IDI_LOCAL("RunEntryAttribute", id),
          {.layout = {.sizing = {.width = CLAY_SIZING_FIXED(width), .height = CLAY_SIZING_FIXED(LIST_ENTRY_HEIGHT)},
                      .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}}}) {
@@ -831,6 +831,46 @@ void clay_free_memory() {
     clayMemory.capacity = 0;
 }
 
+static SDL_Surface *load_icon(const char *path) {
+    SDL_Surface *surface = IMG_Load(path);
+    if (!surface)
+        fprintf(stderr, "Warning: could not load icon %s: %s\n", path, IMG_GetError());
+    return surface;
+}
+
+// Decode every static icon once. Previously each of these was reloaded from
+// disk on every frame and never freed.
+void ui_load_icons(struct application *appl) {
+    appl->icons.menu_burger = load_icon("resources/menu-burger.png");
+    if (appl->icons.menu_burger)
+        SDL_SetSurfaceColorMod(appl->icons.menu_burger, 250, 0, 0);
+
+    appl->icons.date = load_icon("resources/date.png");
+    appl->icons.clock = load_icon("resources/clock.png");
+    appl->icons.duration = load_icon("resources/duration.png");
+    appl->icons.pace = load_icon("resources/pace.png");
+    appl->icons.distance = load_icon("resources/distance.png");
+    appl->icons.elev_up = load_icon("resources/up.png");
+    appl->icons.elev_down = load_icon("resources/down.png");
+    appl->icons.peak = load_icon("resources/peak.png");
+    appl->icons.elev_profile = NULL;
+}
+
+void ui_free_icons(struct application *appl) {
+    SDL_Surface **surfaces[] = {
+        &appl->icons.menu_burger, &appl->icons.date, &appl->icons.clock,
+        &appl->icons.duration, &appl->icons.pace, &appl->icons.distance,
+        &appl->icons.elev_up, &appl->icons.elev_down, &appl->icons.peak,
+        &appl->icons.elev_profile};
+
+    for (size_t i = 0; i < sizeof(surfaces) / sizeof(surfaces[0]); i++) {
+        if (*surfaces[i]) {
+            SDL_FreeSurface(*surfaces[i]);
+            *surfaces[i] = NULL;
+        }
+    }
+}
+
 Clay_LayoutConfig MenuButtonLayout = {
     .sizing = {.width = CLAY_SIZING_FIXED(MENU_ICON_SIZE), .height = CLAY_SIZING_FIXED(MENU_ICON_SIZE)},
     .childGap = GAPS,
@@ -880,7 +920,7 @@ void draw_menu_button(SDL_Surface *icon, Clay_Color color, uint32_t button_id) {
     }
 }
 
-void draw_sidebar_track_info(SDL_Surface *icon, char *value, char *unit, int id) {
+void draw_sidebar_track_info(SDL_Surface *icon, const char *value, const char *unit, int id) {
     CLAY(CLAY_IDI_LOCAL("SidebarAttribute", id),
          {
              .layout = {
@@ -990,9 +1030,7 @@ void clay_draw_UI(struct application *appl, GpxCollection *collection) {
         if (Clay_Hovered())
             appl->mouseOverUI = true;
 
-        SDL_Surface *icon_1 = IMG_Load("resources/menu-burger.png");
-        SDL_SetSurfaceColorMod(icon_1, 250, 0, 0);
-        draw_menu_button(icon_1, darkRed, LIST_RUNS);
+        draw_menu_button(appl->icons.menu_burger, darkRed, LIST_RUNS);
     }
 
     CLAY(CLAY_ID("Right sidebar"),
@@ -1012,36 +1050,32 @@ void clay_draw_UI(struct application *appl, GpxCollection *collection) {
             appl->mouseOverUI = true;
 
         if (appl->selected_track >= 0) {
-            SDL_Surface *date_icon = IMG_Load("resources/date.png");
-            draw_sidebar_track_info(date_icon, collection->tracks[appl->selected_track].start_date_str, "", 0);
-            SDL_Surface *time_icon = IMG_Load("resources/clock.png");
-            draw_sidebar_track_info(time_icon, collection->tracks[appl->selected_track].start_time_str, "", 1);
-            SDL_Surface *duration_icon = IMG_Load("resources/duration.png");
-            draw_sidebar_track_info(duration_icon, collection->tracks[appl->selected_track].duration_str, "h", 2);
-            SDL_Surface *pace_icon = IMG_Load("resources/pace.png");
-            draw_sidebar_track_info(pace_icon, collection->tracks[appl->selected_track].pace_str, "min/km", 3);
-            SDL_Surface *distance_icon = IMG_Load("resources/distance.png");
-            draw_sidebar_track_info(distance_icon, collection->tracks[appl->selected_track].distance_str, "km", 4);
-            SDL_Surface *elev_up_icon = IMG_Load("resources/up.png");
-            draw_sidebar_track_info(elev_up_icon, collection->tracks[appl->selected_track].elev_up_str, "m", 5);
-            SDL_Surface *elev_down_icon = IMG_Load("resources/down.png");
-            draw_sidebar_track_info(elev_down_icon, collection->tracks[appl->selected_track].elev_down_str, "m", 6);
-            SDL_Surface *high_point_icon = IMG_Load("resources/peak.png");
-            draw_sidebar_track_info(high_point_icon, collection->tracks[appl->selected_track].high_point_str, "m", 7);
-            if (collection->tracks[appl->selected_track].act_type == Run) {
-                draw_sidebar_track_info(high_point_icon, "Run", " ", 8);
-            } else if (collection->tracks[appl->selected_track].act_type == Hike) {
-                draw_sidebar_track_info(high_point_icon, "Hike", " ", 8);
-            } else if (collection->tracks[appl->selected_track].act_type == Cycling) {
-                draw_sidebar_track_info(high_point_icon, "Cycling", " ", 8);
-            } else {
-                draw_sidebar_track_info(high_point_icon, "Other", " ", 8);
-            }
+            const GpxTrack *track = &collection->tracks[appl->selected_track];
 
-            SDL_Surface *image = IMG_Load("resources/elev_profile.png");
-            CLAY(CLAY_ID("ElevationProfile"),
-                 {.layout = {.sizing = {.width = CLAY_SIZING_GROW(200), .height = CLAY_SIZING_FIXED(100)}},
-                  .image = {.imageData = image}}) {
+            draw_sidebar_track_info(appl->icons.date, track->start_date_str, "", 0);
+            draw_sidebar_track_info(appl->icons.clock, track->start_time_str, "", 1);
+            draw_sidebar_track_info(appl->icons.duration, track->duration_str, "h", 2);
+            draw_sidebar_track_info(appl->icons.pace, track->pace_str, "min/km", 3);
+            draw_sidebar_track_info(appl->icons.distance, track->distance_str, "km", 4);
+            draw_sidebar_track_info(appl->icons.elev_up, track->elev_up_str, "m", 5);
+            draw_sidebar_track_info(appl->icons.elev_down, track->elev_down_str, "m", 6);
+            draw_sidebar_track_info(appl->icons.peak, track->high_point_str, "m", 7);
+
+            const char *type_label = "Other";
+            if (track->act_type == Run)
+                type_label = "Run";
+            else if (track->act_type == Hike)
+                type_label = "Hike";
+            else if (track->act_type == Cycling)
+                type_label = "Cycling";
+            draw_sidebar_track_info(appl->icons.peak, type_label, " ", 8);
+
+            // Reloaded by update_track_info_graphs when the selection changes.
+            if (appl->icons.elev_profile) {
+                CLAY(CLAY_ID("ElevationProfile"),
+                     {.layout = {.sizing = {.width = CLAY_SIZING_GROW(200), .height = CLAY_SIZING_FIXED(100)}},
+                      .image = {.imageData = appl->icons.elev_profile}}) {
+                }
             }
         }
     }
