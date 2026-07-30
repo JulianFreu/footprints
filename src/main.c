@@ -68,8 +68,7 @@ int main(int argc, char *argv[]) {
     };
     download_in_progress = false;
 
-    int order[gpx_count_files()];
-    GpxCollection collection = {.list_order = order};
+    GpxCollection collection = {0};
 
     if (sdl_initialize(&appl))
         appl_cleanup(&appl, &collection, EXIT_FAILURE);
@@ -155,6 +154,11 @@ static bool appl_cleanup(struct application *appl, GpxCollection *collection, in
     printf("Clean textures...\n");
     free_tile_cache(&(appl->tile_cache));
     free_track_tile_cache(&collection->track_tile_cache);
+    printf("Clean tracks...\n");
+    for (int i = 0; i < collection->total_tracks; i++)
+        free(collection->tracks[i].points);
+    free(collection->tracks);
+    free(collection->list_order);
     printf("Clean UI...\n");
     ui_free_icons(appl);
     clay_free_memory();
