@@ -69,9 +69,14 @@ void *download_tiles(void *arg) {
     while (true) {
         download_in_progress = false;
         pthread_mutex_lock(&download_queue->lock);
-        // Wait while the queue is empty
-        while (fifo_is_empty(download_queue))
+        // Wait while the queue is empty, unless we have been asked to stop.
+        while (fifo_is_empty(download_queue) && !download_queue->stop)
             pthread_cond_wait(&download_queue->cond, &download_queue->lock);
+
+        if (download_queue->stop) {
+            pthread_mutex_unlock(&download_queue->lock);
+            return NULL;
+        }
 
         download_in_progress = true;
         if (!fifo_read_data(download_queue, &next_tile))
@@ -161,6 +166,15 @@ void *download_tiles(void *arg) {
         download_queue->tile_in_dl = (MapTile){.tile_x = -1, .tile_y = -1, .zoom = -1};
         pthread_mutex_unlock(&download_queue->lock);
     }
+}
+
+// Asks the download worker to return from its wait. The caller joins the
+// thread afterwards; the queue's mutex and condvar must outlive that join.
+void download_thread_stop(struct fifo *download_queue) {
+    pthread_mutex_lock(&download_queue->lock);
+    download_queue->stop = true;
+    pthread_cond_signal(&download_queue->cond);
+    pthread_mutex_unlock(&download_queue->lock);
 }
 
 bool tile_key_equal(MapTile a, MapTile b) {

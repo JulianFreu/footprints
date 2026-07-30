@@ -2,6 +2,7 @@
 #define APP_H
 
 #include <SDL2/SDL.h>
+#include <pthread.h>
 #include <stdbool.h>
 
 #include "config.h"
@@ -26,6 +27,8 @@ struct application {
     bool leftMouseButtonPressed;
     int selected_track;
     struct fifo download_queue;
+    pthread_t download_thread;
+    bool download_thread_started;
     SDL2_Font fonts[1];
     UiIcons icons;
     TileTextureCache tile_cache;

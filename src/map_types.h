@@ -64,6 +64,9 @@ struct MemoryStruct {
 struct fifo {
     int read_p;
     int write_p;
+    // Set by the main thread to ask the download worker to return. Checked
+    // under `lock`, alongside the condition the worker waits on.
+    bool stop;
     MapTile tile[FIFO_DEPTH];
     MapTile tile_in_dl;
     pthread_mutex_t lock;

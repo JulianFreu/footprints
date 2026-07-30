@@ -16,7 +16,7 @@
 #include "ui.h"
 
 static bool sdl_initialize(struct application *appl);
-static bool appl_cleanup(struct application *appl, GpxCollection *collection, int exit_status);
+static void appl_cleanup(struct application *appl, GpxCollection *collection);
 static bool handle_events(struct application *appl, GpxCollection *collection);
 
 static bool animation_in_progress(UIState ui) {
@@ -71,8 +71,10 @@ int main(int argc, char *argv[]) {
 
     GpxCollection collection = {0};
 
-    if (sdl_initialize(&appl))
-        appl_cleanup(&appl, &collection, EXIT_FAILURE);
+    if (sdl_initialize(&appl)) {
+        appl_cleanup(&appl, &collection);
+        return EXIT_FAILURE;
+    }
 
     SDL_GetWindowSize(appl.window, &appl.window_width,
                       &appl.window_height);
@@ -92,12 +94,12 @@ int main(int argc, char *argv[]) {
     // the thread will constantly check the download queue for missing tiles and download them
     pthread_mutex_init(&appl.download_queue.lock, NULL);
     pthread_cond_init(&appl.download_queue.cond, NULL);
-    pthread_t dl_thread;
-    if (pthread_create(&dl_thread, NULL, download_tiles, (void *)&(appl.download_queue))) {
+    if (pthread_create(&appl.download_thread, NULL, download_tiles, (void *)&(appl.download_queue))) {
         fprintf(stderr, "Failed to create download thread\n");
-        return 1;
+        appl_cleanup(&appl, &collection);
+        return EXIT_FAILURE;
     }
-    pthread_detach(dl_thread);
+    appl.download_thread_started = true;
 
     appl.lastFrameTime = SDL_GetTicks();
 
@@ -143,15 +145,22 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    appl_cleanup(&appl, &collection, EXIT_SUCCESS);
+    appl_cleanup(&appl, &collection);
 
-    return 0;
+    return EXIT_SUCCESS;
 }
 
-static bool appl_cleanup(struct application *appl, GpxCollection *collection, int exit_status) {
+static void appl_cleanup(struct application *appl, GpxCollection *collection) {
     printf("Clean threads...\n");
-    pthread_mutex_destroy(&appl->download_queue.lock);
-    // pthread_cond_destroy(&appl->download_queue.cond);
+    // Wake the download worker out of its wait and wait for it to return before
+    // tearing down the mutex and condvar it is blocked on.
+    if (appl->download_thread_started) {
+        download_thread_stop(&appl->download_queue);
+        pthread_join(appl->download_thread, NULL);
+        appl->download_thread_started = false;
+        pthread_mutex_destroy(&appl->download_queue.lock);
+        pthread_cond_destroy(&appl->download_queue.cond);
+    }
     printf("Clean textures...\n");
     free_tile_cache(&(appl->tile_cache));
     free_track_tile_cache(&collection->track_tile_cache);
@@ -177,7 +186,6 @@ static bool appl_cleanup(struct application *appl, GpxCollection *collection, in
     SDL_Quit();
     IMG_Quit();
     printf("exit...\n");
-    exit(exit_status);
 }
 
 static bool sdl_initialize(struct application *appl) {
