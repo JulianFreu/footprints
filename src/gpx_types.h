@@ -2,6 +2,7 @@
 #define GPX_TYPES_H
 
 #include <stdbool.h>
+#include <time.h>
 
 #include "config.h"
 #include "filter_types.h"
@@ -40,6 +41,7 @@ typedef enum {
 typedef struct GpxTrack {
     GpxPoint *points;
     int total_points;
+    int points_capacity; // allocated slots in points[]
     int track_id;
     int mid_x;
     int mid_y;
@@ -49,6 +51,12 @@ typedef struct GpxTrack {
 
     char start_time_raw[64]; // Original ISO8601 string from first <trkpt>
     char end_time_raw[64];   // Original ISO8601 string from last <trkpt>
+
+    // start_time_raw/end_time_raw parsed once at load. The date filter compares
+    // against these rather than re-running sscanf over both strings of every
+    // track on every call.
+    time_t start_utc;
+    time_t end_utc;
 
     char start_time_str[16]; // Display version: "15:02:15"
     char start_date_str[16]; // Display version: "2025-08-24"

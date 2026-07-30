@@ -133,15 +133,21 @@ static bool gpx_extract_coords(xmlNode *node, GpxTrack *track) {
     for (xmlNode *cur_node = node; cur_node; cur_node = cur_node->next) {
         if (cur_node->type == XML_ELEMENT_NODE && xmlStrcmp(cur_node->name, (const xmlChar *)"trkpt") == 0) {
             int new_total = track->total_points + 1;
-            GpxPoint *temp = (GpxPoint *)realloc(track->points, new_total * sizeof(GpxPoint));
-            if (temp == NULL) {
-                fprintf(stderr, "Memory reallocation for track points failed.\n");
-                // track points into the middle of collection->tracks[]; freeing
-                // it here would corrupt the heap. The collection owns it.
-                return false;
+            if (new_total > track->points_capacity) {
+                // This used to realloc once per point, so loading a track of n
+                // points did n reallocations and copied O(n^2) bytes.
+                int grown_capacity = track->points_capacity == 0 ? 256 : track->points_capacity * 2;
+                GpxPoint *temp = (GpxPoint *)realloc(track->points, (size_t)grown_capacity * sizeof(GpxPoint));
+                if (temp == NULL) {
+                    fprintf(stderr, "Memory reallocation for track points failed.\n");
+                    // track points into the middle of collection->tracks[]; freeing
+                    // it here would corrupt the heap. The collection owns it.
+                    return false;
+                }
+                track->points = temp;
+                track->points_capacity = grown_capacity;
             }
             track->total_points = new_total;
-            track->points = temp;
 
             xmlChar *s_lat = xmlGetProp(cur_node, (const xmlChar *)"lat");
             xmlChar *s_lon = xmlGetProp(cur_node, (const xmlChar *)"lon");
@@ -326,6 +332,8 @@ static bool gpx_parse_file(char *filename, GpxTrack *track) {
         if (gpx_extract_time(root_element, track, &found_start_time)) {
             time_t start = iso8601_to_utc(track->start_time_raw);
             time_t end = iso8601_to_utc(track->end_time_raw);
+            track->start_utc = start;
+            track->end_utc = end;
 
             if (start != (time_t)-1 && end != (time_t)-1 && end >= start) {
                 track->duration_secs = difftime(end, start);
@@ -394,6 +402,9 @@ bool gpx_parse_all_files(GpxCollection *collection) {
         current->track_id = collection->total_tracks;
         current->points = NULL;
         current->total_points = 0;
+        current->points_capacity = 0;
+        current->start_utc = (time_t)-1;
+        current->end_utc = (time_t)-1;
 
         // Call your GPX parsing function here
         gpx_parse_file(full_path, current);
