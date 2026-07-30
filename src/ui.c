@@ -82,7 +82,7 @@ void init_numbers_input() {
     ui.text_input_length = 0;
 }
 
-void Handle_ClickedOn_Filter(
+void clicked_filter_field(
     Clay_ElementId elementId,
     Clay_PointerData pointerData,
     intptr_t userData) {
@@ -98,7 +98,7 @@ void clear_char_array(char *str, int size) {
         str[i] = '\0';
 }
 
-void formatPaceFilterStr(char *str) {
+void format_pace_filter_str(char *str) {
     if (ui.text_input_length < 7) {
         clear_char_array(str, INPUT_BUFFER_SIZE);
         snprintf(str, INPUT_BUFFER_SIZE, "%s", ui.text_input_buffer);
@@ -110,7 +110,7 @@ void formatPaceFilterStr(char *str) {
     }
 }
 
-void formatDateFilterStr(char *str) {
+void format_date_filter_str(char *str) {
     if (ui.text_input_length < 9) {
         clear_char_array(str, INPUT_BUFFER_SIZE);
         str[0] = ui.text_input_buffer[0];
@@ -126,7 +126,7 @@ void formatDateFilterStr(char *str) {
     }
 }
 
-void formatDurationFilterStr(char *str) {
+void format_duration_filter_str(char *str) {
     if (ui.text_input_length < 8) {
         clear_char_array(str, INPUT_BUFFER_SIZE);
         snprintf(str, INPUT_BUFFER_SIZE, "%s", ui.text_input_buffer);
@@ -146,14 +146,14 @@ void formatDurationFilterStr(char *str) {
     }
 }
 
-void formatElevFilterStr(char *str) {
+void format_elev_filter_str(char *str) {
     if (ui.text_input_length < 6) {
         clear_char_array(str, INPUT_BUFFER_SIZE);
         snprintf(str, INPUT_BUFFER_SIZE, "%s", ui.text_input_buffer);
     }
 }
 
-void formatDistanceFilterStr(char *str) {
+void format_distance_filter_str(char *str) {
     if (ui.text_input_length == 0) {
         clear_char_array(str, INPUT_BUFFER_SIZE);
     } else if (ui.text_input_length == 1) {
@@ -189,76 +189,76 @@ void draw_input_field(uint16_t filter_id, FilterSettings *filters) {
          }) {
         int font_size = 12;
         Clay_Color color = bg1;
-        Clay_OnHover(Handle_ClickedOn_Filter, filter_id);
+        Clay_OnHover(clicked_filter_field, filter_id);
         switch (filter_id) {
         case FILTER_DATE | HIGH_LIMIT:
             if (filter_id == ui.activeFilterID)
-                formatDateFilterStr(filters->end_date_str);
+                format_date_filter_str(filters->end_date_str);
             draw_clay_text(filters->end_date_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_DATE | LOW_LIMIT:
             if (filter_id == ui.activeFilterID)
-                formatDateFilterStr(filters->start_date_str);
+                format_date_filter_str(filters->start_date_str);
             draw_clay_text(filters->start_date_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_DISTANCE | HIGH_LIMIT:
             if (filter_id == ui.activeFilterID)
-                formatDistanceFilterStr(filters->distance_high_str);
+                format_distance_filter_str(filters->distance_high_str);
             draw_clay_text(filters->distance_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_DISTANCE | LOW_LIMIT:
             if (filter_id == ui.activeFilterID)
-                formatDistanceFilterStr(filters->distance_low_str);
+                format_distance_filter_str(filters->distance_low_str);
             draw_clay_text(filters->distance_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_DURATION | HIGH_LIMIT:
             if (filter_id == ui.activeFilterID)
-                formatDurationFilterStr(filters->duration_high_str);
+                format_duration_filter_str(filters->duration_high_str);
             draw_clay_text(filters->duration_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_DURATION | LOW_LIMIT:
             if (filter_id == ui.activeFilterID)
-                formatDurationFilterStr(filters->duration_low_str);
+                format_duration_filter_str(filters->duration_low_str);
             draw_clay_text(filters->duration_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_PACE | HIGH_LIMIT:
             if (filter_id == ui.activeFilterID)
-                formatPaceFilterStr(filters->pace_high_str);
+                format_pace_filter_str(filters->pace_high_str);
             draw_clay_text(filters->pace_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_PACE | LOW_LIMIT:
             if (filter_id == ui.activeFilterID)
-                formatPaceFilterStr(filters->pace_low_str);
+                format_pace_filter_str(filters->pace_low_str);
             draw_clay_text(filters->pace_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_UPHILL | HIGH_LIMIT:
             if (filter_id == ui.activeFilterID)
-                formatElevFilterStr(filters->elev_up_high_str);
+                format_elev_filter_str(filters->elev_up_high_str);
             draw_clay_text(filters->elev_up_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_UPHILL | LOW_LIMIT:
             if (filter_id == ui.activeFilterID)
-                formatElevFilterStr(filters->elev_up_low_str);
+                format_elev_filter_str(filters->elev_up_low_str);
             draw_clay_text(filters->elev_up_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_DOWNHILL | HIGH_LIMIT:
             if (filter_id == ui.activeFilterID)
-                formatElevFilterStr(filters->elev_down_high_str);
+                format_elev_filter_str(filters->elev_down_high_str);
             draw_clay_text(filters->elev_down_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_DOWNHILL | LOW_LIMIT:
             if (filter_id == ui.activeFilterID)
-                formatElevFilterStr(filters->elev_down_low_str);
+                format_elev_filter_str(filters->elev_down_low_str);
             draw_clay_text(filters->elev_down_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_PEAK | HIGH_LIMIT:
             if (filter_id == ui.activeFilterID)
-                formatElevFilterStr(filters->high_point_high_str);
+                format_elev_filter_str(filters->high_point_high_str);
             draw_clay_text(filters->high_point_high_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         case FILTER_PEAK | LOW_LIMIT:
             if (filter_id == ui.activeFilterID)
-                formatElevFilterStr(filters->high_point_low_str);
+                format_elev_filter_str(filters->high_point_low_str);
             draw_clay_text(filters->high_point_low_str, font_size, color, CLAY_TEXT_ALIGN_CENTER);
             break;
         default:
@@ -947,7 +947,7 @@ void draw_sidebar_track_info(SDL_Surface *icon, const char *value, const char *u
     }
 }
 
-void clay_draw_UI(struct application *appl, GpxCollection *collection) {
+void clay_draw_ui(struct application *appl, GpxCollection *collection) {
     if (!clayMemory.memory) {
         fprintf(stderr, "[CLAY] ERROR: clayMemory not initialized!\n");
         return;
