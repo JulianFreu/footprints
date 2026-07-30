@@ -1,0 +1,70 @@
+# Naming convention: snake_case functions,
+#                    PascalCase typedef'd structs,
+#                    SCREAMING_SNAKE_CASE macros
+
+
+
+Language: Cpp
+Standard: c++03 # closest Standard value clang-format offers for C; harmless for .c files
+
+BasedOnStyle: LLVM
+
+# 4-space indentation, no tabs.
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ContinuationIndentWidth: 4
+IndentCaseLabels: false # case labels sit flush with switch's brace, not indented a level in
+AccessModifierOffset: -4
+
+# K&R-style: opening brace stays on the same line as the function signature or
+# control-flow keyword, for functions, if/else/for/while/switch alike.
+BreakBeforeBraces: Attach
+
+# A single-statement `if (...)\n    return NULL;` with no braces is fine; 
+# don't force braces on, and don't collapse it back onto one line either.
+InsertBraces: false
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Empty
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortEnumsOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+
+# Pointer/reference binds to the variable name: `SDL_Texture *tex`, not
+# `SDL_Texture* tex` or `SDL_Texture * tex`.
+PointerAlignment: Right
+DerivePointerAlignment: false
+
+# `if (x)`, `while (x)`, `for (;;)` -- space before the paren on control
+# statements, but not on function calls/declarations (`fifo_write_data(...)`).
+SpaceBeforeParens: ControlStatements
+SpaceInEmptyParentheses: false
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+SpaceBeforeAssignmentOperators: true
+SpacesInCStyleCastParentheses: false
+
+ColumnLimit: 0 # long parameter lists and expressions are common here; don't force-wrap them
+# When a parameter list is already wrapped by hand, keep continuation lines
+# visually aligned under the opening paren rather than flat-indenting them.
+AlignAfterOpenBracket: Align
+AlignConsecutiveAssignments: None
+AlignConsecutiveDeclarations: None
+AlignTrailingComments: true
+AlignOperands: Align # `a +\n    b` style continuations, as used in tracks.c / heat.c
+
+BinPackArguments: true
+BinPackParameters: true
+BreakBeforeBinaryOperators: None
+
+IndentPPDirectives: None
+SortIncludes: Never # local header first, then other local headers, then system headers -- clang-format's alphabetical sort would break this
+IncludeBlocks: Preserve
+
+ReflowComments: false # avoid fighting hand-wrapped // comment paragraphs
+SpacesBeforeTrailingComments: 1
+
+Cpp11BracedListStyle: true # tight braces on init lists: {0x19, 0x1a, ...}, not { 0x19, 0x1a, ... }
+KeepEmptyLinesAtTheStartOfBlocks: false
+MaxEmptyLinesToKeep: 1

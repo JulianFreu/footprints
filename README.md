@@ -35,6 +35,12 @@ Fedora:
 sudo dnf install gcc make SDL2-devel SDL2_image-devel SDL2_ttf-devel libcurl-devel libxml2-devel
 ```
 
+### Branch naming
+
+`type/short-description`, e.g. `feat/tile-fade-in`, `fix/fifo-oob-write`,
+`chore/update-deps`. Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`.
+Keep the description a few kebab-case words, not a full sentence.
+
 ### 3. Build from source
 
 Use the provided build script:
