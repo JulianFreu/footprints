@@ -2,7 +2,7 @@
 #include "api_key.h"
 
 extern bool use_osm_tiles;
-extern bool download_in_progress;
+extern _Atomic bool download_in_progress;
 
 void conv_pixel_to_tile_and_offset(int pixel_x, int pixel_y, int source_zoom, int target_zoom,
                                    int *tile_x, int *tile_y,
@@ -86,8 +86,8 @@ void *download_tiles(void *arg) {
         CURL *curl = curl_easy_init();
         struct curl_slist *list = NULL;
         if (!curl) {
-            fprintf(stderr, "Fehler beim Initialisieren von CURL\n");
-            continue; // oder break oder return
+            fprintf(stderr, "Failed to initialize CURL\n");
+            continue;
         }
 
         image_data.memory = (char *)malloc(1);
@@ -105,7 +105,7 @@ void *download_tiles(void *arg) {
             snprintf(url, sizeof(url), "https://tiles.stadiamaps.com/tiles/stamen_terrain/%d/%d/%d.png",
                      next_tile.zoom, next_tile.tile_x, next_tile.tile_y);
             char auth[256];
-            sprintf(auth, "Authorization: Stadia-Auth %s", api_key);
+            snprintf(auth, sizeof(auth), "Authorization: Stadia-Auth %s", api_key);
             list = curl_slist_append(list, auth);
 
             curl_easy_setopt(curl, CURLOPT_URL, url);
@@ -118,15 +118,21 @@ void *download_tiles(void *arg) {
         curl_easy_cleanup(curl);
         curl_slist_free_all(list); /* free the list */
 
+        // Only cache the tile when the transfer actually succeeded. Writing a
+        // failed or empty response would make file_exists() report the tile as
+        // present, so it would render blank forever and never be retried.
         if (res != CURLE_OK) {
-            fprintf(stderr, "Fehler beim Laden: %s\n", curl_easy_strerror(res));
-        }
-
-        // save tile to tile cache
-        FILE *f = fopen(tile_path, "wb");
-        if (f) {
-            fwrite(image_data.memory, 1, image_data.size, f);
-            fclose(f);
+            fprintf(stderr, "Tile download failed (%s): %s\n", tile_path, curl_easy_strerror(res));
+        } else if (image_data.size == 0) {
+            fprintf(stderr, "Tile download returned no data: %s\n", tile_path);
+        } else {
+            FILE *f = fopen(tile_path, "wb");
+            if (f) {
+                fwrite(image_data.memory, 1, image_data.size, f);
+                fclose(f);
+            } else {
+                fprintf(stderr, "Could not write tile to cache: %s\n", tile_path);
+            }
         }
         free(image_data.memory);
     }

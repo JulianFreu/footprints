@@ -186,8 +186,9 @@ bool gpxParser_extract_coords(xmlNode *node, GpxTrack *track) {
             int new_total = track->total_points + 1;
             GpxPoint *temp = (GpxPoint *)realloc(track->points, new_total * sizeof(GpxPoint));
             if (temp == NULL) {
-                fprintf(stderr, "Memory reallocation for tracks failed.\n");
-                free(track);
+                fprintf(stderr, "Memory reallocation for track points failed.\n");
+                // track points into the middle of collection->tracks[]; freeing
+                // it here would corrupt the heap. The collection owns it.
                 return false;
             }
             track->total_points = new_total;
@@ -379,7 +380,9 @@ bool gpxParser_parse_file(char *filename, GpxTrack *track) {
 
             if (start != (time_t)-1 && end != (time_t)-1 && end >= start) {
                 track->duration_secs = difftime(end, start);
-                track->secs_per_km = track->duration_secs / track->distance;
+                track->secs_per_km = (track->distance > 0.0f)
+                                         ? track->duration_secs / track->distance
+                                         : 0.0f;
             } else {
                 track->duration_secs = 0.0f;
                 track->secs_per_km = 0.0f;
@@ -393,8 +396,9 @@ bool gpxParser_parse_file(char *filename, GpxTrack *track) {
     }
 
     // Free resources
+    // xmlCleanupParser() is a once-per-process teardown call, not a per-document
+    // one; it runs in gpxParser_cleanup() after all files have been parsed.
     xmlFreeDoc(doc);
-    xmlCleanupParser();
     return true;
 }
 
@@ -487,4 +491,9 @@ bool gpxParser_parse_all_files(GpxCollection *collection) {
 
     closedir(dir);
     return true;
+}
+
+// Releases libxml2's global state. Call once, after all parsing is done.
+void gpxParser_cleanup(void) {
+    xmlCleanupParser();
 }

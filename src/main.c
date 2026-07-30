@@ -1,6 +1,7 @@
 #include "main.h"
 
-bool download_in_progress;
+// Written by the tile download thread, read by the main loop each frame.
+_Atomic bool download_in_progress;
 extern UIState ui;
 bool use_osm_tiles = true;
 SDL_Event event;
@@ -154,6 +155,8 @@ bool appl_cleanup(struct application *appl, GpxCollection *collection, int exit_
     SDL_DestroyRenderer(appl->renderer);
     printf("Clean window...\n");
     SDL_DestroyWindow(appl->window);
+    printf("Clean parser...\n");
+    gpxParser_cleanup();
     printf("Clean SDL...\n");
     TTF_Quit();
     SDL_Quit();

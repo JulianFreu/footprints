@@ -94,7 +94,7 @@ void apply_filter_values(GpxCollection *c) {
         if (c->tracks[i].visible_in_list)
             counter++;
     }
-    sprintf(c->total_visible_tracks_str, "Shown: %d of %d Tracks", counter, c->total_tracks);
+    snprintf(c->total_visible_tracks_str, sizeof(c->total_visible_tracks_str), "Shown: %d of %d Tracks", counter, c->total_tracks);
 }
 
 int digit(char c) {
