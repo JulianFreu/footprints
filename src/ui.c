@@ -457,7 +457,7 @@ static void clicked_calculate_heat(
         }
         // recalculate heat
         calculate_heatmap(collection);
-        free_track_tile_cache(&collection->track_tile_cache);
+        tracks_invalidate_cache(collection);
     }
 }
 static void clicked_show_filtered_tracks(
@@ -465,8 +465,8 @@ static void clicked_show_filtered_tracks(
     Clay_PointerData pointerData,
     intptr_t userData) {
     if (pointerData.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME) {
-        TrackTileTextureCache *tracks_cache = (TrackTileTextureCache *)userData;
-        free_track_tile_cache(tracks_cache);
+        GpxCollection *collection = (GpxCollection *)userData;
+        tracks_invalidate_cache(collection);
     }
 }
 
@@ -1046,7 +1046,7 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
                                                         .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}},
                                                     .backgroundColor = Clay_Hovered() ? bg_l : bg_d,
                                                     .cornerRadius = CORNER_RADIUS}) {
-                Clay_OnHover(clicked_show_filtered_tracks, (intptr_t)&collection->track_tile_cache);
+                Clay_OnHover(clicked_show_filtered_tracks, (intptr_t)collection);
                 draw_clay_text("Show Filtered Tracks", 16, dark_aqua, CLAY_TEXT_ALIGN_CENTER);
             }
             // Re-filter only when a type toggle actually changed. This read

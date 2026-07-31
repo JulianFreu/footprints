@@ -68,5 +68,6 @@ void run_filters_tests(void);
 void run_gpx_tests(void);
 void run_fifo_tests(void);
 void run_heat_tests(void);
+void run_point_index_tests(void);
 
 #endif

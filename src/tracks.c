@@ -10,6 +10,7 @@
 #include "log.h"
 
 #include "map.h" // conv_pixel_to_tile_and_offset, tile_key_equal
+#include "point_index.h"
 
 #define HEAT_COLOR_COUNT 32
 
@@ -175,7 +176,7 @@ void tracks_free_scratch(void) {
     overlay_points_capacity = 0;
 }
 
-void free_track_tile_cache(TrackTileTextureCache *cache) {
+static void free_track_tile_cache(TrackTileTextureCache *cache) {
     for (int i = 0; i < cache->size; i++) {
         if (cache->entries[i].texture)
             SDL_DestroyTexture(cache->entries[i].texture);
@@ -186,6 +187,20 @@ void free_track_tile_cache(TrackTileTextureCache *cache) {
     cache->capacity = 0;
 }
 
+// Drops everything derived from the visible set: the rendered tiles and the
+// index they are rendered from. Called when the filters change, when the heat
+// is recalculated, and at teardown.
+void tracks_invalidate_cache(GpxCollection *collection) {
+    free_track_tile_cache(&collection->track_tile_cache);
+    point_index_invalidate(&collection->point_index);
+}
+
+// Teardown counterpart: also gives back the index's allocation.
+void tracks_free_collection_cache(GpxCollection *collection) {
+    free_track_tile_cache(&collection->track_tile_cache);
+    point_index_free(&collection->point_index);
+}
+
 SDL_Texture *get_or_render_track_tile(struct application *appl, GpxCollection *collection, MapTile key) {
     // Check if already cached
     for (int i = 0; i < collection->track_tile_cache.size; i++) {
@@ -194,42 +209,15 @@ SDL_Texture *get_or_render_track_tile(struct application *appl, GpxCollection *c
         }
     }
 
-    // Collect all points
-    CombinedTilePoints ctp = {
-        .key = key,
-        .points = NULL,
-        .point_count = 0,
-        .capacity = 0};
-
-    for (int t = 0; t < collection->total_tracks; t++) {
-        if (collection->tracks[t].visible_in_list) {
-            GpxTrack *track = &collection->tracks[t];
-            for (int i = 0; i < track->total_points; i++) {
-                int world_x = track->points[i].world_x;
-                int world_y = track->points[i].world_y;
-                int tile_x, tile_y, pixel_in_tile_x, pixel_in_tile_y;
-                conv_pixel_to_tile_and_offset(world_x, world_y, MAX_ZOOM, key.zoom, &tile_x, &tile_y, &pixel_in_tile_x, &pixel_in_tile_y);
-
-                if (tile_x == key.tile_x && tile_y == key.tile_y) {
-                    if (ctp.point_count >= ctp.capacity) {
-                        ctp.capacity = ctp.capacity == 0 ? 16 : ctp.capacity * 2;
-                        ctp.points = realloc(ctp.points, ctp.capacity * sizeof(HeatPoint));
-                    }
-                    HeatPoint hp = {
-                        .pos = {pixel_in_tile_x, pixel_in_tile_y},
-                        .heat = track->points[i].heat};
-
-                    ctp.points[ctp.point_count++] = hp;
-                }
-            }
-        }
-    }
-
-    SDL_Texture *tex = SDL_CreateTexture(appl->renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, 256, 256);
-    if (!tex) {
-        free(ctp.points);
+    if (!point_index_ensure(collection))
         return NULL;
-    }
+
+    int from, to;
+    point_index_tile_range(&collection->point_index, key, &from, &to);
+
+    SDL_Texture *tex = SDL_CreateTexture(appl->renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, TILE_SIZE, TILE_SIZE);
+    if (!tex)
+        return NULL;
 
     SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
     SDL_SetRenderTarget(appl->renderer, tex);
@@ -243,11 +231,15 @@ SDL_Texture *get_or_render_track_tile(struct application *appl, GpxCollection *c
     // INT_MIN. Collapse that case onto the bottom of the ramp instead.
     const float min_heat = 1.0f;
     const float heat_span = (float)collection->max_heat - min_heat;
-    for (int j = 0; j < ctp.point_count; j++) {
-        float heat = (float)ctp.points[j].heat;
+    for (int j = from; j < to; j++) {
+        const GpxPoint *point = collection->point_index.entries[j].point;
+
+        int tile_x, tile_y, pixel_in_tile_x, pixel_in_tile_y;
+        conv_pixel_to_tile_and_offset(point->world_x, point->world_y, MAX_ZOOM, key.zoom,
+                                      &tile_x, &tile_y, &pixel_in_tile_x, &pixel_in_tile_y);
 
         // Normalize heat
-        float normalized = (heat_span > 0.0f) ? (heat - min_heat) / heat_span : 0.0f;
+        float normalized = (heat_span > 0.0f) ? ((float)point->heat - min_heat) / heat_span : 0.0f;
         if (normalized < 0.0f)
             normalized = 0.0f;
         if (normalized > 1.0f)
@@ -260,9 +252,9 @@ SDL_Texture *get_or_render_track_tile(struct application *appl, GpxCollection *c
         SDL_SetRenderDrawColor(appl->renderer, color.r, color.g, color.b, color.a);
 
         SDL_Rect rct = {
-            ctp.points[j].pos.x - 2,
-            ctp.points[j].pos.y - 2,
-            4, 4};
+            pixel_in_tile_x - TRACK_POINT_SIZE / 2,
+            pixel_in_tile_y - TRACK_POINT_SIZE / 2,
+            TRACK_POINT_SIZE, TRACK_POINT_SIZE};
         SDL_RenderFillRect(appl->renderer, &rct);
     }
 
@@ -274,11 +266,9 @@ SDL_Texture *get_or_render_track_tile(struct application *appl, GpxCollection *c
         .texture = tex};
     if (!append_to_track_tile_cache(&collection->track_tile_cache, entry)) {
         SDL_DestroyTexture(tex);
-        free(ctp.points);
         return NULL;
     }
 
-    free(ctp.points);
     return tex;
 }
 

@@ -8,7 +8,11 @@
 #include "gpx_types.h"
 #include "map_types.h"
 
-void free_track_tile_cache(TrackTileTextureCache *cache);
+// Drops the rendered heat tiles and the spatial index behind them. Call
+// whenever the set of visible tracks, or their heat, changes.
+void tracks_invalidate_cache(GpxCollection *collection);
+// Teardown counterpart: also releases the index's allocation.
+void tracks_free_collection_cache(GpxCollection *collection);
 void tracks_free_scratch(void);
 const char *activity_type_label(ActivityType type);
 void update_track_info_graphs(struct application *appl, const GpxCollection *collection);

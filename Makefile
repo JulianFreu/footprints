@@ -11,6 +11,7 @@ TEST_BIN := run-tests
 SOURCES  := $(SRC_DIR)/main.c $(SRC_DIR)/map.c $(SRC_DIR)/fifo.c \
             $(SRC_DIR)/gpx_parser.c $(SRC_DIR)/tracks.c $(SRC_DIR)/filters.c \
             $(SRC_DIR)/heat.c $(SRC_DIR)/ui.c \
+            $(SRC_DIR)/point_index.c \
             $(SRC_DIR)/time_util.c
 OBJECTS  := $(SOURCES:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
 DEPS     := $(OBJECTS:.o=.d)

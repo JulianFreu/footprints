@@ -38,6 +38,10 @@
 // raw series roughly doubles the real climb.
 #define ELEVATION_SMOOTHING_WINDOW 10
 
+// Side length, in pixels, of the square stamped down for each track point on
+// the heat tiles.
+#define TRACK_POINT_SIZE 4
+
 // --- Heatmap ---
 // Radius in projected pixels within which two tracks count as overlapping.
 #define HEAT_RADIUS_PIXELS 200.0f

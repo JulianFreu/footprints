@@ -5,28 +5,19 @@
 #include <pthread.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #include "config.h"
+
+// gpx_types.h includes this header for the caches below, so the point type can
+// only be named, not defined, here.
+struct GpxPoint;
 
 typedef struct MapTile {
     int tile_x;
     int tile_y;
     int zoom;
 } MapTile;
-
-typedef struct
-{
-    SDL_Point pos;
-    int heat;
-} HeatPoint;
-
-typedef struct
-{
-    MapTile key;
-    HeatPoint *points;
-    int point_count;
-    int capacity;
-} CombinedTilePoints;
 
 typedef struct
 {
@@ -40,6 +31,27 @@ typedef struct
     int size;
     int capacity;
 } TrackTileTextureCache;
+
+// One visible track point, tagged with the Morton code of the MAX_ZOOM tile it
+// falls in. Interleaving the tile's x and y bits is what makes a tile's points
+// contiguous once the array is sorted: a tile at zoom z is a prefix of that
+// code, so its points are one range rather than a scan of the whole library.
+typedef struct
+{
+    uint64_t tile_key;
+    const struct GpxPoint *point;
+} IndexedPoint;
+
+// Sorted index over every visible point, shared by all zoom levels. Rebuilt
+// only when the visible set changes, which is also when the rendered tiles are
+// dropped.
+typedef struct
+{
+    IndexedPoint *entries;
+    int count;
+    int capacity;
+    bool valid;
+} TrackPointIndex;
 
 // Both texture caches are a plain grow-only array of fixed-size entries, so
 // they share one growth routine; see tile_cache_reserve in map.c.
