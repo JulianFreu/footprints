@@ -24,6 +24,10 @@ void download_thread_stop(struct fifo *download_queue);
 void conv_pixel_to_tile_and_offset(int pixel_x, int pixel_y, int source_zoom, int target_zoom,
                                    int *tile_x, int *tile_y,
                                    int *pixel_in_tile_x, int *pixel_in_tile_y);
+// Whether a Stadia Maps key was compiled in. -stadiamaps needs one; the
+// default OpenStreetMap tiles do not.
+bool map_has_api_key(void);
+
 bool tile_key_equal(MapTile a, MapTile b);
 
 // Bounded, least-recently-used texture cache, shared by the map background and

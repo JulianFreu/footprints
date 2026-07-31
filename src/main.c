@@ -32,11 +32,18 @@ static bool animation_in_progress(const UIState *state) {
 int main(int argc, char *argv[]) {
     if (argc > 1) {
         if (argc == 2 && strcmp(argv[1], "-stadiamaps") == 0) {
+            if (!map_has_api_key()) {
+                fprintf(stderr,
+                        "-stadiamaps needs an API key, and src/api_key.h is missing.\n"
+                        "  cp src/api_key.h.example src/api_key.h\n"
+                        "then paste your key into it and rebuild.\n");
+                return EXIT_FAILURE;
+            }
             printf("using stadiamaps\n");
             use_osm_tiles = false;
         } else {
-            printf("The only supported argument is \"-stadiamaps\"\n");
-            exit(1);
+            fprintf(stderr, "The only supported argument is \"-stadiamaps\"\n");
+            return EXIT_FAILURE;
         }
     }
     struct application appl = {

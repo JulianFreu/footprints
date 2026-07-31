@@ -6,12 +6,15 @@ OBJ_DIR  := build
 TEST_DIR := tests
 TEST_BIN := run-tests
 
-# ui.c #includes clay_renderer_sdl.c, so that file is deliberately not listed
-# here as a translation unit of its own.
+# clay_sdl.c is the one translation unit carrying Clay's implementation and the
+# vendored SDL2 renderer; clay.h and clay_renderer_sdl.c are pulled in there and
+# are not translation units of their own.
 SOURCES  := $(SRC_DIR)/main.c $(SRC_DIR)/map.c $(SRC_DIR)/fifo.c \
             $(SRC_DIR)/gpx_parser.c $(SRC_DIR)/tracks.c $(SRC_DIR)/filters.c \
             $(SRC_DIR)/heat.c $(SRC_DIR)/ui.c \
-            $(SRC_DIR)/point_index.c \
+            $(SRC_DIR)/point_index.c $(SRC_DIR)/track_sort.c \
+            $(SRC_DIR)/clay_sdl.c $(SRC_DIR)/ui_filters.c \
+            $(SRC_DIR)/ui_runlist.c \
             $(SRC_DIR)/time_util.c
 OBJECTS  := $(SOURCES:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
 DEPS     := $(OBJECTS:.o=.d)
@@ -21,8 +24,9 @@ DEPS     := $(OBJECTS:.o=.d)
 XML_CFLAGS := $(shell xml2-config --cflags 2>/dev/null || pkg-config --cflags libxml-2.0)
 XML_LIBS   := $(shell xml2-config --libs   2>/dev/null || pkg-config --libs   libxml-2.0)
 
-# -Wmissing-braces fires ~44 times from inside clay.h's CLAY__INIT macro, which
-# is vendored code we do not edit. Suppressed so real warnings stay visible.
+# -Wmissing-braces fires from inside clay.h's CLAY__INIT macro, which every
+# CLAY() in the UI expands. Vendored code we do not edit, so it is suppressed
+# here to keep real warnings visible.
 WARNINGS := -Wall -Wextra -Wno-unused-parameter -Wno-missing-braces
 OPT      ?= -O2
 
@@ -56,16 +60,13 @@ $(BIN): $(OBJECTS)
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
+# The vendored renderer warns about its own sign comparisons and precedence.
+# Now that it compiles on its own rather than inside ui.c, those warnings can be
+# silenced here instead of being scrolled past on every build.
+$(OBJ_DIR)/clay_sdl.o: WARNINGS := -w
+
 $(OBJ_DIR):
 	@mkdir -p $(OBJ_DIR)
-
-$(SRC_DIR)/api_key.h:
-	@echo "error: $(SRC_DIR)/api_key.h is missing."
-	@echo "       cp $(SRC_DIR)/api_key.h.example $(SRC_DIR)/api_key.h"
-	@echo "       then paste your Stadia Maps key into it (only needed for -stadiamaps)."
-	@false
-
-$(OBJ_DIR)/map.o: $(SRC_DIR)/api_key.h
 
 format:
 	clang-format -i $(FORMAT_FILES)

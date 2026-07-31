@@ -9,13 +9,31 @@
 
 #include <SDL2/SDL_image.h>
 
-#include "api_key.h"
 #include "fifo.h"
 #include "log.h"
 #include "tracks.h" // get_or_render_track_tile
 
+// The Stadia Maps key is optional: it is only read when -stadiamaps is passed,
+// and the default OpenStreetMap tiles need no key at all. Including the header
+// unconditionally meant the build failed without it even for users who would
+// never use it.
+#if defined(__has_include)
+#if __has_include("api_key.h")
+#include "api_key.h"
+#define HAVE_API_KEY 1
+#endif
+#endif
+
+#ifndef HAVE_API_KEY
+static const char *api_key = NULL;
+#endif
+
 bool use_osm_tiles = true;
 _Atomic bool download_in_progress;
+
+bool map_has_api_key(void) {
+    return api_key != NULL && api_key[0] != '\0';
+}
 
 void conv_pixel_to_tile_and_offset(int pixel_x, int pixel_y, int source_zoom, int target_zoom,
                                    int *tile_x, int *tile_y,
@@ -139,7 +157,12 @@ void *download_tiles(void *arg) {
             snprintf(url, sizeof(url), "https://tiles.stadiamaps.com/tiles/stamen_terrain/%d/%d/%d.png",
                      next_tile.zoom, next_tile.tile_x, next_tile.tile_y);
             char auth[TILE_PATH_MAX];
-            snprintf(auth, sizeof(auth), "Authorization: Stadia-Auth %s", api_key);
+            // main() refuses -stadiamaps without a key, so this cannot be
+            // reached with a null one -- but the compiler cannot see that, and
+            // a null here would be a format-string crash rather than a
+            // failed download.
+            snprintf(auth, sizeof(auth), "Authorization: Stadia-Auth %s",
+                     map_has_api_key() ? api_key : "");
             list = curl_slist_append(list, auth);
 
             curl_easy_setopt(curl, CURLOPT_URL, url);
