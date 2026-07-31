@@ -3,6 +3,8 @@
 BIN      := footprints
 SRC_DIR  := src
 OBJ_DIR  := build
+TEST_DIR := tests
+TEST_BIN := run-tests
 
 # ui.c #includes clay_renderer_sdl.c, so that file is deliberately not listed
 # here as a translation unit of its own.
@@ -28,9 +30,15 @@ LDLIBS   := -lSDL2 -lSDL2_image -lSDL2_ttf -lcurl $(XML_LIBS) -lm -lpthread
 
 # Files that are vendored third-party code and must not be reformatted.
 FORMAT_FILES := $(filter-out $(SRC_DIR)/clay.h $(SRC_DIR)/clay_renderer_sdl.c, \
-                  $(wildcard $(SRC_DIR)/*.c) $(wildcard $(SRC_DIR)/*.h))
+                  $(wildcard $(SRC_DIR)/*.c) $(wildcard $(SRC_DIR)/*.h)) \
+                $(wildcard $(TEST_DIR)/*.c) $(wildcard $(TEST_DIR)/*.h)
 
-.PHONY: all debug clean format check-format run
+# Each test file #includes the module it covers, so the sources under test are
+# not listed here -- they arrive through those includes and must not also be
+# linked in, or every symbol would be defined twice.
+TEST_SOURCES := $(wildcard $(TEST_DIR)/*.c)
+
+.PHONY: all debug clean format check-format run test
 
 all: $(BIN)
 
@@ -67,7 +75,15 @@ check-format:
 run: $(BIN)
 	./$(BIN)
 
+# Built and run with the sanitizers on: these are the suites that cover the
+# hand-rolled parsing and buffer arithmetic, which is exactly where an
+# out-of-bounds read would hide.
+test: $(TEST_SOURCES) $(wildcard $(SRC_DIR)/*.c) $(wildcard $(SRC_DIR)/*.h)
+	$(CC) -O1 -g -fsanitize=address,undefined $(WARNINGS) $(XML_CFLAGS) \
+	    $(TEST_SOURCES) -o $(TEST_BIN) $(XML_LIBS) -lm -lpthread
+	./$(TEST_BIN)
+
 clean:
-	$(RM) -r $(OBJ_DIR) build-debug $(BIN) $(BIN)-debug
+	$(RM) -r $(OBJ_DIR) build-debug $(BIN) $(BIN)-debug $(TEST_BIN)
 
 -include $(DEPS)
