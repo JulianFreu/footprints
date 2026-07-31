@@ -136,9 +136,16 @@ it, so a module's `static` helpers are reachable without widening its
 interface. Each `src/*.c` must therefore be included by exactly one test file.
 
 Covered: timestamp parsing, the tile queue, the filter table and the predicate
-it drives, the parser's geometry and elevation maths, the k-d tree radius
-search (against brute force), and the spatial index (against the full scan it
-replaced).
+it drives, the parser's geometry and elevation maths, the display formatting,
+the k-d tree radius search (against brute force), the spatial index (against
+the full scan it replaced), and the background job's concurrency contract.
+
+For threading changes, build the suite with ThreadSanitizer instead:
+
+```bash
+cc -O1 -g -fsanitize=thread -I$(xml2-config --cflags | sed 's/-I//') \
+   tests/*.c -o run-tests-tsan -lxml2 -lm -lpthread && ./run-tests-tsan
+```
 
 ### Branch naming
 
@@ -154,6 +161,8 @@ Keep the description a few kebab-case words, not a full sentence.
 | `gpx_parser.c` | Reads `gpx_files/`, builds the track collection, derives per-track stats |
 | `filters.c` | The filter table: what each filter reads, how it parses, which tracks pass |
 | `track_sort.c` | Ordering the run list |
+| `track_format.c` | Turning a track's numbers into the strings shown beside them |
+| `background.c` | Runs the library scan and the heat calculation off the main thread |
 | `heat.c` | The implicit k-d tree and the threaded heat calculation |
 | `point_index.c` | Tile-keyed spatial index over the visible points, shared by all zooms |
 | `tracks.c` | Track rendering: heat tiles, the selected-track overlay, elevation profiles |
@@ -164,6 +173,7 @@ Keep the description a few kebab-case words, not a full sentence.
 | `ui_filters.c` | The filter panel and the text input that feeds it |
 | `ui_runlist.c` | The run list: sortable header, rows, virtualised scrolling |
 | `ui_internal.h` | Layout vocabulary shared by `ui*.c`; not part of the UI's interface |
+| `progress.h` | How a long operation reports progress and is asked to stop |
 | `clay_sdl.c` | The one translation unit carrying Clay and its vendored SDL renderer |
 | `*_types.h` | Types only, so a module can include what it needs without the rest |
 | `config.h` | Compile-time tunables |
@@ -180,6 +190,11 @@ Keep the description a few kebab-case words, not a full sentence.
 - Every timestamp is UTC, and is parsed through `time_util.h`.
 - Laying out the UI does not mutate the model it is drawing. Anything that
   changes state happens on the event that caused it.
+- Clay keeps a pointer to the text it is given rather than copying it, so
+  anything drawn must outlive the layout pass. Use `ui_frame_printf` or
+  `ui_track_text`, never a local buffer.
+- While a background job is running the collection belongs to its worker. The
+  main thread does not read or draw it until `background_collect` says so.
 - Comments describe what the code does now. Git history holds what it used to do.
 - Only stdout output a user asked for is unconditional; diagnostics go through
   `LOG_DEBUG` in `log.h` (build with `-DFOOTPRINTS_DEBUG_LOG` to see them).
@@ -215,10 +230,6 @@ parsing either.
 - Multi-select in the run list for bulk delete/hide
 - A minimal config for map tile provider/API key setup instead of editing `api_key.h` by hand
 - Auto-sync with Garmin Connect
-- Run the GPX parse and the heat calculation off the main thread, so the window
-  stays responsive and progress can be shown in the UI rather than on stdout
-- Move the display strings off `GpxTrack` and format them where they are drawn
-- Give the map and the track overlay one shared colour source
 
 ## License
 This project is licensed under the MIT License – see the [LICENSE](LICENSE) file for details.
