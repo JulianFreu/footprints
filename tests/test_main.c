@@ -9,6 +9,7 @@ int main(void) {
     run_fifo_tests();
     run_filters_tests();
     run_gpx_tests();
+    run_heat_tests();
 
     printf("\n%d checks, %d failed\n", tests_run, tests_failed);
     return tests_failed == 0 ? 0 : 1;

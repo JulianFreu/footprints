@@ -5,22 +5,20 @@
 
 #include "gpx_types.h"
 
-// 2-d k-d tree over every visible track point, used for the radius search that
-// assigns each point its heat value.
-typedef struct KDNode {
-    GpxPoint *point;
-    int axis;
-    struct KDNode *left, *right;
-} KDNode;
-
-// One worker's slice of the heat calculation. start/end index into the shared
-// points array; the mutex-guarded fields are shared across all workers.
+// One worker's slice of the heat calculation.
+//
+// The k-d tree is implicit: `points` is permuted so the median of any range
+// sits at that range's midpoint, which makes the array itself the tree and
+// needs no nodes. Every worker searches the whole of it, over
+// [0, total_points), while start/end bound only the points that worker is
+// responsible for assigning heat to. The mutex-guarded fields are shared
+// across all workers.
 typedef struct
 {
     GpxPoint **points;
+    int total_points;
     int start;
     int end;
-    KDNode *tree;
     float radius2;
     int total_tracks;
     int *thread_max_heat;

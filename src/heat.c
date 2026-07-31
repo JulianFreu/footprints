@@ -12,52 +12,76 @@
 
 #include "log.h"
 
-// Axis the comparator sorts on. Set immediately before each qsort call.
-// Not thread safe -- build_kdtree must stay single threaded.
-static int current_axis;
-
-// qsort comparator, ordering by the axis in current_axis
-static int compare_points(const void *a, const void *b) {
-    GpxPoint *p1 = *(GpxPoint **)a;
-    GpxPoint *p2 = *(GpxPoint **)b;
-    double diff = (current_axis == 0) ? (p1->world_x - p2->world_x) : (p1->world_y - p2->world_y);
-    return (diff > 0) - (diff < 0);
+// The tree is implicit in the array: the node for a range is its midpoint, its
+// children are the halves either side. Build and search both derive the split
+// the same way, so nothing has to be stored.
+static int subtree_median(int lo, int hi) {
+    return lo + (hi - lo) / 2;
 }
 
-// Allocate a single k-d tree node
-static KDNode *create_node(GpxPoint *point, int axis) {
-    KDNode *node = (KDNode *)malloc(sizeof(KDNode));
-    if (!node) {
-        perror("malloc failed");
-        exit(EXIT_FAILURE);
+static int axis_value(const GpxPoint *point, int axis) {
+    return (axis == 0) ? point->world_x : point->world_y;
+}
+
+static void swap_points(GpxPoint **a, GpxPoint **b) {
+    GpxPoint *tmp = *a;
+    *a = *b;
+    *b = tmp;
+}
+
+// Reorders points[lo, hi) so that index n holds the value it would hold if the
+// range were sorted on `axis`, with everything below it no greater and
+// everything above it no smaller. That is the whole of what the build needs --
+// fully sorting each level, as this did, costs a log factor for an ordering
+// that is thrown away immediately.
+static void select_nth(GpxPoint **points, int lo, int hi, int n, int axis) {
+    while (hi - lo > 1) {
+        // Median of three. Track points arrive in the order they were
+        // recorded, so a range is very often already close to sorted on one
+        // axis, which is precisely where a first-element pivot degrades to
+        // quadratic.
+        int mid = subtree_median(lo, hi);
+        int a = axis_value(points[lo], axis);
+        int b = axis_value(points[mid], axis);
+        int c = axis_value(points[hi - 1], axis);
+        int pivot;
+        if (a < b)
+            pivot = (b < c) ? b : ((a < c) ? c : a);
+        else
+            pivot = (a < c) ? a : ((b < c) ? c : b);
+
+        // Three-way partition, because a stationary GPS emits long runs of
+        // identical coordinates and a two-way split would put all of them on
+        // one side and make no progress.
+        int lt = lo, i = lo, gt = hi;
+        while (i < gt) {
+            int value = axis_value(points[i], axis);
+            if (value < pivot)
+                swap_points(&points[lt++], &points[i++]);
+            else if (value > pivot)
+                swap_points(&points[i], &points[--gt]);
+            else
+                i++;
+        }
+
+        // [lo, lt) < pivot, [lt, gt) == pivot, [gt, hi) > pivot
+        if (n < lt)
+            hi = lt;
+        else if (n < gt)
+            return; // n landed inside the run of pivots; it is in place
+        else
+            lo = gt;
     }
-    node->point = point;
-    node->axis = axis;
-    node->left = node->right = NULL;
-    return node;
 }
 
-// Build the k-d tree recursively
-static KDNode *build_kdtree(GpxPoint **points, int n, int depth) {
-    if (n <= 0)
-        return NULL;
-    int axis = depth % 2;
-    current_axis = axis;
-    qsort(points, n, sizeof(GpxPoint *), compare_points);
-    int median = n / 2;
-    KDNode *node = create_node(points[median], axis);
-    node->left = build_kdtree(points, median, depth + 1);
-    node->right = build_kdtree(points + median + 1, n - median - 1, depth + 1);
-    return node;
-}
-
-static void free_kdtree(KDNode *node) {
-    if (node == NULL)
+// Permutes points[lo, hi) into the implicit k-d tree layout.
+static void build_kdtree(GpxPoint **points, int lo, int hi, int depth) {
+    if (hi - lo <= 1)
         return;
-
-    free_kdtree(node->left);
-    free_kdtree(node->right);
-    free(node); // only the node itself -- node->point is owned by the track
+    int mid = subtree_median(lo, hi);
+    select_nth(points, lo, hi, mid, depth % 2);
+    build_kdtree(points, lo, mid, depth + 1);
+    build_kdtree(points, mid + 1, hi, depth + 1);
 }
 
 static double squared_distance(GpxPoint p1, GpxPoint p2, float mercator_x_correction) {
@@ -89,34 +113,54 @@ static float get_x_correction_factor(int world_y) {
         return 0.09;
 }
 
-// Collect the distinct track ids within radius2 of target
-static void radius_search(KDNode *node, GpxPoint *target, double radius2, int *count, int *checked_ids, int total_tracks, float x_correction) {
-    if (!node)
+// Counts the distinct tracks with a point within radius2 of target.
+//
+// `seen` holds, per track id, the stamp of the target it was last counted for.
+// Comparing against the current stamp makes the duplicate check a single array
+// read: the previous version scanned the ids collected so far on every hit and
+// cleared the whole array once per target, which on a large library was more
+// memset traffic than actual searching.
+static void radius_search(GpxPoint **points, int lo, int hi, int depth,
+                          const GpxPoint *target, double radius2, int *count,
+                          int *seen, int stamp, float x_correction) {
+    if (hi - lo <= 0)
         return;
-    if (node->point->track_id != target->track_id && squared_distance(*node->point, *target, x_correction) <= radius2) {
-        bool id_already_checked = false;
-        for (int i = 0; i < *count; i++) {
-            if (node->point->track_id == checked_ids[i]) {
-                id_already_checked = true;
-                break;
-            }
-        }
-        if (!id_already_checked && *count < total_tracks) {
-            checked_ids[*count] = node->point->track_id;
+
+    int mid = subtree_median(lo, hi);
+    const GpxPoint *node = points[mid];
+    int axis = depth % 2;
+
+    if (node->track_id != target->track_id &&
+        squared_distance(*node, *target, x_correction) <= radius2) {
+        if (seen[node->track_id] != stamp) {
+            seen[node->track_id] = stamp;
             (*count)++;
         }
     }
-    int axis = node->axis;
-    float diff = (axis == 0) ? target->world_x - node->point->world_x : target->world_y - node->point->world_y;
-    if (diff <= 0) {
-        radius_search(node->left, target, radius2, count, checked_ids, total_tracks, x_correction);
-        if (diff * diff <= radius2)
-            radius_search(node->right, target, radius2, count, checked_ids, total_tracks, x_correction);
-    } else {
-        radius_search(node->right, target, radius2, count, checked_ids, total_tracks, x_correction);
-        if (diff * diff <= radius2)
-            radius_search(node->left, target, radius2, count, checked_ids, total_tracks, x_correction);
+
+    double diff = axis_value(target, axis) - axis_value(node, axis);
+
+    // The near side always has to be walked; the far side only if the splitting
+    // plane itself is within the radius. squared_distance scales the x axis by
+    // x_correction, so the test for that axis has to scale the same way --
+    // comparing the raw pixel gap against the radius pruned branches that the
+    // distance function would have accepted, and undercounted the heat.
+    double plane = (axis == 0) ? diff * x_correction : diff;
+    bool plane_in_range = plane * plane <= radius2;
+
+    int near_lo = lo, near_hi = mid, far_lo = mid + 1, far_hi = hi;
+    if (diff > 0) {
+        near_lo = mid + 1;
+        near_hi = hi;
+        far_lo = lo;
+        far_hi = mid;
     }
+
+    radius_search(points, near_lo, near_hi, depth + 1, target, radius2, count,
+                  seen, stamp, x_correction);
+    if (plane_in_range)
+        radius_search(points, far_lo, far_hi, depth + 1, target, radius2, count,
+                      seen, stamp, x_correction);
 }
 
 static void print_progress_bar(int current, int total, int bar_width, struct timespec *start_time) {
@@ -153,18 +197,22 @@ static void *heatmap_worker(void *arg) {
 
     int progress_update_increments = 100;
 
-    int *checked_ids = (int *)malloc(task->total_tracks * sizeof(int));
-    if (!checked_ids) {
+    // One stamp slot per track, cleared once for the whole slice rather than
+    // once per point. -1 is not a valid stamp, and each worker owns its own
+    // array, so a stamp only has to be unique within this loop.
+    int *seen = (int *)malloc((size_t)task->total_tracks * sizeof(int));
+    if (!seen) {
         fprintf(stderr, "Thread malloc failed\n");
         return NULL;
     }
+    memset(seen, -1, (size_t)task->total_tracks * sizeof(int));
 
     for (int i = task->start; i < task->end; i++) {
         float x_correction = get_x_correction_factor(task->points[i]->world_y);
         // search for points in range
         int count = 0;
-        memset(checked_ids, -1, task->total_tracks * sizeof(int));
-        radius_search(task->tree, task->points[i], task->radius2, &count, checked_ids, task->total_tracks, x_correction);
+        radius_search(task->points, 0, task->total_points, 0, task->points[i],
+                      task->radius2, &count, seen, i, x_correction);
         task->points[i]->heat = count;
 
         pthread_mutex_lock(task->max_mutex);
@@ -181,7 +229,7 @@ static void *heatmap_worker(void *arg) {
             pthread_mutex_unlock(task->progress_mutex);
         }
     }
-    free(checked_ids);
+    free(seen);
     pthread_mutex_lock(task->progress_mutex);
     *(task->total_progress) += task->thread_progress;
     task->thread_progress = 0;
@@ -236,7 +284,7 @@ bool calculate_heatmap(GpxCollection *collection) {
     clock_gettime(CLOCK_MONOTONIC, &start_time);
     printf("Building kdtree\n");
     float radius2 = HEAT_RADIUS_PIXELS * HEAT_RADIUS_PIXELS;
-    KDNode *tree = build_kdtree(points, total_points, 0);
+    build_kdtree(points, 0, total_points, 0);
 
     // One worker per core, but never more workers than points -- a fixed count
     // left every thread but the last with an empty range on small datasets,
@@ -261,7 +309,7 @@ bool calculate_heatmap(GpxCollection *collection) {
         // all onto the last one.
         tasks[t].start = (int)((int64_t)total_points * t / thread_count);
         tasks[t].end = (int)((int64_t)total_points * (t + 1) / thread_count);
-        tasks[t].tree = tree;
+        tasks[t].total_points = total_points;
         tasks[t].radius2 = radius2;
         tasks[t].total_tracks = collection->total_tracks;
         tasks[t].thread_max_heat = &max_heat;
@@ -272,7 +320,6 @@ bool calculate_heatmap(GpxCollection *collection) {
 
         if (pthread_create(&threads[t], NULL, heatmap_worker, &tasks[t]) != 0) {
             perror("pthread_create failed");
-            free_kdtree(tree);
             free(points);
             return false;
         }
@@ -294,7 +341,6 @@ bool calculate_heatmap(GpxCollection *collection) {
 
     collection->max_heat = max_heat;
 
-    free_kdtree(tree);
     free(points);
     clock_gettime(CLOCK_MONOTONIC, &end_time);
 
