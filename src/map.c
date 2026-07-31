@@ -66,6 +66,18 @@ static size_t write_callback(void *contents, size_t size, size_t nmemb, void *us
 void *download_tiles(void *arg) {
     struct fifo *download_queue = (struct fifo *)arg;
     MapTile next_tile = {0};
+
+    // One handle for the lifetime of the thread. A fresh easy handle per tile
+    // threw away the connection and its TLS session, so every tile paid for a
+    // new handshake against the same host.
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+    CURL *curl = curl_easy_init();
+    if (!curl) {
+        fprintf(stderr, "Failed to initialize CURL\n");
+        curl_global_cleanup();
+        return NULL;
+    }
+
     while (true) {
         download_in_progress = false;
         pthread_mutex_lock(&download_queue->lock);
@@ -75,6 +87,8 @@ void *download_tiles(void *arg) {
 
         if (download_queue->stop) {
             pthread_mutex_unlock(&download_queue->lock);
+            curl_easy_cleanup(curl);
+            curl_global_cleanup();
             return NULL;
         }
 
@@ -90,56 +104,49 @@ void *download_tiles(void *arg) {
 
         pthread_mutex_unlock(&download_queue->lock);
 
-        char tile_path[256];
-        snprintf(tile_path, sizeof(tile_path), "tilecache/%d/%d/%d.png", next_tile.zoom,
-                 next_tile.tile_x, next_tile.tile_y);
+        char tile_path[TILE_PATH_MAX];
+        tile_cache_path(tile_path, sizeof(tile_path), next_tile);
 
         LOG_DEBUG("Start download for: %s\n", tile_path);
         // Ensure that all needed directories exist
-        char zoom_dir[64], x_dir[64];
-        snprintf(zoom_dir, sizeof(zoom_dir), "tilecache/%d", next_tile.zoom);
-        snprintf(x_dir, sizeof(x_dir), "tilecache/%d/%d", next_tile.zoom, next_tile.tile_x);
-        ensure_directory("tilecache");
+        char zoom_dir[TILE_PATH_MAX], x_dir[TILE_PATH_MAX];
+        snprintf(zoom_dir, sizeof(zoom_dir), "%s/%d", TILE_CACHE_DIR, next_tile.zoom);
+        snprintf(x_dir, sizeof(x_dir), "%s/%d/%d", TILE_CACHE_DIR, next_tile.zoom, next_tile.tile_x);
+        ensure_directory(TILE_CACHE_DIR);
         ensure_directory(zoom_dir);
         ensure_directory(x_dir);
 
         // Start the actual download
         struct MemoryStruct image_data;
-        char url[256];
-
-        CURL *curl = curl_easy_init();
+        char url[TILE_PATH_MAX];
         struct curl_slist *list = NULL;
-        if (!curl) {
-            fprintf(stderr, "Failed to initialize CURL\n");
-            continue;
-        }
 
         image_data.memory = (char *)malloc(1);
         image_data.size = 0;
+
+        // Options set on the previous tile do not carry over to this one.
+        curl_easy_reset(curl);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &image_data);
 
         if (use_osm_tiles) {
             snprintf(url, sizeof(url), "https://tile.openstreetmap.org/%d/%d/%d.png",
                      next_tile.zoom, next_tile.tile_x, next_tile.tile_y);
             curl_easy_setopt(curl, CURLOPT_URL, url);
-            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
-            curl_easy_setopt(curl, CURLOPT_WRITEDATA, &image_data);
-            curl_easy_setopt(curl, CURLOPT_USERAGENT, "OSM-Viewer/1.0");
+            curl_easy_setopt(curl, CURLOPT_USERAGENT, TILE_USER_AGENT);
         } else // use stadiamaps; requires api key
         {
             snprintf(url, sizeof(url), "https://tiles.stadiamaps.com/tiles/stamen_terrain/%d/%d/%d.png",
                      next_tile.zoom, next_tile.tile_x, next_tile.tile_y);
-            char auth[256];
+            char auth[TILE_PATH_MAX];
             snprintf(auth, sizeof(auth), "Authorization: Stadia-Auth %s", api_key);
             list = curl_slist_append(list, auth);
 
             curl_easy_setopt(curl, CURLOPT_URL, url);
             curl_easy_setopt(curl, CURLOPT_HTTPHEADER, list);
-            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
-            curl_easy_setopt(curl, CURLOPT_WRITEDATA, &image_data);
         }
 
         CURLcode res = curl_easy_perform(curl);
-        curl_easy_cleanup(curl);
         curl_slist_free_all(list); /* free the list */
 
         // Only cache the tile when the transfer actually succeeded. Writing a
@@ -181,32 +188,61 @@ bool tile_key_equal(MapTile a, MapTile b) {
     return a.tile_x == b.tile_x && a.tile_y == b.tile_y && a.zoom == b.zoom;
 }
 
-bool tile_cache_reserve(void **entries, int size, int *capacity, size_t entry_size) {
-    if (size < *capacity)
-        return true;
-
-    int grown_capacity = (*capacity == 0) ? 64 : *capacity * 2;
-    void *grown = realloc(*entries, (size_t)grown_capacity * entry_size);
-    if (!grown) {
-        // realloc's return was previously assigned straight back over the
-        // cache pointer, so a failure here leaked the old array and left a
-        // NULL that the very next line indexed into.
-        fprintf(stderr, "Could not grow tile cache\n");
-        return false;
+// Hands back the cached texture for `key`, or NULL. Touching the entry marks
+// it as the most recently used, which is what keeps eviction honest.
+SDL_Texture *tile_cache_lookup(TileTextureCache *cache, MapTile key) {
+    for (int i = 0; i < cache->size; i++) {
+        if (tile_key_equal(cache->entries[i].key, key)) {
+            cache->entries[i].last_used = ++cache->clock;
+            return cache->entries[i].texture;
+        }
     }
-    *entries = grown;
-    *capacity = grown_capacity;
+    return NULL;
+}
+
+// Drops the least recently used entry. Called only when the cache is full, so
+// the linear scan costs nothing next to the texture upload it makes room for.
+static void evict_least_recently_used(TileTextureCache *cache) {
+    int oldest = 0;
+    for (int i = 1; i < cache->size; i++)
+        if (cache->entries[i].last_used < cache->entries[oldest].last_used)
+            oldest = i;
+
+    SDL_DestroyTexture(cache->entries[oldest].texture);
+    cache->entries[oldest] = cache->entries[cache->size - 1];
+    cache->size--;
+}
+
+// Takes ownership of `texture` on success; the caller destroys it on failure.
+bool tile_cache_insert(TileTextureCache *cache, MapTile key, SDL_Texture *texture) {
+    // Each entry is a TILE_SIZE-square RGBA texture -- a quarter of a megabyte
+    // of video memory. Growing without a bound meant a long panning session
+    // consumed as much of it as the session was long.
+    if (cache->size >= TILE_CACHE_MAX_ENTRIES)
+        evict_least_recently_used(cache);
+
+    if (cache->size >= cache->capacity) {
+        int grown_capacity = (cache->capacity == 0) ? 64 : cache->capacity * 2;
+        if (grown_capacity > TILE_CACHE_MAX_ENTRIES)
+            grown_capacity = TILE_CACHE_MAX_ENTRIES;
+        TileTexture *grown = realloc(cache->entries, (size_t)grown_capacity * sizeof(TileTexture));
+        if (!grown) {
+            // realloc's return was previously assigned straight back over the
+            // cache pointer, so a failure here leaked the old array and left a
+            // NULL that the very next line indexed into.
+            fprintf(stderr, "Could not grow tile cache\n");
+            return false;
+        }
+        cache->entries = grown;
+        cache->capacity = grown_capacity;
+    }
+
+    cache->entries[cache->size++] = (TileTexture){
+        .key = key, .texture = texture, .last_used = ++cache->clock};
     return true;
 }
 
-static void append_to_tile_cache(TileTextureCache *cache, TileTexture entry) {
-    if (!tile_cache_reserve((void **)&cache->entries, cache->size, &cache->capacity,
-                            sizeof(TileTexture)))
-        return;
-    cache->entries[cache->size++] = entry;
-}
-
-void free_tile_cache(TileTextureCache *cache) {
+void tile_cache_free(TileTextureCache *cache) {
     for (int i = 0; i < cache->size; i++) {
         if (cache->entries[i].texture)
             SDL_DestroyTexture(cache->entries[i].texture);
@@ -215,17 +251,22 @@ void free_tile_cache(TileTextureCache *cache) {
     cache->entries = NULL;
     cache->size = 0;
     cache->capacity = 0;
+    cache->clock = 0;
 }
 
-static SDL_Texture *get_cached_texture(struct application *appl, MapTile key, const char *path) {
-    // Try to find the texture in the cache
-    for (int i = 0; i < appl->tile_cache.size; i++) {
-        if (tile_key_equal(appl->tile_cache.entries[i].key, key)) {
-            return appl->tile_cache.entries[i].texture;
-        }
-    }
+static int file_exists(const char *path) {
+    return access(path, F_OK) == 0;
+}
 
-    // Load it from disk
+// The one place the on-disk tile layout is spelled out. The download thread and
+// the render loop have to agree on it exactly, or tiles are fetched forever and
+// never found.
+void tile_cache_path(char *out, size_t size, MapTile tile) {
+    snprintf(out, size, "%s/%d/%d/%d.png", TILE_CACHE_DIR, tile.zoom, tile.tile_x, tile.tile_y);
+}
+
+// Decodes a tile PNG off disk and hands it to the cache, which takes ownership.
+static SDL_Texture *load_tile_texture(struct application *appl, MapTile key, const char *path) {
     SDL_Surface *surface = IMG_Load(path);
     if (!surface)
         return NULL;
@@ -235,15 +276,11 @@ static SDL_Texture *get_cached_texture(struct application *appl, MapTile key, co
     if (!texture)
         return NULL;
 
-    // Store in cache
-    TileTexture entry = {key, texture};
-    append_to_tile_cache(&(appl->tile_cache), entry); // You implement this
-
+    if (!tile_cache_insert(&appl->tile_cache, key, texture)) {
+        SDL_DestroyTexture(texture);
+        return NULL;
+    }
     return texture;
-}
-
-static int file_exists(const char *path) {
-    return access(path, F_OK) == 0;
 }
 
 bool get_map_background(struct application *appl, GpxCollection *collection) {
@@ -268,31 +305,34 @@ bool get_map_background(struct application *appl, GpxCollection *collection) {
                 tile_y >= (1 << appl->zoom))
                 continue;
 
-            char tile_path[256];
-            snprintf(tile_path, sizeof(tile_path), "tilecache/%d/%d/%d.png", appl->zoom,
-                     tile_x, tile_y);
+            MapTile key = {tile_x, tile_y, appl->zoom};
 
-            if (!file_exists(tile_path)) {
-                // add tile to download queue if it is not in there already
-                MapTile tile2queue = {
-                    .tile_x = tile_x,
-                    .tile_y = tile_y,
-                    .zoom = appl->zoom,
-                };
-                pthread_mutex_lock(&appl->download_queue.lock);
+            // Only a tile that is not already in video memory needs the
+            // filesystem consulted. This used to stat every visible tile on
+            // every frame -- some thirty syscalls per frame, sixty times a
+            // second, to answer a question the cache had already answered.
+            SDL_Texture *texture = tile_cache_lookup(&appl->tile_cache, key);
+            if (!texture) {
+                char tile_path[TILE_PATH_MAX];
+                tile_cache_path(tile_path, sizeof(tile_path), key);
 
-                bool already_queued = fifo_search_data(&appl->download_queue, tile2queue);
-                bool already_downloading = tile_key_equal(appl->download_queue.tile_in_dl, tile2queue);
+                if (file_exists(tile_path)) {
+                    texture = load_tile_texture(appl, key, tile_path);
+                } else {
+                    // add tile to download queue if it is not in there already
+                    pthread_mutex_lock(&appl->download_queue.lock);
 
-                if (!already_queued && !already_downloading) {
-                    fifo_write_data(&appl->download_queue, tile2queue);
+                    bool already_queued = fifo_search_data(&appl->download_queue, key);
+                    bool already_downloading = tile_key_equal(appl->download_queue.tile_in_dl, key);
+
+                    if (!already_queued && !already_downloading) {
+                        fifo_write_data(&appl->download_queue, key);
+                    }
+
+                    pthread_mutex_unlock(&appl->download_queue.lock);
                 }
-
-                pthread_mutex_unlock(&appl->download_queue.lock);
             }
 
-            MapTile key = {tile_x, tile_y, appl->zoom};
-            SDL_Texture *texture = get_cached_texture(appl, key, tile_path);
             int screen_x = (tile_x - center_tile_x) * TILE_SIZE - tile_offset_x + appl->window_width / 2;
             int screen_y = (tile_y - center_tile_y) * TILE_SIZE - tile_offset_y + appl->window_height / 2;
 
@@ -306,8 +346,8 @@ bool get_map_background(struct application *appl, GpxCollection *collection) {
                 SDL_Rect dst = {
                     .x = screen_x,
                     .y = screen_y,
-                    .w = 256,
-                    .h = 256};
+                    .w = TILE_SIZE,
+                    .h = TILE_SIZE};
                 SDL_RenderCopy(appl->renderer, track_tex, NULL, &dst);
             }
         }

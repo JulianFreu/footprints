@@ -26,6 +26,19 @@
 #define MAX_ZOOM 20
 #define FIFO_DEPTH 16
 
+// Where downloaded tiles are kept, and enough room to format a path or a tile
+// URL into.
+#define TILE_CACHE_DIR "tilecache"
+#define TILE_PATH_MAX 256
+
+// Sent to the tile provider; OSM's usage policy asks for an identifying agent.
+#define TILE_USER_AGENT "footprints/1.0 (+https://github.com/JulianFreu/footprints)"
+
+// Upper bound on cached tile textures, per cache. Each is a TILE_SIZE-square
+// RGBA texture, so 256 of them is roughly 64 MB of video memory; past that the
+// least recently used is dropped.
+#define TILE_CACHE_MAX_ENTRIES 256
+
 // --- Startup view ---
 // World pixel coordinates at MAX_ZOOM, and the zoom level to open at.
 #define START_ZOOM 12
@@ -42,11 +55,23 @@
 // the heat tiles.
 #define TRACK_POINT_SIZE 4
 
+// Pixel size of the elevation profile rendered for the selected track.
+#define ELEVATION_PROFILE_WIDTH 200
+#define ELEVATION_PROFILE_HEIGHT 100
+
 // --- Heatmap ---
 // Radius in projected pixels within which two tracks count as overlapping.
 #define HEAT_RADIUS_PIXELS 200.0f
 
 // --- UI ---
 #define INPUT_BUFFER_SIZE 16
+
+// Slide speed of the side panels, in degrees of the easing curve per second.
+// The curve spans 90 degrees, so this opens a panel in about a third of a
+// second regardless of frame rate.
+#define PANEL_ANIMATION_DEGREES_PER_SECOND 270.0f
+
+// Scroll distance contributed by one mouse-wheel detent.
+#define SCROLL_PIXELS_PER_WHEEL_STEP 5
 
 #endif

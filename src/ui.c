@@ -50,15 +50,23 @@
 #define STATISTICS 4
 
 UIState ui = {
-    .right_sidebar = {.opening = false, .closing = false, .animation = 0, .ticks = 0},
-    .run_list = {.opening = false, .closing = false, .animation = 0, .ticks = 0},
-    .filters_animation = {.opening = false, .closing = false, .animation = 0, .ticks = 0}};
+    .right_sidebar = {0},
+    .run_list = {0},
+    .filters_animation = {0}};
 
 static GpxCollection *g_collection = NULL; // tmp global pointer for compare functions
 static Clay_Arena clay_memory;
 
 static bool ui_new_track_selected = false;
 static int ui_track = -1;
+
+// Starts a panel opening or closing, whichever is the reverse of what it is
+// currently doing.
+static void animation_toggle(struct AnimationState *anim_obj) {
+    bool should_open = !(anim_obj->opening || anim_obj->progress > 0.0f);
+    anim_obj->opening = should_open;
+    anim_obj->closing = !should_open;
+}
 
 static void clicked_type_filter(
     Clay_ElementId elementId,
@@ -474,15 +482,8 @@ static void clicked_toggle_filter_view(
     Clay_ElementId elementId,
     Clay_PointerData pointerData,
     intptr_t userData) {
-    if (pointerData.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME) {
-        if (ui.filters_animation.animation > 0) {
-            ui.filters_animation.opening = false;
-            ui.filters_animation.closing = true;
-        } else {
-            ui.filters_animation.opening = true;
-            ui.filters_animation.closing = false;
-        }
-    }
+    if (pointerData.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME)
+        animation_toggle(&ui.filters_animation);
 }
 static void clicked_run_entry(
     Clay_ElementId elementId,
@@ -697,23 +698,33 @@ static void free_visible_rows(void) {
     visible_rows_capacity = 0;
 }
 
-static void continue_animation(struct AnimationState *anim_obj) {
-    // ticks are used as radians in sin(), -> sin(90°) = 1 and sin(0°) = 0
+// Advances a panel's slide by however much wall-clock time has passed.
+//
+// The step used to be a fixed number of degrees per frame, which tied the
+// speed of every panel to the frame rate: the same slide took a quarter of a
+// second at 60 fps and a second and a half at 10.
+static void continue_animation(struct AnimationState *anim_obj, float delta_time) {
+    // progress runs 0..90 and is read as degrees, so sin() eases the ends:
+    // sin(0) = 0 and sin(90 degrees) = 1.
+    float step = delta_time * PANEL_ANIMATION_DEGREES_PER_SECOND;
+
     if (anim_obj->opening) {
-        anim_obj->ticks += 4;
-        if (anim_obj->ticks >= 90) {
-            anim_obj->ticks = 90;
+        anim_obj->progress += step;
+        if (anim_obj->progress >= 90.0f) {
+            anim_obj->progress = 90.0f;
             anim_obj->opening = false;
         }
-        anim_obj->animation = sin(anim_obj->ticks * M_PI / 180);
     } else if (anim_obj->closing) {
-        anim_obj->ticks -= 4;
-        if (anim_obj->ticks <= 0) {
-            anim_obj->ticks = 0;
+        anim_obj->progress -= step;
+        if (anim_obj->progress <= 0.0f) {
+            anim_obj->progress = 0.0f;
             anim_obj->closing = false;
         }
-        anim_obj->animation = sin(anim_obj->ticks * M_PI / 180);
+    } else {
+        return;
     }
+
+    anim_obj->animation = sinf(anim_obj->progress * (float)M_PI / 180.0f);
 }
 
 static void clay_handle_error(Clay_ErrorData error) {
@@ -800,23 +811,20 @@ static const Clay_LayoutConfig MenuButtonLayout = {
     .childGap = GAPS,
     .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
 };
+// The run list and the filter panel slide together, from the menu button and
+// from the TAB key alike.
+void ui_toggle_run_list(void) {
+    animation_toggle(&ui.run_list);
+    ui.filters_animation.opening = ui.run_list.opening;
+    ui.filters_animation.closing = ui.run_list.closing;
+}
+
 static void clicked_menu_button(
     Clay_ElementId elementId,
     Clay_PointerData pointerData,
     intptr_t userData) {
-    if (pointerData.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME) {
-        if (ui.run_list.opening == true || ui.run_list.ticks > 0) {
-            ui.run_list.opening = false;
-            ui.run_list.closing = true;
-            ui.filters_animation.opening = false;
-            ui.filters_animation.closing = true;
-        } else if (ui.run_list.closing == true || ui.run_list.ticks == 0) {
-            ui.run_list.opening = true;
-            ui.run_list.closing = false;
-            ui.filters_animation.opening = true;
-            ui.filters_animation.closing = false;
-        }
-    }
+    if (pointerData.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME)
+        ui_toggle_run_list();
 }
 
 static void draw_menu_button(SDL_Surface *icon, Clay_Color color, uint32_t button_id) {
@@ -901,13 +909,15 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
     Clay_SetPointerState(
         (Clay_Vector2){appl->mouse_x, appl->mouse_y}, appl->left_mouse_button_pressed);
 
+    float delta_time = get_delta_time(appl->last_frame_time);
+
     Clay_UpdateScrollContainers(
         false,
-        (Clay_Vector2){0, (float)appl->wheel_y * 5},
-        get_delta_time(appl->last_frame_time));
+        (Clay_Vector2){0, (float)appl->wheel_y * SCROLL_PIXELS_PER_WHEEL_STEP},
+        delta_time);
 
     // filter options
-    continue_animation(&ui.filters_animation);
+    continue_animation(&ui.filters_animation, delta_time);
 
     // right sidebar
     if (appl->selected_track > -1) {
@@ -919,10 +929,10 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
         if (ui.right_sidebar.animation > 0)
             ui.right_sidebar.closing = true;
     }
-    continue_animation(&ui.right_sidebar);
+    continue_animation(&ui.right_sidebar, delta_time);
 
     // left sidebar
-    continue_animation(&ui.run_list);
+    continue_animation(&ui.run_list, delta_time);
 
     // draw UI
     char fps_label[64];

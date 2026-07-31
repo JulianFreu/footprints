@@ -141,14 +141,6 @@ static void draw_smooth_thick_polyline(SDL_Renderer *renderer,
     draw_circle(renderer, points[count - 1].x, points[count - 1].y, thickness / 2.0f, color);
 }
 
-static bool append_to_track_tile_cache(TrackTileTextureCache *cache, TrackTileTexture entry) {
-    if (!tile_cache_reserve((void **)&cache->entries, cache->size, &cache->capacity,
-                            sizeof(TrackTileTexture)))
-        return false;
-    cache->entries[cache->size++] = entry;
-    return true;
-}
-
 // Screen-space points for the selected track's polyline, reused across frames
 // and grown only when a longer track is selected.
 static SDL_Point *overlay_points = NULL;
@@ -176,38 +168,24 @@ void tracks_free_scratch(void) {
     overlay_points_capacity = 0;
 }
 
-static void free_track_tile_cache(TrackTileTextureCache *cache) {
-    for (int i = 0; i < cache->size; i++) {
-        if (cache->entries[i].texture)
-            SDL_DestroyTexture(cache->entries[i].texture);
-    }
-    free(cache->entries);
-    cache->entries = NULL;
-    cache->size = 0;
-    cache->capacity = 0;
-}
-
 // Drops everything derived from the visible set: the rendered tiles and the
 // index they are rendered from. Called when the filters change, when the heat
 // is recalculated, and at teardown.
 void tracks_invalidate_cache(GpxCollection *collection) {
-    free_track_tile_cache(&collection->track_tile_cache);
+    tile_cache_free(&collection->track_tile_cache);
     point_index_invalidate(&collection->point_index);
 }
 
 // Teardown counterpart: also gives back the index's allocation.
 void tracks_free_collection_cache(GpxCollection *collection) {
-    free_track_tile_cache(&collection->track_tile_cache);
+    tile_cache_free(&collection->track_tile_cache);
     point_index_free(&collection->point_index);
 }
 
 SDL_Texture *get_or_render_track_tile(struct application *appl, GpxCollection *collection, MapTile key) {
-    // Check if already cached
-    for (int i = 0; i < collection->track_tile_cache.size; i++) {
-        if (tile_key_equal(collection->track_tile_cache.entries[i].key, key)) {
-            return collection->track_tile_cache.entries[i].texture;
-        }
-    }
+    SDL_Texture *cached = tile_cache_lookup(&collection->track_tile_cache, key);
+    if (cached)
+        return cached;
 
     if (!point_index_ensure(collection))
         return NULL;
@@ -260,11 +238,7 @@ SDL_Texture *get_or_render_track_tile(struct application *appl, GpxCollection *c
 
     SDL_SetRenderTarget(appl->renderer, NULL);
 
-    // Cache the rendered tile
-    TrackTileTexture entry = {
-        .key = key,
-        .texture = tex};
-    if (!append_to_track_tile_cache(&collection->track_tile_cache, entry)) {
+    if (!tile_cache_insert(&collection->track_tile_cache, key, tex)) {
         SDL_DestroyTexture(tex);
         return NULL;
     }
@@ -374,8 +348,8 @@ void update_selected_track_overlay(struct application *appl, GpxCollection *coll
     appl->selected_track_overlay[zoom] = overlay;
 }
 
-static SDL_Texture *generate_elevation_profile_texture(SDL_Renderer *renderer, const GpxTrack track, int width, int height) {
-    if (!renderer || track.total_points < 2)
+static SDL_Texture *generate_elevation_profile_texture(SDL_Renderer *renderer, const GpxTrack *track, int width, int height) {
+    if (!renderer || track->total_points < 2)
         return NULL;
 
     SDL_Texture *texture = SDL_CreateTexture(renderer,
@@ -394,13 +368,13 @@ static SDL_Texture *generate_elevation_profile_texture(SDL_Renderer *renderer, c
     SDL_RenderClear(renderer);
 
     // Calculate min and max height plus some margin
-    float min_elev = track.points[0].elevation;
-    float max_elev = track.points[0].elevation;
-    for (int i = 1; i < track.total_points; i++) {
-        if (track.points[i].elevation < min_elev)
-            min_elev = track.points[i].elevation;
-        if (track.points[i].elevation > max_elev)
-            max_elev = track.points[i].elevation;
+    float min_elev = track->points[0].elevation;
+    float max_elev = track->points[0].elevation;
+    for (int i = 1; i < track->total_points; i++) {
+        if (track->points[i].elevation < min_elev)
+            min_elev = track->points[i].elevation;
+        if (track->points[i].elevation > max_elev)
+            max_elev = track->points[i].elevation;
     }
     if (max_elev == min_elev)
         max_elev += 1.0f;
@@ -408,7 +382,7 @@ static SDL_Texture *generate_elevation_profile_texture(SDL_Renderer *renderer, c
     min_elev -= (max_elev - min_elev) / 10;
     max_elev += (max_elev - min_elev) / 10;
 
-    float total_distance_m = track.points[track.total_points - 1].partial_distance;
+    float total_distance_m = track->points[track->total_points - 1].partial_distance;
     if (total_distance_m <= 0.0f) {
         SDL_SetRenderTarget(renderer, prev_target);
         SDL_DestroyTexture(texture);
@@ -416,31 +390,31 @@ static SDL_Texture *generate_elevation_profile_texture(SDL_Renderer *renderer, c
     }
 
     // Prepare points for polygon
-    SDL_Point *polygon_points = malloc(sizeof(SDL_Point) * (track.total_points + 2));
+    SDL_Point *polygon_points = malloc(sizeof(SDL_Point) * (track->total_points + 2));
     if (!polygon_points) {
         SDL_SetRenderTarget(renderer, prev_target);
         SDL_DestroyTexture(texture);
         return NULL;
     }
 
-    for (int i = 0; i < track.total_points; i++) {
-        int x = (int)((track.points[i].partial_distance / total_distance_m) * width);
-        int y = height - (int)(((track.points[i].elevation - min_elev) / (max_elev - min_elev)) * height);
+    for (int i = 0; i < track->total_points; i++) {
+        int x = (int)((track->points[i].partial_distance / total_distance_m) * width);
+        int y = height - (int)(((track->points[i].elevation - min_elev) / (max_elev - min_elev)) * height);
         polygon_points[i] = (SDL_Point){x, y};
     }
 
     // Bottom left and bottom right base points
-    polygon_points[track.total_points] = (SDL_Point){polygon_points[track.total_points - 1].x, height};
-    polygon_points[track.total_points + 1] = (SDL_Point){polygon_points[0].x, height};
+    polygon_points[track->total_points] = (SDL_Point){polygon_points[track->total_points - 1].x, height};
+    polygon_points[track->total_points + 1] = (SDL_Point){polygon_points[0].x, height};
 
     SDL_SetRenderDrawColor(renderer, 150, 200, 255, 255); // fill color
-    SDL_RenderDrawLines(renderer, polygon_points, track.total_points + 2);
+    SDL_RenderDrawLines(renderer, polygon_points, track->total_points + 2);
 
-    for (int i = 1; i < track.total_points; i++) {
-        int x1 = (int)((track.points[i - 1].partial_distance / total_distance_m) * width);
-        int y1 = height - (int)(((track.points[i - 1].elevation - min_elev) / (max_elev - min_elev)) * height);
-        int x2 = (int)((track.points[i].partial_distance / total_distance_m) * width);
-        int y2 = height - (int)(((track.points[i].elevation - min_elev) / (max_elev - min_elev)) * height);
+    for (int i = 1; i < track->total_points; i++) {
+        int x1 = (int)((track->points[i - 1].partial_distance / total_distance_m) * width);
+        int y1 = height - (int)(((track->points[i - 1].elevation - min_elev) / (max_elev - min_elev)) * height);
+        int x2 = (int)((track->points[i].partial_distance / total_distance_m) * width);
+        int y2 = height - (int)(((track->points[i].elevation - min_elev) / (max_elev - min_elev)) * height);
 
         // Fill the area underneath the segment. When both samples land on the
         // same column there is nothing to interpolate across.
@@ -457,7 +431,7 @@ static SDL_Texture *generate_elevation_profile_texture(SDL_Renderer *renderer, c
 
     // Draw top line
     SDL_SetRenderDrawColor(renderer, 0, 100, 200, 255); // dark blue
-    SDL_RenderDrawLines(renderer, polygon_points, track.total_points);
+    SDL_RenderDrawLines(renderer, polygon_points, track->total_points);
 
     free(polygon_points);
     SDL_SetRenderTarget(renderer, prev_target);
@@ -468,7 +442,7 @@ static SDL_Texture *generate_elevation_profile_texture(SDL_Renderer *renderer, c
 // the GPU one way or another -- but it used to do that by writing a PNG to
 // resources/ and immediately IMG_Load()ing it again. The readback below is the
 // only part that was ever needed.
-static SDL_Surface *render_elevation_profile_surface(SDL_Renderer *renderer, const GpxTrack track, int width, int height) {
+static SDL_Surface *render_elevation_profile_surface(SDL_Renderer *renderer, const GpxTrack *track, int width, int height) {
     SDL_Texture *profile = generate_elevation_profile_texture(renderer, track, width, height);
     if (!profile)
         return NULL;
@@ -509,5 +483,6 @@ void update_track_info_graphs(struct application *appl, const GpxCollection *col
         return;
 
     appl->icons.elev_profile = render_elevation_profile_surface(
-        appl->renderer, collection->tracks[appl->selected_track], 200, 100);
+        appl->renderer, &collection->tracks[appl->selected_track],
+        ELEVATION_PROFILE_WIDTH, ELEVATION_PROFILE_HEIGHT);
 }

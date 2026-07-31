@@ -13,8 +13,10 @@
 typedef struct AnimationState {
     bool opening;
     bool closing;
+    // Eased 0..1 position the layout offsets are scaled by.
     float animation;
-    int ticks;
+    // Raw 0..90 position, read as degrees so sin() supplies the easing.
+    float progress;
 } AnimationState;
 
 typedef struct UIState {

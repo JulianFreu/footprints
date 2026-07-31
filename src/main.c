@@ -19,16 +19,14 @@ static bool sdl_initialize(struct application *appl);
 static void appl_cleanup(struct application *appl, GpxCollection *collection);
 static bool handle_events(struct application *appl, GpxCollection *collection);
 
-static bool animation_in_progress(UIState ui) {
-    bool animation_in_progress = false;
-    if (ui.right_sidebar.opening == true || ui.right_sidebar.closing == true)
-        animation_in_progress = true;
-    if (ui.run_list.opening == true || ui.run_list.closing == true)
-        animation_in_progress = true;
-    if (ui.filters_animation.opening == true || ui.filters_animation.closing == true)
-        animation_in_progress = true;
+static bool animation_running(const AnimationState *anim) {
+    return anim->opening || anim->closing;
+}
 
-    return animation_in_progress;
+static bool animation_in_progress(const UIState *state) {
+    return animation_running(&state->right_sidebar) ||
+           animation_running(&state->run_list) ||
+           animation_running(&state->filters_animation);
 }
 
 static void append_to_input_buffer(UIState *ui, char c) {
@@ -114,7 +112,7 @@ int main(int argc, char *argv[]) {
                           &appl.window_height);
         handle_events(&appl, &collection);
 
-        if (appl.update_window || animation_in_progress(ui) || download_in_progress) {
+        if (appl.update_window || animation_in_progress(&ui) || download_in_progress) {
             appl.update_window = false;
             SDL_RenderClear(appl.renderer);
 
@@ -162,7 +160,7 @@ static void appl_cleanup(struct application *appl, GpxCollection *collection) {
         pthread_cond_destroy(&appl->download_queue.cond);
     }
     printf("Clean textures...\n");
-    free_tile_cache(&(appl->tile_cache));
+    tile_cache_free(&appl->tile_cache);
     tracks_free_collection_cache(collection);
     for (int zoom = 0; zoom <= MAX_ZOOM; zoom++)
         SDL_DestroyTexture(appl->selected_track_overlay[zoom]);
@@ -319,19 +317,8 @@ static bool handle_events(struct application *appl, GpxCollection *collection) {
             appl->mouse_x = event.motion.x;
             appl->mouse_y = event.motion.y;
         } else if (event.type == SDL_KEYDOWN) {
-            if (event.key.keysym.sym == SDLK_TAB) {
-                if (ui.run_list.animation > 0) {
-                    ui.run_list.opening = false;
-                    ui.run_list.closing = true;
-                    ui.filters_animation.opening = false;
-                    ui.filters_animation.closing = true;
-                } else {
-                    ui.run_list.opening = true;
-                    ui.run_list.closing = false;
-                    ui.filters_animation.opening = true;
-                    ui.filters_animation.closing = false;
-                }
-            }
+            if (event.key.keysym.sym == SDLK_TAB)
+                ui_toggle_run_list();
         }
     }
     return true;

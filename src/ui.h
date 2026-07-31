@@ -15,6 +15,9 @@ float get_delta_time(Uint32 last_frame_time);
 void clay_init(struct application *appl);
 void clay_draw_ui(struct application *appl, GpxCollection *collection);
 void clay_free_memory(void);
+// Slides the run list and filter panel in or out, whichever is the reverse
+// of what they are doing now.
+void ui_toggle_run_list(void);
 void ui_load_icons(struct application *appl);
 void ui_free_icons(struct application *appl);
 

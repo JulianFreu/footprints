@@ -19,19 +19,6 @@ typedef struct MapTile {
     int zoom;
 } MapTile;
 
-typedef struct
-{
-    MapTile key;
-    SDL_Texture *texture;
-} TrackTileTexture;
-
-typedef struct
-{
-    TrackTileTexture *entries;
-    int size;
-    int capacity;
-} TrackTileTextureCache;
-
 // One visible track point, tagged with the Morton code of the MAX_ZOOM tile it
 // falls in. Interleaving the tile's x and y bits is what makes a tile's points
 // contiguous once the array is sorted: a tile at zoom z is a prefix of that
@@ -53,12 +40,15 @@ typedef struct
     bool valid;
 } TrackPointIndex;
 
-// Both texture caches are a plain grow-only array of fixed-size entries, so
-// they share one growth routine; see tile_cache_reserve in map.c.
-
+// One cached tile texture. The map background and the track heat overlay hold
+// structurally identical caches, so they share one type and one set of
+// operations rather than two copies that drifted apart.
 typedef struct TileTexture {
     MapTile key;
     SDL_Texture *texture;
+    // Value of the owning cache's clock when this entry was last handed out.
+    // The oldest is what gets evicted once the cache is full.
+    uint64_t last_used;
 } TileTexture;
 
 typedef struct
@@ -66,6 +56,7 @@ typedef struct
     TileTexture *entries;
     int size;
     int capacity;
+    uint64_t clock;
 } TileTextureCache;
 
 // Growable buffer for a curl response body.

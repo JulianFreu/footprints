@@ -92,7 +92,7 @@ typedef struct GpxCollection {
     AttributeType to_be_sorted_by;
     int *list_order;
     FilterSettings filters;
-    TrackTileTextureCache track_tile_cache;
+    TileTextureCache track_tile_cache;
     // Spatial index behind the rendered tiles. Both are dropped together, by
     // tracks_invalidate_cache, whenever the visible set changes.
     TrackPointIndex point_index;
