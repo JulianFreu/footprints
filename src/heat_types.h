@@ -4,6 +4,7 @@
 #include <pthread.h>
 
 #include "gpx_types.h"
+#include "progress.h"
 
 // One worker's slice of the heat calculation.
 //
@@ -23,9 +24,11 @@ typedef struct
     int total_tracks;
     int *thread_max_heat;
     pthread_mutex_t *max_mutex;
-    pthread_mutex_t *progress_mutex;
-    int thread_progress;
-    int *total_progress;
+    // Shared with whoever started the calculation; may be NULL.
+    const Progress *progress;
+    // Points finished since this worker last published, so the shared counter
+    // is touched once per batch rather than once per point.
+    int batch_progress;
 } HeatmapTask;
 
 #endif

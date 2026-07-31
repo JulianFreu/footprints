@@ -9,6 +9,7 @@
 #include <unistd.h>
 
 #include "heat_types.h"
+#include "progress.h"
 
 #include "log.h"
 
@@ -163,47 +164,8 @@ static void radius_search(GpxPoint **points, int lo, int hi, int depth,
                       seen, stamp, x_correction);
 }
 
-static void print_progress_bar(int current, int total, int bar_width, struct timespec *start_time) {
-    if (total <= 0)
-        return;
-
-    struct timespec current_time;
-    clock_gettime(CLOCK_MONOTONIC, &current_time);
-    double elapsed = (current_time.tv_sec - start_time->tv_sec) +
-                     (current_time.tv_nsec - start_time->tv_nsec) / 1e9;
-
-    float progress = (float)current / total;
-    int pos = (int)(bar_width * progress);
-    printf("\r[");
-    for (int i = 0; i < bar_width; ++i) {
-        if (i < pos)
-            printf("=");
-        else if (i == pos)
-            printf(">");
-        else
-            printf(" ");
-    }
-    printf("] %3d%%", (int)(progress * 100));
-
-    // A rate needs some elapsed time and some completed work to divide by;
-    // before that there is nothing honest to report, and the first sample
-    // claimed an eta of days.
-    if (elapsed > 0.5 && current > 0) {
-        int points_per_second = (int)(current / elapsed);
-        if (points_per_second > 0) {
-            int seconds_left = (total - current) / points_per_second;
-            printf(" | pps: %6d | eta: %3dmin %2ds", points_per_second,
-                   seconds_left / 60, seconds_left % 60);
-        }
-    }
-    printf("   ");
-    fflush(stdout);
-}
-
 static void *heatmap_worker(void *arg) {
     HeatmapTask *task = (HeatmapTask *)arg;
-
-    int progress_update_increments = 100;
 
     // One stamp slot per track, cleared once for the whole slice rather than
     // once per point. -1 is not a valid stamp, and each worker owns its own
@@ -216,6 +178,13 @@ static void *heatmap_worker(void *arg) {
     memset(seen, -1, (size_t)task->total_tracks * sizeof(int));
 
     for (int i = task->start; i < task->end; i++) {
+        // Checked per batch rather than per point: often enough that quitting
+        // is responsive, rarely enough that it costs nothing.
+        if ((i - task->start) % HEAT_PROGRESS_BATCH == 0 &&
+            progress_cancelled(task->progress)) {
+            break;
+        }
+
         float x_correction = get_x_correction_factor(task->points[i]->world_y);
         // search for points in range
         int count = 0;
@@ -229,19 +198,16 @@ static void *heatmap_worker(void *arg) {
         }
         pthread_mutex_unlock(task->max_mutex);
 
-        task->thread_progress++;
-        if (task->thread_progress >= progress_update_increments) {
-            pthread_mutex_lock(task->progress_mutex);
-            *(task->total_progress) += task->thread_progress;
-            task->thread_progress = 0;
-            pthread_mutex_unlock(task->progress_mutex);
+        // Batched so the workers are not all hammering one cache line.
+        task->batch_progress++;
+        if (task->batch_progress >= HEAT_PROGRESS_BATCH) {
+            progress_add(task->progress, task->batch_progress);
+            task->batch_progress = 0;
         }
     }
     free(seen);
-    pthread_mutex_lock(task->progress_mutex);
-    *(task->total_progress) += task->thread_progress;
-    task->thread_progress = 0;
-    pthread_mutex_unlock(task->progress_mutex);
+    progress_add(task->progress, task->batch_progress);
+    task->batch_progress = 0;
     return NULL;
 }
 
@@ -255,7 +221,7 @@ static int heat_worker_count(void) {
     return (int)cores;
 }
 
-bool calculate_heatmap(GpxCollection *collection) {
+bool calculate_heatmap(GpxCollection *collection, const Progress *progress) {
     // convert gpx track collection a single big point collection
     int total_points = 0;
     for (int i = 0; i < collection->total_tracks; i++) {
@@ -265,6 +231,8 @@ bool calculate_heatmap(GpxCollection *collection) {
         }
     }
     LOG_DEBUG("There are %d data points in total\n", total_points);
+    progress_set_total(progress, total_points);
+    progress_set_completed(progress, 0);
     LOG_DEBUG("Collecting all points in one array\n");
     GpxPoint **points = (GpxPoint **)malloc(total_points * sizeof(GpxPoint *));
     if (!points) {
@@ -306,10 +274,7 @@ bool calculate_heatmap(GpxCollection *collection) {
     pthread_t threads[thread_count];
     HeatmapTask tasks[thread_count];
     pthread_mutex_t max_mutex = PTHREAD_MUTEX_INITIALIZER;
-    pthread_mutex_t progress_mutex = PTHREAD_MUTEX_INITIALIZER;
     int max_heat = 0;
-
-    int total_progress = 0;
 
     for (int t = 0; t < thread_count; t++) {
         tasks[t].points = points;
@@ -322,9 +287,8 @@ bool calculate_heatmap(GpxCollection *collection) {
         tasks[t].total_tracks = collection->total_tracks;
         tasks[t].thread_max_heat = &max_heat;
         tasks[t].max_mutex = &max_mutex;
-        tasks[t].progress_mutex = &progress_mutex;
-        tasks[t].thread_progress = 0;
-        tasks[t].total_progress = &total_progress;
+        tasks[t].progress = progress;
+        tasks[t].batch_progress = 0;
 
         if (pthread_create(&threads[t], NULL, heatmap_worker, &tasks[t]) != 0) {
             perror("pthread_create failed");
@@ -332,17 +296,6 @@ bool calculate_heatmap(GpxCollection *collection) {
             return false;
         }
     }
-    while (true) {
-        pthread_mutex_lock(&progress_mutex);
-        print_progress_bar(total_progress, total_points, 30, &start_time);
-        if (total_progress >= total_points) {
-            pthread_mutex_unlock(&progress_mutex);
-            break;
-        }
-        pthread_mutex_unlock(&progress_mutex);
-        usleep(100000);
-    }
-
     for (int t = 0; t < thread_count; t++) {
         pthread_join(threads[t], NULL);
     }

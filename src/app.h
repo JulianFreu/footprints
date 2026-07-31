@@ -6,6 +6,7 @@
 #include <stdbool.h>
 
 #include "config.h"
+#include "background.h"
 #include "map_types.h"
 #include "ui_types.h"
 
@@ -45,6 +46,11 @@ struct application {
     bool mouse_over_ui;
     bool show_heat;
     bool update_window;
+    // The long-running work. While this is busy the collection belongs to it.
+    BackgroundJob background;
+    // The collection this application is showing. Clay's hover callbacks are
+    // handed one pointer, so anything a button needs has to hang off it.
+    GpxCollection *collection;
 };
 
 #endif

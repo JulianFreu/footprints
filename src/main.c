@@ -7,6 +7,7 @@
 #include <SDL2/SDL_ttf.h>
 
 #include "app.h"
+#include "background.h"
 #include "log.h"
 #include "filters.h"
 #include "gpx_parser.h"
@@ -69,6 +70,7 @@ int main(int argc, char *argv[]) {
     download_in_progress = false;
 
     GpxCollection collection = {0};
+    appl.collection = &collection;
 
     if (sdl_initialize(&appl)) {
         appl_cleanup(&appl, &collection);
@@ -81,15 +83,11 @@ int main(int argc, char *argv[]) {
     ui_load_icons(&appl);
     SDL_RenderPresent(appl.renderer);
 
-    if (!gpx_parse_all_files(&collection))
-        fprintf(stderr, "No tracks were loaded from %s\n", GPX_INPUT_DIR);
-
     reset_filters(&collection.filters);
-    apply_filter_values(&collection);
 
-    if (!calculate_heatmap(&collection))
-        fprintf(stderr, "Heat calculation failed; the map will render unshaded\n");
-    LOG_DEBUG("Maximum heat is %d\n", collection.max_heat);
+    // Reading the library and shading it are the two things slow enough to be
+    // worth watching, so they run on a worker while the window stays live.
+    background_start_load(&appl.background, &collection);
 
     // start thread that will donwload missing tiles of the map
     // the thread will constantly check the download queue for missing tiles and download them
@@ -115,21 +113,36 @@ int main(int argc, char *argv[]) {
                           &appl.window_height);
         handle_events(&appl, &collection);
 
-        if (appl.update_window || animation_in_progress(&ui) || download_in_progress) {
+        // The worker owns the collection until it says otherwise; adopting the
+        // results is the main thread's job, and has to happen between frames
+        // rather than in the middle of one.
+        if (background_collect(&appl.background)) {
+            apply_filter_values(&collection);
+            tracks_invalidate_cache(&collection);
+            LOG_DEBUG("Maximum heat is %d\n", collection.max_heat);
+            appl.update_window = true;
+        }
+
+        bool busy = background_busy(&appl.background);
+
+        if (appl.update_window || busy || animation_in_progress(&ui) || download_in_progress) {
             appl.update_window = false;
             SDL_RenderClear(appl.renderer);
-
-            update_track_info_graphs(&appl, &collection);
-
-            update_selected_track_overlay(&appl, &collection);
 
             // Layer order lives here, where the frame is composed, rather
             // than inside whichever module happens to draw first.
             VisibleTile tiles[MAX_VISIBLE_TILES];
             int tile_count = map_visible_tiles(&appl, tiles, MAX_VISIBLE_TILES);
             map_draw_tiles(&appl, tiles, tile_count);
-            tracks_draw_heat_tiles(&appl, &collection, tiles, tile_count);
-            tracks_draw_selected_overlay(&appl);
+
+            // The map is safe to draw at any time; anything derived from the
+            // tracks is not, while the worker still has them.
+            if (!busy) {
+                update_track_info_graphs(&appl, &collection);
+                update_selected_track_overlay(&appl, &collection);
+                tracks_draw_heat_tiles(&appl, &collection, tiles, tile_count);
+                tracks_draw_selected_overlay(&appl);
+            }
 
             clay_draw_ui(&appl, &collection);
 
@@ -159,6 +172,9 @@ int main(int argc, char *argv[]) {
 
 static void appl_cleanup(struct application *appl, GpxCollection *collection) {
     LOG_DEBUG("Clean threads...\n");
+    // Asks the worker to give up and waits for it, so nothing below frees
+    // memory it is still reading.
+    background_stop(&appl->background);
     // Wake the download worker out of its wait and wait for it to return before
     // tearing down the mutex and condvar it is blocked on.
     if (appl->download_thread_started) {

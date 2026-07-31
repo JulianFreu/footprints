@@ -45,6 +45,11 @@ extern UIState ui;
 // keeps the pointer rather than copying the characters.
 const char *ui_track_text(const GpxTrack *track, TrackText field);
 
+// Formatted text that lives until the end of the frame. Clay keeps the pointer
+// it is given rather than copying, so a local buffer would be read after its
+// frame had gone.
+const char *ui_frame_printf(const char *fmt, ...);
+
 // Emits a Clay text element for a null-terminated string.
 void ui_draw_text(const char *string, uint16_t font_size, Clay_Color color,
                   Clay_TextAlignment align);

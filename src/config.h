@@ -74,6 +74,10 @@
 // Radius in projected pixels within which two tracks count as overlapping.
 #define HEAT_RADIUS_PIXELS 200.0f
 
+// How many points a heat worker finishes before publishing progress and
+// checking whether it has been asked to stop.
+#define HEAT_PROGRESS_BATCH 256
+
 // --- UI ---
 #define INPUT_BUFFER_SIZE 16
 
@@ -89,5 +93,13 @@
 // about 25 rows of 8 columns, plus the sidebar, so 64 KB is far more than a
 // frame can use.
 #define FRAME_TEXT_ARENA_BYTES 65536
+
+// The panel shown while the library is being read or the heat recalculated.
+// Longest single string ui_frame_printf will produce.
+#define UI_FRAME_STRING_MAX 128
+
+#define PROGRESS_PANEL_WIDTH 320
+#define PROGRESS_PANEL_HEIGHT 80
+#define PROGRESS_BAR_HEIGHT 16
 
 #endif

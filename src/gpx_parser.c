@@ -11,6 +11,7 @@
 #include <libxml/tree.h>
 
 #include "log.h"
+#include "progress.h"
 #include "time_util.h"
 
 static double haversine_distance(double lat1, double lon1, double lat2, double lon2) {
@@ -372,7 +373,25 @@ static bool gpx_parse_file(char *filename, GpxTrack *track) {
     return true;
 }
 
-bool gpx_parse_all_files(GpxCollection *collection) {
+// Counts the .gpx files in the folder, so progress has a denominator. A count
+// that disagrees with what is actually parsed only makes the bar slightly
+// wrong; nothing is sized from it.
+static int count_gpx_files(const char *folder_path) {
+    DIR *dir = opendir(folder_path);
+    if (!dir)
+        return 0;
+
+    int count = 0;
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL)
+        if (strstr(entry->d_name, ".gpx") != NULL)
+            count++;
+
+    closedir(dir);
+    return count;
+}
+
+bool gpx_parse_all_files(GpxCollection *collection, const Progress *progress) {
     const char *folder_path = GPX_INPUT_DIR;
     DIR *dir;
     struct dirent *entry;
@@ -386,7 +405,13 @@ bool gpx_parse_all_files(GpxCollection *collection) {
     collection->total_tracks = 0;
     collection->tracks = NULL;
 
+    progress_set_total(progress, count_gpx_files(folder_path));
+    progress_set_completed(progress, 0);
+
     while ((entry = readdir(dir)) != NULL) {
+        if (progress_cancelled(progress))
+            break;
+
         // Skip "." and ".."
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
             continue;
@@ -424,6 +449,7 @@ bool gpx_parse_all_files(GpxCollection *collection) {
         gpx_parse_file(full_path, current);
         LOG_DEBUG("Tracks %d has %d data points\n", collection->total_tracks, collection->tracks[collection->total_tracks].total_points);
         collection->total_tracks++;
+        progress_add(progress, 1);
     }
 
     closedir(dir);

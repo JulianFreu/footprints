@@ -4,7 +4,7 @@
 #include <string.h>
 
 #include "colors.h"
-#include "heat.h"
+#include "background.h"
 #include "log.h"
 #include "tracks.h"
 
@@ -280,19 +280,16 @@ static void clicked_calculate_heat(
     Clay_ElementId elementId,
     Clay_PointerData pointerData,
     intptr_t userData) {
-    if (pointerData.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME) {
-        GpxCollection *collection = (GpxCollection *)userData;
+    if (pointerData.state != CLAY_POINTER_DATA_PRESSED_THIS_FRAME)
+        return;
 
-        // reset heat for all points
-        for (int track = 0; track < collection->total_tracks; track++) {
-            for (int pt = 0; pt < collection->tracks[track].total_points; pt++) {
-                collection->tracks[track].points[pt].heat = 0;
-            }
-        }
-        // recalculate heat
-        calculate_heatmap(collection);
-        tracks_invalidate_cache(collection);
-    }
+    struct application *appl = (struct application *)userData;
+
+    // Handed to a worker rather than run here: this used to recalculate the
+    // whole heatmap inside the click handler, so the window stopped responding
+    // for as long as it took. background_start_heat declines while a job is
+    // already running, which is also what stops a second click stacking one.
+    background_start_heat(&appl->background, appl->collection);
 }
 static void clicked_show_filtered_tracks(
     Clay_ElementId elementId,
@@ -342,7 +339,7 @@ void ui_draw_filter_panel(struct application *appl, GpxCollection *collection,
                                                  .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}},
                                              .backgroundColor = Clay_Hovered() ? bg_l : bg_d,
                                              .cornerRadius = CORNER_RADIUS}) {
-                Clay_OnHover(clicked_calculate_heat, (intptr_t)collection);
+                Clay_OnHover(clicked_calculate_heat, (intptr_t)appl);
                 ui_draw_text("Calculate Heat", LABEL_FONT_SIZE, dark_aqua, CLAY_TEXT_ALIGN_CENTER);
             }
 

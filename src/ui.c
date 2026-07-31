@@ -1,6 +1,7 @@
 #include "ui_internal.h"
 
 #include <math.h>
+#include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,6 +12,7 @@
 
 #include "filters.h"
 #include "heat.h"
+#include "background.h"
 #include "track_format.h"
 #include "track_sort.h"
 #include "tracks.h"
@@ -43,13 +45,36 @@ static void ui_frame_text_reset(void) {
     frame_text_used = 0;
 }
 
-const char *ui_track_text(const GpxTrack *track, TrackText field) {
-    if (frame_text_used + TRACK_TEXT_MAX > sizeof(frame_text_arena))
-        return ""; // arena spent; draw nothing rather than scribble past it
+// Hands out `size` bytes of this frame's text, or NULL once it is spent.
+static char *frame_text_alloc(size_t size) {
+    if (frame_text_used + size > sizeof(frame_text_arena))
+        return NULL;
 
     char *slot = &frame_text_arena[frame_text_used];
-    frame_text_used += TRACK_TEXT_MAX;
+    frame_text_used += size;
+    return slot;
+}
+
+const char *ui_track_text(const GpxTrack *track, TrackText field) {
+    char *slot = frame_text_alloc(TRACK_TEXT_MAX);
+    if (!slot)
+        return ""; // arena spent; draw nothing rather than scribble past it
     return track_format(track, field, slot, TRACK_TEXT_MAX);
+}
+
+// Formatted text with the lifetime Clay needs. A local buffer will not do:
+// Clay keeps the pointer and reads it during the render that follows
+// Clay_EndLayout, by which time the frame it lived in is gone.
+const char *ui_frame_printf(const char *fmt, ...) {
+    char *slot = frame_text_alloc(UI_FRAME_STRING_MAX);
+    if (!slot)
+        return "";
+
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(slot, UI_FRAME_STRING_MAX, fmt, args);
+    va_end(args);
+    return slot;
 }
 
 UIState ui = {
@@ -267,6 +292,48 @@ static void draw_sidebar_track_info(SDL_Surface *icon, const char *value, const 
     }
 }
 
+// Shown while a worker holds the collection. The window used to simply stop
+// redrawing for the duration, so there was nothing to see and no way to tell
+// the difference from a hang.
+static void draw_progress_panel(struct application *appl) {
+    BgStage stage = background_stage(&appl->background);
+    float fraction = background_fraction(&appl->background);
+
+    const char *label = ui_frame_printf("%s  %d%%", background_stage_label(stage),
+                                        (int)(fraction * 100.0f));
+
+    CLAY(CLAY_ID("ProgressPanel"),
+         {.floating = {
+              .attachTo = CLAY_ATTACH_TO_ROOT,
+              .offset = {.x = (float)appl->window_width / 2 - PROGRESS_PANEL_WIDTH / 2,
+                         .y = (float)appl->window_height / 2 - PROGRESS_PANEL_HEIGHT / 2}},
+          .layout = {.padding = CLAY_PADDING_ALL(2 * GAPS), .childGap = GAPS, .sizing = {.width = CLAY_SIZING_FIXED(PROGRESS_PANEL_WIDTH), .height = CLAY_SIZING_FIXED(PROGRESS_PANEL_HEIGHT)}, .childAlignment = {.x = CLAY_ALIGN_X_CENTER}, .layoutDirection = CLAY_TOP_TO_BOTTOM},
+          .backgroundColor = bg,
+          .border = {.color = dark_aqua, .width = CLAY_BORDER_OUTSIDE(2)},
+          .cornerRadius = CORNER_RADIUS}) {
+        // The panel covers the map, so clicks on it must not fall through to
+        // the map underneath.
+        if (Clay_Hovered())
+            appl->mouse_over_ui = true;
+
+        ui_draw_text(label, LABEL_FONT_SIZE, fg, CLAY_TEXT_ALIGN_CENTER);
+
+        // The bar: a full-width trough with the finished part drawn over it.
+        CLAY(CLAY_ID("ProgressTrough"),
+             {.layout = {.sizing = {.width = CLAY_SIZING_GROW(0),
+                                    .height = CLAY_SIZING_FIXED(PROGRESS_BAR_HEIGHT)}},
+              .backgroundColor = bg4,
+              .cornerRadius = CORNER_RADIUS}) {
+            CLAY(CLAY_ID("ProgressFill"),
+                 {.layout = {.sizing = {.width = CLAY_SIZING_PERCENT(fraction),
+                                        .height = CLAY_SIZING_GROW(0)}},
+                  .backgroundColor = dark_aqua,
+                  .cornerRadius = CORNER_RADIUS}) {
+            }
+        }
+    }
+}
+
 void clay_draw_ui(struct application *appl, GpxCollection *collection) {
     if (!clay_memory.memory) {
         fprintf(stderr, "[CLAY] ERROR: clay_memory not initialized!\n");
@@ -311,9 +378,6 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
     continue_animation(&ui.run_list, delta_time);
 
     // draw UI
-    char fps_label[64];
-    snprintf(fps_label, sizeof(fps_label), "FPS: %d", appl->current_fps);
-
     Clay_SetLayoutDimensions((Clay_Dimensions){
         .width = appl->window_width,
         .height = appl->window_height});
@@ -352,7 +416,7 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
         if (Clay_Hovered())
             appl->mouse_over_ui = true;
 
-        if (appl->selected_track >= 0) {
+        if (appl->selected_track >= 0 && !background_busy(&appl->background)) {
             const GpxTrack *track = &collection->tracks[appl->selected_track];
 
             draw_sidebar_track_info(appl->icons.date, ui_track_text(track, TRACK_TEXT_DATE), "", 0);
@@ -377,8 +441,12 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
     }
 
     int list_offset_y = MENU_ICON_SIZE + 2 * SCREEN_BORDER_PADDING;
-    ui_draw_filter_panel(appl, collection, list_offset_y);
-    ui_draw_run_list(appl, collection, list_offset_y);
+    if (background_busy(&appl->background)) {
+        draw_progress_panel(appl);
+    } else {
+        ui_draw_filter_panel(appl, collection, list_offset_y);
+        ui_draw_run_list(appl, collection, list_offset_y);
+    }
 
     Clay_RenderCommandArray render_commands = Clay_EndLayout();
     clay_sdl_render(appl->renderer, render_commands, appl->fonts);
