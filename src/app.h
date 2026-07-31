@@ -9,6 +9,7 @@
 #include "background.h"
 #include "map_types.h"
 #include "ui_types.h"
+#include "zoom.h"
 
 // Composition root: the one object that owns the window, renderer, caches and
 // input state for the running application.
@@ -33,8 +34,11 @@ struct application {
     SDL2_Font fonts[1];
     UiIcons icons;
     TileTextureCache tile_cache;
-    // Currently always identity; see MapTransform. Must never be left at a
-    // zero scale -- initialise from MAP_TRANSFORM_IDENTITY, not {0}.
+    // Where the picture is between two whole zoom levels, and that gap written
+    // in the form the drawing wants. The transform is derived from the
+    // transition and never set on its own; see MapTransform. It must never be
+    // left at a zero scale -- initialise from MAP_TRANSFORM_IDENTITY, not {0}.
+    ZoomTransition zoom_transition;
     MapTransform map_transform;
     // The selected track's polyline, drawn in screen space over the whole
     // window. One texture: it is built for wherever the camera is, so a

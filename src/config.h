@@ -55,6 +55,11 @@
 // ancestors in the meantime.
 #define TILE_DECODES_PER_FRAME 3
 
+// Heat tiles rasterised per frame, for the same reason. A frame drawn at half
+// scale needs four times as many tiles, and the first frame of a zoom is
+// exactly where that cost would land.
+#define HEAT_RENDERS_PER_FRAME 8
+
 // How long a tile that failed to download is left alone before being asked for
 // again, and how many tiles can be waiting or cooling off at once.
 #define TILE_RETRY_SECONDS 30
@@ -69,10 +74,12 @@
 #define TILE_CACHE_MAX_ENTRIES 256
 
 // Upper bound on tiles drawn in one frame; past this the outermost tiles are
-// simply not drawn. A 4K window needs about 170 at scale 1. Headroom is for a
-// scaled transform: drawing a level at half size quadruples the count, and
-// 33 by 19 is 627, so 512 would leave holes around the edge of a large window.
-#define MAX_VISIBLE_TILES 1024
+// simply not drawn. A 4K window needs about 170 at scale 1. The rest is for a
+// zoom still easing: each octave of lag quadruples the count, so the same
+// window needs 627 one level down and 2205 two levels down -- and
+// ZOOM_MAX_OCTAVES caps the lag at two. This is a stack array in the frame
+// loop, so at 24 bytes an entry it is about 96 KB.
+#define MAX_VISIBLE_TILES 4096
 
 // --- Startup view ---
 // World pixel coordinates at MAX_ZOOM, and the zoom level to open at.
@@ -113,6 +120,18 @@
 
 // Scroll distance contributed by one mouse-wheel detent.
 #define SCROLL_PIXELS_PER_WHEEL_STEP 5
+
+// --- Zooming ---
+// How long the picture takes to catch up with a zoom level the model has
+// already snapped to. The one number the feel is retuned by.
+#define ZOOM_ANIMATION_SECONDS 0.15f
+
+// How far the picture is ever allowed to lag the model, in powers of two. Two
+// detents in quick succession is an ordinary gesture and has to stay smooth,
+// so the limit is above it; a longer burst snaps through the levels in between
+// and eases only the last. What sets the ceiling is MAX_VISIBLE_TILES, since
+// each octave of lag quadruples the tiles a frame needs.
+#define ZOOM_MAX_OCTAVES 2.0f
 
 // Scratch for the strings drawn in one frame. The run list is virtualised to
 // about 25 rows of 8 columns, plus the sidebar, so 64 KB is far more than a

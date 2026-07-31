@@ -72,5 +72,6 @@ void run_point_index_tests(void);
 void run_track_format_tests(void);
 void run_background_tests(void);
 void run_anim_tests(void);
+void run_zoom_tests(void);
 
 #endif

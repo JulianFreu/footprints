@@ -180,11 +180,10 @@ void tracks_free_collection_cache(GpxCollection *collection) {
     point_index_free(&collection->point_index);
 }
 
-static SDL_Texture *get_or_render_track_tile(struct application *appl, GpxCollection *collection, MapTile key) {
-    SDL_Texture *cached = tile_cache_lookup(&collection->track_tile_cache, key);
-    if (cached)
-        return cached;
-
+// Rasterises one heat tile and puts it in the cache. The cache is consulted by
+// the caller rather than here, because it is the caller that has to tell a hit
+// from a miss to keep to its budget for the frame.
+static SDL_Texture *render_track_tile(struct application *appl, GpxCollection *collection, MapTile key) {
     if (!point_index_ensure(collection))
         return NULL;
 
@@ -246,10 +245,28 @@ static SDL_Texture *get_or_render_track_tile(struct application *appl, GpxCollec
 // business; this only knows how to draw its own layer.
 void tracks_draw_heat_tiles(struct application *appl, GpxCollection *collection,
                             const VisibleTile *tiles, int count) {
+    int renders_left = HEAT_RENDERS_PER_FRAME;
+
     for (int i = 0; i < count; i++) {
-        SDL_Texture *texture = get_or_render_track_tile(appl, collection, tiles[i].tile);
-        if (!texture)
-            continue;
+        SDL_Texture *texture = tile_cache_lookup(&collection->track_tile_cache, tiles[i].tile);
+
+        if (!texture) {
+            // Rasterising a tile walks its whole slice of the point index, and
+            // a frame drawn at half scale asks for four times as many tiles at
+            // once -- which would land on the first frame of a zoom, where it
+            // shows worst. Rationed like the map's decodes. There is no
+            // ancestor to fall back on here, so a tile past the budget is
+            // simply absent until the frame that gets to it.
+            if (renders_left <= 0) {
+                app_request_redraw(appl); // come back for the rest
+                continue;
+            }
+
+            texture = render_track_tile(appl, collection, tiles[i].tile);
+            renders_left--;
+            if (!texture)
+                continue;
+        }
 
         SDL_FRect dest = {tiles[i].screen_x, tiles[i].screen_y,
                           tiles[i].size, tiles[i].size};

@@ -7,6 +7,7 @@ build/
 build-debug/
 footprints
 footprints-debug
+run-tests
 
 # editor-local settings
 .vscode/

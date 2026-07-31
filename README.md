@@ -162,6 +162,7 @@ Keep the description a few kebab-case words, not a full sentence.
 |------|----------------|
 | `main.c` | Startup, the frame loop, SDL setup and teardown, event routing |
 | `anim.c` | The animated scalar every moving thing is built from, and its easing |
+| `zoom.c` | The gap between the zoom level the model is at and the one being drawn |
 | `gpx_parser.c` | Reads `gpx_files/`, builds the track collection, derives per-track stats |
 | `filters.c` | The filter table: what each filter reads, how it parses, which tracks pass |
 | `track_sort.c` | Ordering the run list |
@@ -230,7 +231,6 @@ parsing either.
 ## ToDo
 
 - Smooth fade-in of tiles after download
-- Smooth zooming
 - More statistics in activities (heart-rate, speed, ...)
 - Color overhaul
 - Add watermark of tile provider to bottom right

@@ -27,15 +27,28 @@ extern _Atomic bool download_in_progress;
 
 // What a MapTransform is when nothing is easing. A zeroed one has a scale of
 // zero and draws nothing, so this is not something to leave to a {0}.
-#define MAP_TRANSFORM_IDENTITY                            \
-    (MapTransform) {                                      \
-        .scale = 1.0f, .anchor_x = 0.0f, .anchor_y = 0.0f \
-    }
+#define MAP_TRANSFORM_IDENTITY \
+    (MapTransform){            \
+        .scale = 1.0f, .anchor_x = 0.0f, .anchor_y = 0.0f}
 
 // Puts a rectangle given in unscaled screen pixels where the transform says it
 // should be drawn.
 SDL_FRect map_transform_rect(const struct application *appl,
                              float x, float y, float w, float h);
+
+// The other direction for a point: what unscaled position a window pixel is
+// showing. This is what anything reading the mouse has to go through while a
+// zoom is easing, because the projection below is deliberately about the model
+// and does not know the transform exists.
+void map_screen_untransform(const struct application *appl, float screen_x, float screen_y,
+                            float *unscaled_x, float *unscaled_y);
+
+// Zooms by `steps` whole levels about the mouse, easing the picture into it.
+void map_zoom_by_wheel(struct application *appl, int steps);
+
+// Advances whatever the map still has moving, and asks for another frame if
+// anything did. A no-op once the picture has settled.
+void map_update(struct application *appl, float dt);
 
 // Fills `out` with the tiles covering the window and returns how many were
 // written, never more than max_tiles.
@@ -64,8 +77,8 @@ void conv_pixel_to_tile_and_offset(int pixel_x, int pixel_y, int source_zoom, in
 // conv_pixel_to_tile_and_offset: a tile lands on a whole pixel by
 // construction, and it is the one thing here that is not a projection.
 
-// World pixels to one screen pixel at `zoom`.
-int map_world_per_pixel_at(int zoom);
+// World pixels to one screen pixel at `zoom`. map_world_per_pixel_at is
+// declared in zoom.h, which this header pulls in through app.h.
 int map_world_per_pixel(const struct application *appl);
 
 // Where a world point lands in the window, and what world point is under a

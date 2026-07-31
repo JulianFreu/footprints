@@ -55,13 +55,12 @@ typedef struct OverlayKey {
 
 // How the map layers are drawn relative to where the model says they are.
 //
-// Nothing sets this to anything but identity yet: it is the seam a zoom
-// transition would be driven through. The point of routing every layer past it
-// now is that the model can snap to a whole zoom level while the picture
-// catches up, so tile selection, the on-disk cache, the point index and the
-// heat rasterisation go on seeing whole zooms and only the blit knows about the
-// fraction. Scaling is about an anchor in screen pixels so the point under the
-// cursor stays under it.
+// Derived once a frame from the ZoomTransition in zoom.h, and the only thing
+// that knows a zoom is part-way done. The model snaps to a whole zoom level
+// while the picture catches up, so tile selection, the on-disk cache, the point
+// index and the heat rasterisation go on seeing whole zooms and only the blit
+// knows about the fraction. Scaling is about an anchor in screen pixels so the
+// point under the cursor stays under it.
 typedef struct MapTransform {
     float scale;
     float anchor_x;

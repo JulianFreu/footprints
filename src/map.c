@@ -148,10 +148,6 @@ void conv_pixel_to_tile_and_offset(int pixel_x, int pixel_y, int source_zoom, in
         *pixel_in_tile_y += TILE_SIZE;
 }
 
-int map_world_per_pixel_at(int zoom) {
-    return 1 << (MAX_ZOOM - zoom);
-}
-
 int map_world_per_pixel(const struct application *appl) {
     return map_world_per_pixel_at(appl->zoom);
 }
@@ -441,6 +437,40 @@ SDL_FRect map_transform_rect(const struct application *appl,
         .y = t->anchor_y + (y - t->anchor_y) * t->scale,
         .w = w * t->scale,
         .h = h * t->scale};
+}
+
+void map_screen_untransform(const struct application *appl, float screen_x, float screen_y,
+                            float *unscaled_x, float *unscaled_y) {
+    const MapTransform *t = &appl->map_transform;
+    *unscaled_x = t->anchor_x + (screen_x - t->anchor_x) / t->scale;
+    *unscaled_y = t->anchor_y + (screen_y - t->anchor_y) / t->scale;
+}
+
+// The transform is only ever written from the transition, so the two cannot
+// drift apart. Both the event that starts a zoom and the tick that advances it
+// come through here, which is why neither has to run before the other.
+static void map_adopt_transform(struct application *appl) {
+    appl->map_transform = (MapTransform){
+        .scale = zoom_scale(&appl->zoom_transition),
+        .anchor_x = appl->zoom_transition.anchor_x,
+        .anchor_y = appl->zoom_transition.anchor_y};
+}
+
+void map_zoom_by_wheel(struct application *appl, int steps) {
+    if (zoom_step(&appl->zoom_transition, &appl->zoom, &appl->world_x, &appl->world_y, steps,
+                  (float)appl->mouse_x, (float)appl->mouse_y,
+                  appl->window_width, appl->window_height) == 0)
+        return;
+
+    map_adopt_transform(appl);
+}
+
+void map_update(struct application *appl, float dt) {
+    if (!zoom_tick(&appl->zoom_transition, dt))
+        return;
+
+    map_adopt_transform(appl);
+    app_request_redraw(appl);
 }
 
 // The tiles covering the window at the current zoom, with where each one lands

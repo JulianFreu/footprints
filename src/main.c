@@ -32,6 +32,7 @@ static void app_update(struct application *appl, GpxCollection *collection) {
     if (background_busy(&appl->background) || download_in_progress)
         app_request_redraw(appl);
 
+    map_update(appl, appl->delta_time);
     ui_update(appl, collection);
 }
 
@@ -306,37 +307,10 @@ static void dispatch_event(struct application *appl, GpxCollection *collection,
     } else if (event.type == SDL_MOUSEWHEEL) {
         appl->wheel_y = event.wheel.y;
 
-        if (!appl->mouse_over_ui) {
-            int old_zoom = appl->zoom;
-
-            appl->zoom += event.wheel.y;
-
-            if (appl->zoom < MIN_ZOOM)
-                appl->zoom = MIN_ZOOM;
-            if (appl->zoom > MAX_ZOOM)
-                appl->zoom = MAX_ZOOM;
-
-            if (appl->zoom != old_zoom) {
-                // Take the world point under the cursor at the old zoom, then
-                // move the centre so the new zoom puts it back under the
-                // cursor. Read at the old zoom, so this happens before the
-                // centre moves.
-                int anchor_world_x, anchor_world_y;
-                appl->zoom = old_zoom;
-                map_screen_to_world(appl, (float)appl->mouse_x, (float)appl->mouse_y,
-                                    &anchor_world_x, &anchor_world_y);
-
-                appl->zoom = old_zoom + event.wheel.y;
-                if (appl->zoom < MIN_ZOOM)
-                    appl->zoom = MIN_ZOOM;
-                if (appl->zoom > MAX_ZOOM)
-                    appl->zoom = MAX_ZOOM;
-
-                const int per_pixel = map_world_per_pixel(appl);
-                appl->world_x = anchor_world_x - (appl->mouse_x - appl->window_width / 2) * per_pixel;
-                appl->world_y = anchor_world_y - (appl->mouse_y - appl->window_height / 2) * per_pixel;
-            }
-        }
+        // The model moves a whole level here; how the picture gets there is
+        // the map's business.
+        if (!appl->mouse_over_ui)
+            map_zoom_by_wheel(appl, event.wheel.y);
     }
 
     else if (event.type == SDL_MOUSEBUTTONDOWN) {
@@ -354,15 +328,24 @@ static void dispatch_event(struct application *appl, GpxCollection *collection,
                event.button.button == SDL_BUTTON_LEFT) {
         appl->left_mouse_button_pressed = false;
         if (!appl->mouse_over_ui) {
+            // A click landing while a zoom is still easing is on a picture the
+            // model has already moved past, so it is put back into the model's
+            // own space before being unprojected.
+            float unscaled_x, unscaled_y;
+            map_screen_untransform(appl, (float)event.button.x, (float)event.button.y,
+                                   &unscaled_x, &unscaled_y);
+
             int click_world_x, click_world_y;
-            map_screen_to_world(appl, (float)event.button.x, (float)event.button.y,
-                                &click_world_x, &click_world_y);
+            map_screen_to_world(appl, unscaled_x, unscaled_y, &click_world_x, &click_world_y);
             appl->selected_track = find_track_near_click(collection, click_world_x, click_world_y, appl->zoom, 10);
         }
     } else if (event.type == SDL_MOUSEMOTION && appl->dragging) {
-        const int per_pixel = map_world_per_pixel(appl);
-        appl->world_x -= event.motion.xrel * per_pixel;
-        appl->world_y -= event.motion.yrel * per_pixel;
+        // Divided by the scale for the same reason: on a frame drawn at half
+        // size a screen pixel of drag covers two of the model's, and without
+        // this the map would lag the cursor for as long as a zoom was easing.
+        const double per_pixel = map_world_per_pixel(appl) / appl->map_transform.scale;
+        appl->world_x -= (int)(event.motion.xrel * per_pixel);
+        appl->world_y -= (int)(event.motion.yrel * per_pixel);
     } else if (event.type == SDL_MOUSEMOTION) {
         appl->mouse_x = event.motion.x;
         appl->mouse_y = event.motion.y;
