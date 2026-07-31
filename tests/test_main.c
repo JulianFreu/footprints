@@ -11,6 +11,7 @@ int main(void) {
     run_gpx_tests();
     run_heat_tests();
     run_point_index_tests();
+    run_track_format_tests();
 
     printf("\n%d checks, %d failed\n", tests_run, tests_failed);
     return tests_failed == 0 ? 0 : 1;

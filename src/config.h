@@ -85,4 +85,9 @@
 // Scroll distance contributed by one mouse-wheel detent.
 #define SCROLL_PIXELS_PER_WHEEL_STEP 5
 
+// Scratch for the strings drawn in one frame. The run list is virtualised to
+// about 25 rows of 8 columns, plus the sidebar, so 64 KB is far more than a
+// frame can use.
+#define FRAME_TEXT_ARENA_BYTES 65536
+
 #endif

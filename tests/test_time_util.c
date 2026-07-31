@@ -34,14 +34,17 @@ void run_time_util_tests(void) {
     CHECK_INT(iso8601_to_utc("2025-08-24T00:00:00Z"),
               european_date_to_utc("24.08.2025"));
 
-    SUITE("time_util: iso8601_to_display_strings");
+    SUITE("time_util: utc_to_display_strings");
     char date[16], time_str[16];
-    CHECK(iso8601_to_display_strings("2025-08-24T15:02:15Z", date, sizeof(date),
-                                     time_str, sizeof(time_str)));
+    CHECK(utc_to_display_strings(iso8601_to_utc("2025-08-24T15:02:15Z"),
+                                 date, sizeof(date), time_str, sizeof(time_str)));
     CHECK_STR(date, "24.08.2025");
     CHECK_STR(time_str, "15:02");
-    // A failed parse must be reported rather than leaving the caller's buffers
-    // holding whatever was there before.
-    CHECK(!iso8601_to_display_strings("nope", date, sizeof(date), time_str,
-                                      sizeof(time_str)));
+    // Rendered as UTC, not in whatever zone the machine happens to be in.
+    CHECK(utc_to_display_strings(0, date, sizeof(date), time_str, sizeof(time_str)));
+    CHECK_STR(date, "01.01.1970");
+    CHECK_STR(time_str, "00:00");
+    // A track with no usable timestamp is reported rather than rendered.
+    CHECK(!utc_to_display_strings((time_t)-1, date, sizeof(date), time_str,
+                                  sizeof(time_str)));
 }

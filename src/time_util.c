@@ -51,12 +51,20 @@ time_t european_date_to_utc(const char *date) {
     return tm_to_utc(&tm);
 }
 
-bool iso8601_to_display_strings(const char *iso8601,
-                                char *out_date, size_t date_size,
-                                char *out_time, size_t time_size) {
-    struct tm tm = {0};
-    if (!parse_iso8601_fields(iso8601, &tm))
+bool utc_to_display_strings(time_t utc,
+                            char *out_date, size_t date_size,
+                            char *out_time, size_t time_size) {
+    if (utc == (time_t)-1)
         return false;
+
+    struct tm tm;
+#if defined(_WIN32) || defined(_WIN64)
+    if (gmtime_s(&tm, &utc) != 0)
+        return false;
+#else
+    if (!gmtime_r(&utc, &tm))
+        return false;
+#endif
 
     strftime(out_date, date_size, "%d.%m.%Y", &tm);
     strftime(out_time, time_size, "%H:%M", &tm);

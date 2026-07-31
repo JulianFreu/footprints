@@ -17,10 +17,10 @@ time_t iso8601_to_utc(const char *timestr);
 // Returns (time_t)-1 on a malformed string.
 time_t european_date_to_utc(const char *date);
 
-// Renders an ISO8601 timestamp into the "DD.MM.YYYY" and "HH:MM" strings the
-// UI displays. Returns false if the timestamp could not be parsed.
-bool iso8601_to_display_strings(const char *iso8601,
-                                char *out_date, size_t date_size,
-                                char *out_time, size_t time_size);
+// Renders a UTC timestamp into the "DD.MM.YYYY" and "HH:MM" strings the UI
+// displays. Returns false for (time_t)-1, i.e. a track with no usable time.
+bool utc_to_display_strings(time_t utc,
+                            char *out_date, size_t date_size,
+                            char *out_time, size_t time_size);
 
 #endif

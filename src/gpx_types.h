@@ -43,38 +43,21 @@ typedef struct GpxTrack {
 
     bool visible_in_list;
 
-    char start_time_raw[64]; // Original ISO8601 string from first <trkpt>
-    char end_time_raw[64];   // Original ISO8601 string from last <trkpt>
-
-    // start_time_raw/end_time_raw parsed once at load. The date filter compares
-    // against these rather than re-running sscanf over both strings of every
-    // track on every call.
+    // Parsed once at load, from the first and last <trkpt> that carried a
+    // time. Everything downstream -- the date filter, the sort, the displayed
+    // date -- reads these rather than re-parsing a string.
     time_t start_utc;
     time_t end_utc;
 
-    char start_time_str[16]; // Display version: "15:02:15"
-    char start_date_str[16]; // Display version: "2025-08-24"
-
+    // Derived statistics. Their display form is produced where they are drawn;
+    // see track_format.h.
     float duration_secs;
-    char duration_str[16];
-
     float distance;
-    char distance_str[16];
-
     float secs_per_km;
-    char pace_str[16];
-
     float elev_up;
-    char elev_up_str[16];
-
     float elev_down;
-    char elev_down_str[16];
-
     float high_point;
-    char high_point_str[16];
-
     float low_point;
-    char low_point_str[16];
 } GpxTrack;
 
 typedef struct GpxCollection {

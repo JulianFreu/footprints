@@ -3,6 +3,7 @@
 #include <stdlib.h>
 
 #include "colors.h"
+#include "track_format.h"
 #include "track_sort.h"
 #include "tracks.h"
 
@@ -159,13 +160,13 @@ static void draw_run_list_entry(GpxTrack *track) {
         Clay_OnHover(clicked_run_entry, track->track_id);
         draw_run_entry_attribute(RUN_LIST_COLUMN_WIDTH, activity_type_label(track->act_type), track->track_id * RUN_LIST_COLUMN_COUNT + 0);
 
-        draw_run_entry_attribute(RUN_LIST_COLUMN_WIDTH, track->start_date_str, track->track_id * RUN_LIST_COLUMN_COUNT + 1);
-        draw_run_entry_attribute(RUN_LIST_COLUMN_WIDTH, track->distance_str, track->track_id * RUN_LIST_COLUMN_COUNT + 2);
-        draw_run_entry_attribute(RUN_LIST_COLUMN_WIDTH, track->pace_str, track->track_id * RUN_LIST_COLUMN_COUNT + 3);
-        draw_run_entry_attribute(RUN_LIST_COLUMN_WIDTH, track->duration_str, track->track_id * RUN_LIST_COLUMN_COUNT + 4);
-        draw_run_entry_attribute(RUN_LIST_COLUMN_WIDTH, track->elev_up_str, track->track_id * RUN_LIST_COLUMN_COUNT + 5);
-        draw_run_entry_attribute(RUN_LIST_COLUMN_WIDTH, track->elev_down_str, track->track_id * RUN_LIST_COLUMN_COUNT + 6);
-        draw_run_entry_attribute(RUN_LIST_COLUMN_WIDTH, track->high_point_str, track->track_id * RUN_LIST_COLUMN_COUNT + 7);
+        draw_run_entry_attribute(RUN_LIST_COLUMN_WIDTH, ui_track_text(track, TRACK_TEXT_DATE), track->track_id * RUN_LIST_COLUMN_COUNT + 1);
+        draw_run_entry_attribute(RUN_LIST_COLUMN_WIDTH, ui_track_text(track, TRACK_TEXT_DISTANCE), track->track_id * RUN_LIST_COLUMN_COUNT + 2);
+        draw_run_entry_attribute(RUN_LIST_COLUMN_WIDTH, ui_track_text(track, TRACK_TEXT_PACE), track->track_id * RUN_LIST_COLUMN_COUNT + 3);
+        draw_run_entry_attribute(RUN_LIST_COLUMN_WIDTH, ui_track_text(track, TRACK_TEXT_DURATION), track->track_id * RUN_LIST_COLUMN_COUNT + 4);
+        draw_run_entry_attribute(RUN_LIST_COLUMN_WIDTH, ui_track_text(track, TRACK_TEXT_ELEV_UP), track->track_id * RUN_LIST_COLUMN_COUNT + 5);
+        draw_run_entry_attribute(RUN_LIST_COLUMN_WIDTH, ui_track_text(track, TRACK_TEXT_ELEV_DOWN), track->track_id * RUN_LIST_COLUMN_COUNT + 6);
+        draw_run_entry_attribute(RUN_LIST_COLUMN_WIDTH, ui_track_text(track, TRACK_TEXT_HIGH_POINT), track->track_id * RUN_LIST_COLUMN_COUNT + 7);
     }
 }
 

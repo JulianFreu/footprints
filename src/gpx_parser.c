@@ -45,7 +45,16 @@ static void track_calculate_distance(GpxTrack *track) {
     track->distance = track->distance / 1000; // meters to kilometers
 }
 
-static bool gpx_extract_time(xmlNode *node, GpxTrack *track, bool *found_start_time) {
+// The first and last timestamps seen while walking the document. These are
+// scratch for the parse only -- what survives is the pair of time_t on the
+// track -- so they live here rather than on GpxTrack.
+typedef struct TrackTimeRange {
+    char start[64];
+    char end[64];
+    bool found_start;
+} TrackTimeRange;
+
+static bool gpx_extract_time(xmlNode *node, TrackTimeRange *range) {
     bool found_time = false;
 
     for (xmlNode *cur_node = node; cur_node; cur_node = cur_node->next) {
@@ -56,15 +65,13 @@ static bool gpx_extract_time(xmlNode *node, GpxTrack *track, bool *found_start_t
                     xmlStrcmp(child->name, (const xmlChar *)"time") == 0) {
                     xmlChar *time_content = xmlNodeGetContent(child);
                     if (time_content) {
-                        if (!*found_start_time) {
-                            strncpy(track->start_time_raw, (const char *)time_content, sizeof(track->start_time_raw) - 1);
-                            track->start_time_raw[sizeof(track->start_time_raw) - 1] = '\0';
-                            *found_start_time = true;
+                        if (!range->found_start) {
+                            snprintf(range->start, sizeof(range->start), "%s", (const char *)time_content);
+                            range->found_start = true;
                         }
 
                         // Always update end time with the latest <time>
-                        strncpy(track->end_time_raw, (const char *)time_content, sizeof(track->end_time_raw) - 1);
-                        track->end_time_raw[sizeof(track->end_time_raw) - 1] = '\0';
+                        snprintf(range->end, sizeof(range->end), "%s", (const char *)time_content);
 
                         xmlFree(time_content);
                         found_time = true;
@@ -74,7 +81,7 @@ static bool gpx_extract_time(xmlNode *node, GpxTrack *track, bool *found_start_t
         }
 
         // Recurse into children
-        if (gpx_extract_time(cur_node->children, track, found_start_time))
+        if (gpx_extract_time(cur_node->children, range))
             found_time = true;
     }
 
@@ -303,34 +310,6 @@ static void track_calculate_elevation_gain_loss(GpxTrack *track) {
     free(smoothed);
 }
 
-static void track_format_display_strings(GpxTrack *track) {
-    // duration
-    int h = (int)track->duration_secs / 3600;
-    int m = ((int)(track->duration_secs) % 3600) / 60;
-    int s = (int)track->duration_secs % 60;
-    snprintf(track->duration_str, sizeof(track->duration_str), "%02d:%02d:%02d", h, m, s);
-
-    // time + date
-    iso8601_to_display_strings(
-        track->start_time_raw,
-        track->start_date_str, sizeof(track->start_date_str),
-        track->start_time_str, sizeof(track->start_time_str));
-
-    // pace
-    m = ((int)(track->secs_per_km)) / 60;
-    s = (int)track->secs_per_km % 60;
-    snprintf(track->pace_str, sizeof(track->pace_str), "%d:%02d", m, s);
-
-    // elevation
-    snprintf(track->elev_up_str, sizeof(track->elev_up_str), "%d", (int)track->elev_up);
-    snprintf(track->elev_down_str, sizeof(track->elev_down_str), "%d", (int)track->elev_down);
-    snprintf(track->high_point_str, sizeof(track->high_point_str), "%d", (int)track->high_point);
-    snprintf(track->low_point_str, sizeof(track->low_point_str), "%d", (int)track->low_point);
-
-    // distance
-    snprintf(track->distance_str, sizeof(track->distance_str), "%.2f", track->distance);
-}
-
 static bool gpx_parse_file(char *filename, GpxTrack *track) {
     LOG_DEBUG("Parsing: %s\n", filename);
     xmlDocPtr doc;
@@ -362,10 +341,10 @@ static bool gpx_parse_file(char *filename, GpxTrack *track) {
         LOG_DEBUG("Total elevation up: %.2f m\n", track->elev_up);
         LOG_DEBUG("Total elevation down: %.2f m\n", track->elev_down);
 
-        bool found_start_time = false;
-        if (gpx_extract_time(root_element, track, &found_start_time)) {
-            time_t start = iso8601_to_utc(track->start_time_raw);
-            time_t end = iso8601_to_utc(track->end_time_raw);
+        TrackTimeRange times = {0};
+        if (gpx_extract_time(root_element, &times)) {
+            time_t start = iso8601_to_utc(times.start);
+            time_t end = iso8601_to_utc(times.end);
             track->start_utc = start;
             track->end_utc = end;
 
@@ -378,8 +357,8 @@ static bool gpx_parse_file(char *filename, GpxTrack *track) {
                 track->duration_secs = 0.0f;
                 track->secs_per_km = 0.0f;
             }
-            LOG_DEBUG("start_time: %s\n", track->start_time_raw);
-            LOG_DEBUG("end_time: %s\n", track->end_time_raw);
+            LOG_DEBUG("start_time: %s\n", times.start);
+            LOG_DEBUG("end_time: %s\n", times.end);
             LOG_DEBUG("duration_secs: %f\n", track->duration_secs);
             LOG_DEBUG("distance: %f\n", track->distance);
             LOG_DEBUG("secs_per_km: %f\n", track->secs_per_km);
@@ -463,8 +442,6 @@ bool gpx_parse_all_files(GpxCollection *collection) {
     }
 
     for (int i = 0; i < collection->total_tracks; i++) {
-        track_format_display_strings(&collection->tracks[i]);
-
         // give list order initial values
         collection->list_order[i] = i;
     }

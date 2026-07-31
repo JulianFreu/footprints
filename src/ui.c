@@ -11,6 +11,7 @@
 
 #include "filters.h"
 #include "heat.h"
+#include "track_format.h"
 #include "track_sort.h"
 #include "tracks.h"
 
@@ -27,6 +28,29 @@
 #define LIST_RUNS 2
 #define SETTINGS 3
 #define STATISTICS 4
+
+// Text drawn this frame.
+//
+// Clay stores the pointer to a string's characters rather than copying them,
+// so anything handed to it has to stay alive until Clay_EndLayout and the
+// render that follows. That is why the display strings used to be kept on
+// GpxTrack. A bump allocator reset at the top of each frame gives them the
+// lifetime they need without putting presentation in the domain type.
+static char frame_text_arena[FRAME_TEXT_ARENA_BYTES];
+static size_t frame_text_used = 0;
+
+static void ui_frame_text_reset(void) {
+    frame_text_used = 0;
+}
+
+const char *ui_track_text(const GpxTrack *track, TrackText field) {
+    if (frame_text_used + TRACK_TEXT_MAX > sizeof(frame_text_arena))
+        return ""; // arena spent; draw nothing rather than scribble past it
+
+    char *slot = &frame_text_arena[frame_text_used];
+    frame_text_used += TRACK_TEXT_MAX;
+    return track_format(track, field, slot, TRACK_TEXT_MAX);
+}
 
 UIState ui = {
     .right_sidebar = {0},
@@ -294,6 +318,7 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
         .width = appl->window_width,
         .height = appl->window_height});
 
+    ui_frame_text_reset();
     Clay_BeginLayout();
 
     CLAY(CLAY_ID("MenuBar"),
@@ -330,14 +355,14 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
         if (appl->selected_track >= 0) {
             const GpxTrack *track = &collection->tracks[appl->selected_track];
 
-            draw_sidebar_track_info(appl->icons.date, track->start_date_str, "", 0);
-            draw_sidebar_track_info(appl->icons.clock, track->start_time_str, "", 1);
-            draw_sidebar_track_info(appl->icons.duration, track->duration_str, "h", 2);
-            draw_sidebar_track_info(appl->icons.pace, track->pace_str, "min/km", 3);
-            draw_sidebar_track_info(appl->icons.distance, track->distance_str, "km", 4);
-            draw_sidebar_track_info(appl->icons.elev_up, track->elev_up_str, "m", 5);
-            draw_sidebar_track_info(appl->icons.elev_down, track->elev_down_str, "m", 6);
-            draw_sidebar_track_info(appl->icons.peak, track->high_point_str, "m", 7);
+            draw_sidebar_track_info(appl->icons.date, ui_track_text(track, TRACK_TEXT_DATE), "", 0);
+            draw_sidebar_track_info(appl->icons.clock, ui_track_text(track, TRACK_TEXT_TIME), "", 1);
+            draw_sidebar_track_info(appl->icons.duration, ui_track_text(track, TRACK_TEXT_DURATION), "h", 2);
+            draw_sidebar_track_info(appl->icons.pace, ui_track_text(track, TRACK_TEXT_PACE), "min/km", 3);
+            draw_sidebar_track_info(appl->icons.distance, ui_track_text(track, TRACK_TEXT_DISTANCE), "km", 4);
+            draw_sidebar_track_info(appl->icons.elev_up, ui_track_text(track, TRACK_TEXT_ELEV_UP), "m", 5);
+            draw_sidebar_track_info(appl->icons.elev_down, ui_track_text(track, TRACK_TEXT_ELEV_DOWN), "m", 6);
+            draw_sidebar_track_info(appl->icons.peak, ui_track_text(track, TRACK_TEXT_HIGH_POINT), "m", 7);
 
             draw_sidebar_track_info(appl->icons.peak, activity_type_label(track->act_type), " ", 8);
 

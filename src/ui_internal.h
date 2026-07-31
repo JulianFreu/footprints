@@ -5,6 +5,7 @@
 #include "clay.h"
 #include "filters.h"
 #include "gpx_types.h"
+#include "track_format.h"
 #include "ui.h"
 
 // Shared between the UI translation units. Nothing outside src/ui*.c should
@@ -38,6 +39,11 @@
 
 // Animation and text-input state for the whole UI. Defined in ui.c.
 extern UIState ui;
+
+// One track attribute, formatted into this frame's text arena. The result
+// stays valid until the end of the frame, which is what Clay needs since it
+// keeps the pointer rather than copying the characters.
+const char *ui_track_text(const GpxTrack *track, TrackText field);
 
 // Emits a Clay text element for a null-terminated string.
 void ui_draw_text(const char *string, uint16_t font_size, Clay_Color color,
