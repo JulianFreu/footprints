@@ -18,6 +18,10 @@
 
 // --- Map tiles ---
 #define TILE_SIZE 256
+
+// The latitude at which the Web Mercator projection closes into a square. Past
+// it the projection is undefined, so coordinates are clamped here.
+#define MERCATOR_MAX_LATITUDE 85.05112878
 #define MIN_ZOOM 4
 #define MAX_ZOOM 20
 #define FIFO_DEPTH 16
@@ -27,6 +31,12 @@
 #define START_ZOOM 12
 #define START_WORLD_X 140750875
 #define START_WORLD_Y 89004498
+
+// --- Tracks ---
+// Half-width, in samples, of the centred moving average applied to elevation
+// before gain and loss are accumulated. GPS altitude is noisy enough that the
+// raw series roughly doubles the real climb.
+#define ELEVATION_SMOOTHING_WINDOW 10
 
 // --- Heatmap ---
 // Radius in projected pixels within which two tracks count as overlapping.

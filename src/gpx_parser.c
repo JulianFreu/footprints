@@ -81,23 +81,45 @@ static bool gpx_extract_time(xmlNode *node, GpxTrack *track, bool *found_start_t
     return found_time;
 }
 
+// Web Mercator. The result is in world pixels at `zoom`, which for MAX_ZOOM is
+// a 268-million-pixel square -- well past what a float's 24-bit mantissa can
+// address, so every step here stays in double precision.
 static void lat_lon_to_pixel(double lat, double lon, int zoom, int *x, int *y) {
-    double lat_rad = lat * (double)M_PI / 180.0f;
-    double siny = sinf(lat_rad);
+    // Web Mercator is only defined up to the latitude that makes the projected
+    // world square; past it the log runs away and the point lands outside the
+    // map entirely. Clamping the latitude, rather than the sine of it, is what
+    // puts the limit in the right place: the old bound of 0.9999 on sin(lat)
+    // corresponds to about 89.2 degrees and still projected to a negative
+    // world_y.
+    if (lat > MERCATOR_MAX_LATITUDE)
+        lat = MERCATOR_MAX_LATITUDE;
+    if (lat < -MERCATOR_MAX_LATITUDE)
+        lat = -MERCATOR_MAX_LATITUDE;
+    if (lon > 180.0)
+        lon = 180.0;
+    if (lon < -180.0)
+        lon = -180.0;
 
-    // Clamp siny to prevent overflow in log
-    if (siny > 0.9999f)
-        siny = 0.9999f;
-    if (siny < -0.9999f)
-        siny = -0.9999f;
+    double siny = sin(lat * M_PI / 180.0);
 
     int scale = TILE_SIZE << zoom;
 
-    double world_x = (lon + 180.0f) / 360.0f;
-    double world_y = 0.5f - logf((1 + siny) / (1 - siny)) / (4.0f * (double)M_PI);
+    double world_x = (lon + 180.0) / 360.0;
+    double world_y = 0.5 - log((1 + siny) / (1 - siny)) / (4.0 * M_PI);
 
     *x = (int)(world_x * scale);
     *y = (int)(world_y * scale);
+
+    // The clamps above put both fractions in [0, 1], and 1 lands one pixel past
+    // the last addressable column or row.
+    if (*x >= scale)
+        *x = scale - 1;
+    if (*y >= scale)
+        *y = scale - 1;
+    if (*x < 0)
+        *x = 0;
+    if (*y < 0)
+        *y = 0;
 }
 
 static bool gpx_extract_act_type(xmlNode *node, GpxTrack *track) {
@@ -212,11 +234,13 @@ static void track_calculate_mid_point(GpxTrack *track) {
     track->mid_y = mid_y / track->total_points;
 }
 
+// Raw GPS elevation is noisy enough that summing consecutive differences
+// wildly overstates the climb, so the series is smoothed with a centred moving
+// average before the gain and loss are accumulated.
 static void track_calculate_elevation_gain_loss(GpxTrack *track) {
-    const int window_size = 10; // Adjust as needed
     int total_points = track->total_points;
 
-    if (total_points < 9)
+    if (total_points < 2)
         return;
 
     // Temporary array for smoothed elevation values
@@ -226,26 +250,36 @@ static void track_calculate_elevation_gain_loss(GpxTrack *track) {
         return;
     }
 
-    // Apply rolling average smoothing
+    // Centred moving average over [i - ELEVATION_SMOOTHING_WINDOW,
+    // i + ELEVATION_SMOOTHING_WINDOW], clamped at both ends of the track.
+    //
+    // The window is advanced by adding the point entering it and subtracting
+    // the one leaving, so the whole pass is linear rather than one sum per
+    // point. Every sample is read from track->points and every result is
+    // written to smoothed[]: writing back inside this loop would feed each
+    // average into the windows of the points after it, turning a symmetric
+    // filter into a one-sided one that under-reports the descents.
+    double sum = 0.0;
+    int start = 0;
+    int end = -1;
     for (int i = 0; i < total_points; i++) {
-        int start = i - window_size;
-        int end = i + window_size;
-        if (start < 0)
-            start = 0;
-        if (end >= total_points)
-            end = total_points - 1;
+        int window_start = i - ELEVATION_SMOOTHING_WINDOW;
+        int window_end = i + ELEVATION_SMOOTHING_WINDOW;
+        if (window_start < 0)
+            window_start = 0;
+        if (window_end > total_points - 1)
+            window_end = total_points - 1;
 
-        float sum = 0.0;
-        int count = 0;
+        while (end < window_end)
+            sum += track->points[++end].elevation;
+        while (start < window_start)
+            sum -= track->points[start++].elevation;
 
-        for (int j = start; j <= end; j++) {
-            sum += track->points[j].elevation;
-            count++;
-        }
-
-        smoothed[i] = sum / count;
-        track->points[i].elevation = smoothed[i]; // save smoothed array
+        smoothed[i] = (float)(sum / (end - start + 1));
     }
+
+    for (int i = 0; i < total_points; i++)
+        track->points[i].elevation = smoothed[i];
 
     // Compute gain/loss using smoothed values
     track->elev_up = 0.0;
@@ -398,15 +432,16 @@ bool gpx_parse_all_files(GpxCollection *collection) {
         snprintf(full_path, sizeof(full_path), "%s/%s", folder_path, entry->d_name);
         GpxTrack *current = &collection->tracks[collection->total_tracks];
 
-        // Parse file and fill current track
+        // realloc hands back uninitialised memory, so every field starts from a
+        // known value. Only some of them are written unconditionally further
+        // down: act_type needs a <type> element, and the elevation figures need
+        // enough points for the smoothing window.
+        *current = (GpxTrack){0};
         current->track_id = collection->total_tracks;
-        current->points = NULL;
-        current->total_points = 0;
-        current->points_capacity = 0;
+        current->act_type = Other;
         current->start_utc = (time_t)-1;
         current->end_utc = (time_t)-1;
 
-        // Call your GPX parsing function here
         gpx_parse_file(full_path, current);
         LOG_DEBUG("Tracks %d has %d data points\n", collection->total_tracks, collection->tracks[collection->total_tracks].total_points);
         collection->total_tracks++;
