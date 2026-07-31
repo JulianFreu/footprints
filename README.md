@@ -35,12 +35,6 @@ Fedora:
 sudo dnf install gcc make SDL2-devel SDL2_image-devel SDL2_ttf-devel libcurl-devel libxml2-devel
 ```
 
-### Branch naming
-
-`type/short-description`, e.g. `feat/tile-fade-in`, `fix/fifo-oob-write`,
-`chore/update-deps`. Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`.
-Keep the description a few kebab-case words, not a full sentence.
-
 ### 3. Build from source
 
 ```bash
@@ -53,12 +47,15 @@ Other targets:
 |--------------------|---------------------------------------------------------------------|
 | `make`             | Optimised incremental build (`-O2 -Wall -Wextra`)                    |
 | `make debug`       | `footprints-debug` with AddressSanitizer + UBSan                     |
+| `make test`        | Build and run the unit tests, with both sanitizers on                |
 | `make format`      | Apply `.clang-format` to all non-vendored sources                    |
 | `make check-format`| Fail if anything is unformatted                                      |
+| `make run`         | Build, then run                                                      |
 | `make clean`       | Remove build output                                                  |
 
-`src/clay.h` and `src/clay_renderer_sdl.c` are vendored third-party code.
-They are excluded from formatting and should not be hand-edited.
+The build should be warning-free. `src/clay.h` and `src/clay_renderer_sdl.c` are
+vendored third-party code: they are excluded from formatting, compiled only via
+`src/clay_sdl.c`, and should not be hand-edited.
 
 ### 4. Run the application
 
@@ -68,11 +65,15 @@ After building, run the executable directly:
 ./footprints
 ```
 
+Run it from the project root — `gpx_files/`, `tilecache/` and `resources/` are
+all resolved relative to the working directory.
+
 ### Map tiles
 
-Footprints uses OpenStreetMap tiles by default, which need no API key.
+Footprints uses OpenStreetMap tiles by default, which need no API key and no
+extra setup.
 
-To use Stadia Maps terrain tiles instead, provide a key and pass the flag:
+To use Stadia Maps terrain tiles instead, supply a key and pass the flag:
 
 ```bash
 cp src/api_key.h.example src/api_key.h
@@ -80,7 +81,9 @@ cp src/api_key.h.example src/api_key.h
 make && ./footprints -stadiamaps
 ```
 
-`src/api_key.h` is gitignored, so your key stays out of version control.
+`src/api_key.h` is gitignored, so your key stays out of version control. It is
+optional: without it the build succeeds as normal and only `-stadiamaps` is
+unavailable, which the program tells you if you ask for it.
 
 ## Usage
 
@@ -90,35 +93,78 @@ So your first step should be to copy your GPX files into that folder.
 If you use a Garmin watch, you can request a full data export from Garmin.
 The export will contain your recorded activities as `.fit` files, usually bundled in one or more ZIP archives.
 
-You can use the included Python script to convert these `.fit` files to `.gpx` format.
-During conversion, the script also injects the detected activity type into each GPX file.
-This extra field is not part of the GPX standard but is required by Footprints to correctly identify the activity type.
+You can use the included Python script to convert these `.fit` files to `.gpx` format:
 
 ```bash
 python convert_fit_to_gpx.py <src_folder> gpx_files/
 ```
 
+It also accepts `.tcx` files, and copies `.gpx` files through unchanged, in
+every case renaming the output with the activity's start time so the directory
+sorts chronologically.
+
+During conversion the script injects the detected activity type as a `<type>`
+element. That element is not part of the GPX standard — it is how Footprints
+tells a run from a ride. GPX files from other tools load fine without it; their
+activity type simply reads as `Other`.
+
 ### Python script dependencies
 
-To use the conversion script, install its dependencies first:
+Only `.fit` files need a third-party package. `.tcx` and `.gpx` are handled with
+the standard library alone, so you only need this if you are converting `.fit`:
 
 ```bash
-pip install fitparse lxml
+pip install -r requirements.txt
 ```
 
-## Code layout
+## Development
+
+### Tests
+
+```bash
+make test
+```
+
+The harness is about eighty lines of macros over a pair of counters — no
+framework, so `make test` needs nothing that `make` does not already need. It
+builds with AddressSanitizer and UBSan on, since the suites cover the
+hand-rolled parsing and buffer arithmetic where an out-of-bounds read would
+otherwise go unnoticed.
+
+Each file under `tests/` `#include`s the module it covers rather than linking
+it, so a module's `static` helpers are reachable without widening its
+interface. Each `src/*.c` must therefore be included by exactly one test file.
+
+Covered: timestamp parsing, the tile queue, the filter table and the predicate
+it drives, the parser's geometry and elevation maths, the k-d tree radius
+search (against brute force), and the spatial index (against the full scan it
+replaced).
+
+### Branch naming
+
+`type/short-description`, e.g. `feat/tile-fade-in`, `fix/fifo-oob-write`,
+`chore/update-deps`. Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`.
+Keep the description a few kebab-case words, not a full sentence.
+
+### Code layout
 
 | File | Responsibility |
 |------|----------------|
-| `main.c` | Startup, the frame loop, SDL setup and teardown, input handling |
+| `main.c` | Startup, the frame loop, SDL setup and teardown, event routing |
 | `gpx_parser.c` | Reads `gpx_files/`, builds the track collection, derives per-track stats |
+| `filters.c` | The filter table: what each filter reads, how it parses, which tracks pass |
+| `track_sort.c` | Ordering the run list |
+| `heat.c` | The implicit k-d tree and the threaded heat calculation |
+| `point_index.c` | Tile-keyed spatial index over the visible points, shared by all zooms |
 | `tracks.c` | Track rendering: heat tiles, the selected-track overlay, elevation profiles |
 | `map.c` | Tile URLs, the download thread, the tile texture cache, map background |
 | `fifo.c` | The bounded queue between the main loop and the download thread |
-| `heat.c` | k-d tree and the threaded heat calculation |
-| `filters.c` | The filter field table, parsing bounds, applying them to the collection |
 | `time_util.c` | The single place timestamps are parsed — everything is UTC |
-| `ui.c` | Clay layout: run list, filter panel, sidebar, menu |
+| `ui.c` | Clay setup, icons, menu, sidebar, and the composition of the panels |
+| `ui_filters.c` | The filter panel and the text input that feeds it |
+| `ui_runlist.c` | The run list: sortable header, rows, virtualised scrolling |
+| `ui_internal.h` | Layout vocabulary shared by `ui*.c`; not part of the UI's interface |
+| `clay_sdl.c` | The one translation unit carrying Clay and its vendored SDL renderer |
 | `*_types.h` | Types only, so a module can include what it needs without the rest |
 | `config.h` | Compile-time tunables |
 
@@ -132,21 +178,31 @@ pip install fitparse lxml
 - A header includes only what its own declarations need; the `.c` file includes
   what it uses.
 - Every timestamp is UTC, and is parsed through `time_util.h`.
-- Run `make format` before committing; `make check-format` must pass.
+- Laying out the UI does not mutate the model it is drawing. Anything that
+  changes state happens on the event that caused it.
+- Comments describe what the code does now. Git history holds what it used to do.
+- Only stdout output a user asked for is unconditional; diagnostics go through
+  `LOG_DEBUG` in `log.h` (build with `-DFOOTPRINTS_DEBUG_LOG` to see them).
+- Run `make format` before committing; `make check-format` and `make test` must
+  pass.
 
 ### Adding a filter
 
-The filter fields are described by one table in `filters.c`. A new filter needs
-a `FILTER_*` bit in `filter_types.h`, a row per range end in that table, and a
-name in `filter_display_name`. If it reads like an existing field (plain number,
-duration, pace, date) nothing in `ui.c` changes.
+The filters are described by one table in `filters.c`. A new filter needs a
+value in the `FilterAttribute` enum in `filter_types.h` and a row in that
+table saying how it is typed, which `GpxTrack` member each end of its range is
+compared against, and what to label it.
+
+Nothing in `ui.c` or `ui_filters.c` changes: the panel is drawn by looping over
+the table, and the same table decides which tracks pass. If the filter reads
+like an existing one (plain number, duration, pace, date) there is no new
+parsing either.
 
 ## ToDo
 
 - Smooth fade-in of tiles after download
 - Smooth zooming
 - More statistics in activities (heart-rate, speed, ...)
-- Limit the tile cache (drop earliest if cache is full)
 - Color overhaul
 - Add watermark of tile provider to bottom right
 - Add screenshots to README
@@ -159,6 +215,10 @@ duration, pace, date) nothing in `ui.c` changes.
 - Multi-select in the run list for bulk delete/hide
 - A minimal config for map tile provider/API key setup instead of editing `api_key.h` by hand
 - Auto-sync with Garmin Connect
+- Run the GPX parse and the heat calculation off the main thread, so the window
+  stays responsive and progress can be shown in the UI rather than on stdout
+- Move the display strings off `GpxTrack` and format them where they are drawn
+- Give the map and the track overlay one shared colour source
 
 ## License
 This project is licensed under the MIT License – see the [LICENSE](LICENSE) file for details.
