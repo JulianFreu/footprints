@@ -18,6 +18,12 @@ void clay_free_memory(void);
 // Slides the run list and filter panel in or out, whichever is the reverse
 // of what they are doing now.
 void ui_toggle_run_list(void);
+// Text input for the filter fields. The event loop routes keystrokes here
+// rather than reaching into UIState itself.
+bool ui_text_input_active(void);
+void ui_text_input_digit(GpxCollection *collection, char digit);
+void ui_text_input_finish(GpxCollection *collection);
+
 void ui_load_icons(struct application *appl);
 void ui_free_icons(struct application *appl);
 

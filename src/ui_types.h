@@ -10,6 +10,8 @@
 #include "config.h"
 #include "filter_types.h"
 
+#define NO_ACTIVE_FILTER (-1)
+
 typedef struct AnimationState {
     bool opening;
     bool closing;
@@ -26,7 +28,9 @@ typedef struct UIState {
     bool text_input_mode;
     char text_input_buffer[INPUT_BUFFER_SIZE];
     size_t text_input_length;
-    uint16_t active_filter_id;
+    // Packed filter field being edited, or NO_ACTIVE_FILTER. Zero is a valid
+    // packed id, so "none" needs its own value.
+    int active_filter_id;
 } UIState;
 
 typedef struct

@@ -1,6 +1,7 @@
 #ifndef FILTERS_H
 #define FILTERS_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "filter_types.h"
@@ -17,29 +18,24 @@ typedef enum {
     FILTER_FORMAT_ELEVATION, // plain metres
 } FilterFormat;
 
-// One editable end of one filter. The table in filters.c holds every field, so
-// adding a filter is a row there plus a FILTER_* bit in ui_types.h -- rather
-// than a new case in the draw switch, another block in save_filter_values, and
-// another line in reset_filters.
-typedef struct FilterField {
-    uint16_t id; // FILTER_* ored with LOW_LIMIT or HIGH_LIMIT
-    FilterFormat format;
-    size_t text_offset; // char[16] the UI edits, within FilterSettings
-    // Numeric filters parse text_offset into this float bound. Date filters
-    // leave it unused and write the parsed string to date_offset instead.
-    size_t value_offset;
-    size_t date_offset;
-    const char *empty_default; // bound used when the field is left blank
-} FilterField;
+// Clay identifies elements, and carries hover user data, as a single integer.
+// These pack an (attribute, end) pair into one and take it apart again.
+uint16_t filter_field_id(FilterAttribute attribute, FilterBoundEnd end);
+bool filter_field_unpack(uint16_t id, FilterAttribute *attribute, FilterBoundEnd *end);
 
-// Returns NULL for an id that is not an editable field.
-const FilterField *filter_field_lookup(uint16_t id);
-// The editable text of `field` within `filter`.
-char *filter_field_text(FilterSettings *filter, const FilterField *field);
 // Label shown between a filter's two input fields.
-const char *filter_display_name(uint16_t filter_id);
+const char *filter_display_name(FilterAttribute attribute);
+// How this attribute's fields are laid out as they are typed.
+FilterFormat filter_format(FilterAttribute attribute);
+// The editable text of one end of one range.
+char *filter_bound_text(FilterSettings *filters, FilterAttribute attribute,
+                        FilterBoundEnd end);
 
-void apply_filter_values(GpxCollection *c);
-void reset_filters(FilterSettings *filter);
-void save_filter_values(FilterSettings *filter);
+// Re-reads every field's text into its numeric bound.
+void save_filter_values(FilterSettings *filters);
+// Clears every field and shows every activity type.
+void reset_filters(FilterSettings *filters);
+// Recomputes visible_in_list for every track, and the "Shown: n of m" label.
+void apply_filter_values(GpxCollection *collection);
+
 #endif

@@ -9,6 +9,94 @@
 #include <string.h>
 #include <time.h>
 
+// Every filter, in the order of the FilterAttribute enum.
+//
+// A row says how the field is typed, which GpxTrack member each end of the
+// range is compared against, and what the label between the two inputs reads.
+// Everything else -- drawing the pair of inputs, parsing the text, deciding
+// which tracks survive -- is driven from here, so a new filter is a value in
+// the enum and a row in this table.
+typedef struct FilterField {
+    FilterFormat format;
+    // Which member the low and high ends are compared against. Almost always
+    // the same one; the date filter is the exception, where the low bound
+    // tests when a track started and the high bound when it ended.
+    size_t low_member;
+    size_t high_member;
+    // Track members are float except the timestamps, which are time_t.
+    bool member_is_time;
+    const char *display_name;
+} FilterField;
+
+#define MEMBER(field) offsetof(GpxTrack, field)
+
+static const FilterField filter_fields[FILTER_COUNT] = {
+    [FILTER_DISTANCE] = {FILTER_FORMAT_DISTANCE, MEMBER(distance), MEMBER(distance), false, "distance"},
+    [FILTER_DURATION] = {FILTER_FORMAT_DURATION, MEMBER(duration_secs), MEMBER(duration_secs), false, "duration"},
+    [FILTER_PACE] = {FILTER_FORMAT_PACE, MEMBER(secs_per_km), MEMBER(secs_per_km), false, "pace"},
+    [FILTER_DATE] = {FILTER_FORMAT_DATE, MEMBER(start_utc), MEMBER(end_utc), true, "date"},
+    [FILTER_UPHILL] = {FILTER_FORMAT_ELEVATION, MEMBER(elev_up), MEMBER(elev_up), false, "up"},
+    [FILTER_DOWNHILL] = {FILTER_FORMAT_ELEVATION, MEMBER(elev_down), MEMBER(elev_down), false, "down"},
+    [FILTER_PEAK] = {FILTER_FORMAT_ELEVATION, MEMBER(high_point), MEMBER(high_point), false, "peak"},
+};
+
+#undef MEMBER
+
+static bool attribute_is_valid(FilterAttribute attribute) {
+    return attribute >= 0 && attribute < FILTER_COUNT;
+}
+
+uint16_t filter_field_id(FilterAttribute attribute, FilterBoundEnd end) {
+    return (uint16_t)(attribute * BOUND_COUNT + end);
+}
+
+bool filter_field_unpack(uint16_t id, FilterAttribute *attribute, FilterBoundEnd *end) {
+    FilterAttribute a = (FilterAttribute)(id / BOUND_COUNT);
+    if (!attribute_is_valid(a))
+        return false;
+    *attribute = a;
+    *end = (FilterBoundEnd)(id % BOUND_COUNT);
+    return true;
+}
+
+const char *filter_display_name(FilterAttribute attribute) {
+    return attribute_is_valid(attribute) ? filter_fields[attribute].display_name : "";
+}
+
+FilterFormat filter_format(FilterAttribute attribute) {
+    return filter_fields[attribute].format;
+}
+
+char *filter_bound_text(FilterSettings *filters, FilterAttribute attribute,
+                        FilterBoundEnd end) {
+    return filters->bound[attribute][end].text;
+}
+
+// Reads the GpxTrack member a filter row points at, whatever its type.
+static double track_member_value(const GpxTrack *track, size_t member_offset,
+                                 bool member_is_time) {
+    const char *base = (const char *)track;
+    if (member_is_time) {
+        time_t value;
+        memcpy(&value, base + member_offset, sizeof(value));
+        return (double)value;
+    }
+    float value;
+    memcpy(&value, base + member_offset, sizeof(value));
+    return (double)value;
+}
+
+// Elevation is shown rounded to whole metres, so a bound typed as "500" has to
+// admit a track whose smoothed gain came out at 499.9997. The other filters
+// are compared against what the user sees to full precision.
+static double comparison_epsilon(FilterFormat format) {
+    return (format == FILTER_FORMAT_ELEVATION) ? 0.01 : 0.0;
+}
+
+static int digit(char c) {
+    return (c == '\0') ? 0 : (int)c - (int)'0';
+}
+
 static void reverse_chars(const char *str, char *rv_str, int size) {
     for (int i = 0; i < size; i++) {
         rv_str[i] = str[size - 1 - i];
@@ -18,55 +106,7 @@ static void reverse_chars(const char *str, char *rv_str, int size) {
     }
 }
 
-void apply_filter_values(GpxCollection *c) {
-    // Parse the two filter bounds once. These were re-parsed inside the loop,
-    // once per track per call, and each failed parse logged to stderr.
-    const time_t range_start = european_date_to_utc(c->filters.start_date_str_filter);
-    const time_t range_end = european_date_to_utc(c->filters.end_date_str_filter);
-
-    for (int i = 0; i < c->total_tracks; i++) {
-        // default: visible
-        c->tracks[i].visible_in_list = true;
-
-        // check type
-        if (c->tracks[i].act_type == Run && c->filters.show_runs == false)
-            c->tracks[i].visible_in_list = false;
-        if (c->tracks[i].act_type == Cycling && c->filters.show_cycling == false)
-            c->tracks[i].visible_in_list = false;
-        if (c->tracks[i].act_type == Hike && c->filters.show_hikes == false)
-            c->tracks[i].visible_in_list = false;
-        if (c->tracks[i].act_type == Other && c->filters.show_other == false)
-            c->tracks[i].visible_in_list = false;
-
-        // check limits
-        if (c->tracks[i].distance < c->filters.distance_low || c->tracks[i].distance > c->filters.distance_high)
-            c->tracks[i].visible_in_list = false;
-        if (c->tracks[i].duration_secs < c->filters.duration_secs_low || c->tracks[i].duration_secs > c->filters.duration_secs_high)
-            c->tracks[i].visible_in_list = false;
-        if (c->tracks[i].secs_per_km < c->filters.secs_per_km_low || c->tracks[i].secs_per_km > c->filters.secs_per_km_high)
-            c->tracks[i].visible_in_list = false;
-        if ((c->tracks[i].elev_up - c->filters.elev_up_low) < -0.01 || c->tracks[i].elev_up - c->filters.elev_up_high > 0.01)
-            c->tracks[i].visible_in_list = false;
-        if (c->tracks[i].elev_down - c->filters.elev_down_low < -0.01 || c->tracks[i].elev_down - c->filters.elev_down_high > 0.01)
-            c->tracks[i].visible_in_list = false;
-        if (c->tracks[i].high_point - c->filters.high_point_low < -0.01 || c->tracks[i].high_point - c->filters.high_point_high > 0.01)
-            c->tracks[i].visible_in_list = false;
-        if (c->tracks[i].start_utc < range_start || c->tracks[i].end_utc > range_end)
-            c->tracks[i].visible_in_list = false;
-    }
-    int counter = 0;
-    for (int i = 0; i < c->total_tracks; i++) {
-        if (c->tracks[i].visible_in_list)
-            counter++;
-    }
-    snprintf(c->total_visible_tracks_str, sizeof(c->total_visible_tracks_str), "Shown: %d of %d Tracks", counter, c->total_tracks);
-}
-
-static int digit(char c) {
-    return (c == '\0') ? 0 : (int)c - (int)'0';
-}
-
-static float duration_str_to_duration_float(const char *str) {
+static double duration_str_to_seconds(const char *str) {
     char rv_str[FILTER_TEXT_SIZE];
     reverse_chars(str, rv_str, (int)strlen(str));
     return digit(rv_str[0]) +
@@ -78,7 +118,7 @@ static float duration_str_to_duration_float(const char *str) {
            60 * 6000 * digit(rv_str[8]);
 }
 
-static float pace_str_to_pace_float(const char *str) {
+static double pace_str_to_seconds(const char *str) {
     char rv_str[FILTER_TEXT_SIZE];
     reverse_chars(str, rv_str, (int)strlen(str));
     return digit(rv_str[0]) +
@@ -89,122 +129,107 @@ static float pace_str_to_pace_float(const char *str) {
            1000 * 60 * digit(rv_str[6]);
 }
 
-// Every editable filter field, in no particular order -- lookup is by id.
-// NO_BOUND marks the slot a given kind of filter does not use.
-#define NO_BOUND ((size_t) - 1)
-#define TEXT(field) offsetof(FilterSettings, field)
-
-static const FilterField filter_fields[] = {
-    {FILTER_DATE | LOW_LIMIT, FILTER_FORMAT_DATE, TEXT(start_date_str), NO_BOUND, TEXT(start_date_str_filter), "01.01.1980"},
-    {FILTER_DATE | HIGH_LIMIT, FILTER_FORMAT_DATE, TEXT(end_date_str), NO_BOUND, TEXT(end_date_str_filter), "01.01.9000"},
-
-    {FILTER_DISTANCE | LOW_LIMIT, FILTER_FORMAT_DISTANCE, TEXT(distance_low_str), TEXT(distance_low), NO_BOUND, NULL},
-    {FILTER_DISTANCE | HIGH_LIMIT, FILTER_FORMAT_DISTANCE, TEXT(distance_high_str), TEXT(distance_high), NO_BOUND, NULL},
-
-    {FILTER_DURATION | LOW_LIMIT, FILTER_FORMAT_DURATION, TEXT(duration_low_str), TEXT(duration_secs_low), NO_BOUND, NULL},
-    {FILTER_DURATION | HIGH_LIMIT, FILTER_FORMAT_DURATION, TEXT(duration_high_str), TEXT(duration_secs_high), NO_BOUND, NULL},
-
-    {FILTER_PACE | LOW_LIMIT, FILTER_FORMAT_PACE, TEXT(pace_low_str), TEXT(secs_per_km_low), NO_BOUND, NULL},
-    {FILTER_PACE | HIGH_LIMIT, FILTER_FORMAT_PACE, TEXT(pace_high_str), TEXT(secs_per_km_high), NO_BOUND, NULL},
-
-    {FILTER_UPHILL | LOW_LIMIT, FILTER_FORMAT_ELEVATION, TEXT(elev_up_low_str), TEXT(elev_up_low), NO_BOUND, NULL},
-    {FILTER_UPHILL | HIGH_LIMIT, FILTER_FORMAT_ELEVATION, TEXT(elev_up_high_str), TEXT(elev_up_high), NO_BOUND, NULL},
-
-    {FILTER_DOWNHILL | LOW_LIMIT, FILTER_FORMAT_ELEVATION, TEXT(elev_down_low_str), TEXT(elev_down_low), NO_BOUND, NULL},
-    {FILTER_DOWNHILL | HIGH_LIMIT, FILTER_FORMAT_ELEVATION, TEXT(elev_down_high_str), TEXT(elev_down_high), NO_BOUND, NULL},
-
-    {FILTER_PEAK | LOW_LIMIT, FILTER_FORMAT_ELEVATION, TEXT(high_point_low_str), TEXT(high_point_low), NO_BOUND, NULL},
-    {FILTER_PEAK | HIGH_LIMIT, FILTER_FORMAT_ELEVATION, TEXT(high_point_high_str), TEXT(high_point_high), NO_BOUND, NULL},
-};
-
-#undef TEXT
-
-#define FILTER_FIELD_COUNT (sizeof(filter_fields) / sizeof(filter_fields[0]))
-
-const FilterField *filter_field_lookup(uint16_t id) {
-    for (size_t i = 0; i < FILTER_FIELD_COUNT; i++) {
-        if (filter_fields[i].id == id)
-            return &filter_fields[i];
-    }
-    return NULL;
-}
-
-const char *filter_display_name(uint16_t filter_id) {
-    switch (filter_id) {
-    case FILTER_DISTANCE:
-        return "distance";
-    case FILTER_DURATION:
-        return "duration";
-    case FILTER_PACE:
-        return "pace";
-    case FILTER_DATE:
-        return "date";
-    case FILTER_UPHILL:
-        return "up";
-    case FILTER_DOWNHILL:
-        return "down";
-    case FILTER_PEAK:
-        return "peak";
-    default:
-        return "";
-    }
-}
-
-char *filter_field_text(FilterSettings *filter, const FilterField *field) {
-    return (char *)filter + field->text_offset;
-}
-
-static float *filter_field_value(FilterSettings *filter, const FilterField *field) {
-    return (float *)(void *)((char *)filter + field->value_offset);
-}
-
-// Turns a field's typed text into its numeric bound.
-static float parse_filter_text(const char *text, FilterFormat format) {
+// Turns a field's typed text into its numeric bound. Dates become a UTC
+// timestamp, so the date filter compares numbers like every other filter
+// rather than keeping a second copy of the bound as a string.
+static double parse_filter_text(const char *text, FilterFormat format, bool *ok) {
+    *ok = true;
     switch (format) {
     case FILTER_FORMAT_DURATION:
-        return duration_str_to_duration_float(text);
+        return duration_str_to_seconds(text);
     case FILTER_FORMAT_PACE:
-        return pace_str_to_pace_float(text);
+        return pace_str_to_seconds(text);
     case FILTER_FORMAT_DISTANCE:
     case FILTER_FORMAT_ELEVATION:
-        return (float)atof(text);
-    case FILTER_FORMAT_DATE:
-        break;
+        return atof(text);
+    case FILTER_FORMAT_DATE: {
+        time_t parsed = european_date_to_utc(text);
+        if (parsed == (time_t)-1) {
+            // Half-typed dates are normal: the field is reparsed on the way
+            // out of input mode, and "24.08" is not a date yet.
+            *ok = false;
+            return 0.0;
+        }
+        return (double)parsed;
     }
-    return 0.0f;
+    }
+    *ok = false;
+    return 0.0;
 }
 
-// A blank field means "no bound", which for the low end is -FLT_MAX and for the
-// high end +FLT_MAX.
-static bool field_is_high_limit(const FilterField *field) {
-    return (field->id & HIGH_LIMIT) != 0;
+// An unset bound admits everything, so it sits at the end of the range it
+// bounds rather than at some arbitrary sentinel date.
+static double open_bound(FilterBoundEnd end) {
+    return (end == BOUND_HIGH) ? DBL_MAX : -DBL_MAX;
 }
 
-void save_filter_values(FilterSettings *filter) {
-    for (size_t i = 0; i < FILTER_FIELD_COUNT; i++) {
-        const FilterField *field = &filter_fields[i];
-        const char *text = filter_field_text(filter, field);
+void save_filter_values(FilterSettings *filters) {
+    for (int attribute = 0; attribute < FILTER_COUNT; attribute++) {
+        for (int end = 0; end < BOUND_COUNT; end++) {
+            FilterBound *bound = &filters->bound[attribute][end];
+            if (bound->text[0] == '\0') {
+                bound->value = open_bound((FilterBoundEnd)end);
+                continue;
+            }
 
-        if (field->format == FILTER_FORMAT_DATE) {
-            char *bound = (char *)filter + field->date_offset;
-            snprintf(bound, FILTER_TEXT_SIZE, "%s",
-                     text[0] != '\0' ? text : field->empty_default);
-            continue;
+            bool ok = false;
+            double parsed = parse_filter_text(bound->text,
+                                              filter_fields[attribute].format, &ok);
+            bound->value = ok ? parsed : open_bound((FilterBoundEnd)end);
+        }
+    }
+}
+
+void reset_filters(FilterSettings *filters) {
+    for (int attribute = 0; attribute < FILTER_COUNT; attribute++)
+        for (int end = 0; end < BOUND_COUNT; end++)
+            filters->bound[attribute][end].text[0] = '\0';
+
+    for (int type = 0; type < ACTIVITY_TYPE_COUNT; type++)
+        filters->show_activity[type] = true;
+
+    save_filter_values(filters);
+}
+
+// A track survives when its activity type is shown and every filter's range
+// contains it. Both loops are driven by the table, so a new filter needs
+// nothing here.
+static bool track_passes_filters(const GpxTrack *track, const FilterSettings *filters) {
+    if (track->act_type >= 0 && track->act_type < ACTIVITY_TYPE_COUNT &&
+        !filters->show_activity[track->act_type])
+        return false;
+
+    for (int attribute = 0; attribute < FILTER_COUNT; attribute++) {
+        const FilterField *field = &filter_fields[attribute];
+        double epsilon = comparison_epsilon(field->format);
+
+        double low = filters->bound[attribute][BOUND_LOW].value;
+        if (low != -DBL_MAX) {
+            double value = track_member_value(track, field->low_member, field->member_is_time);
+            if (value - low < -epsilon)
+                return false;
         }
 
-        *filter_field_value(filter, field) =
-            text[0] != '\0' ? parse_filter_text(text, field->format)
-                            : (field_is_high_limit(field) ? FLT_MAX : -FLT_MAX);
+        double high = filters->bound[attribute][BOUND_HIGH].value;
+        if (high != DBL_MAX) {
+            double value = track_member_value(track, field->high_member, field->member_is_time);
+            if (value - high > epsilon)
+                return false;
+        }
     }
+    return true;
 }
 
-void reset_filters(FilterSettings *filter) {
-    for (size_t i = 0; i < FILTER_FIELD_COUNT; i++)
-        filter_field_text(filter, &filter_fields[i])[0] = '\0';
+void apply_filter_values(GpxCollection *collection) {
+    int visible = 0;
+    for (int i = 0; i < collection->total_tracks; i++) {
+        collection->tracks[i].visible_in_list =
+            track_passes_filters(&collection->tracks[i], &collection->filters);
+        if (collection->tracks[i].visible_in_list)
+            visible++;
+    }
 
-    filter->show_cycling = true;
-    filter->show_other = true;
-    filter->show_runs = true;
-    filter->show_hikes = true;
-    save_filter_values(filter);
+    snprintf(collection->total_visible_tracks_str,
+             sizeof(collection->total_visible_tracks_str),
+             "Shown: %d of %d Tracks", visible, collection->total_tracks);
 }

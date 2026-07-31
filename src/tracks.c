@@ -146,7 +146,6 @@ static void draw_smooth_thick_polyline(SDL_Renderer *renderer,
 static SDL_Point *overlay_points = NULL;
 static int overlay_points_capacity = 0;
 
-// The one place activity types are spelled for display.
 const char *activity_type_label(ActivityType type) {
     switch (type) {
     case Run:
@@ -156,6 +155,7 @@ const char *activity_type_label(ActivityType type) {
     case Cycling:
         return "Cycling";
     case Other:
+    case ACTIVITY_TYPE_COUNT:
         break;
     }
     return "Other";

@@ -29,14 +29,6 @@ static bool animation_in_progress(const UIState *state) {
            animation_running(&state->filters_animation);
 }
 
-static void append_to_input_buffer(UIState *ui, char c) {
-    // Leave space for null terminator
-    if (ui->text_input_length < sizeof(ui->text_input_buffer) - 1) {
-        ui->text_input_buffer[ui->text_input_length++] = c;
-        ui->text_input_buffer[ui->text_input_length] = '\0';
-    }
-}
-
 int main(int argc, char *argv[]) {
     if (argc > 1) {
         if (argc == 2 && strcmp(argv[1], "-stadiamaps") == 0) {
@@ -239,28 +231,16 @@ static bool handle_events(struct application *appl, GpxCollection *collection) {
         appl->update_window = true;
         if (event.type == SDL_QUIT) {
             appl->running = 0;
-        } else if (ui.text_input_mode) {
+        } else if (ui_text_input_active()) {
             if (event.type == SDL_KEYDOWN) {
                 SDL_Keycode key = event.key.keysym.sym;
 
-                if (key >= SDLK_0 && key <= SDLK_9) {
-                    char digit = '0' + (key - SDLK_0);
-                    append_to_input_buffer(&ui, digit);
-                } else {
-                    // Exit input mode on any non-digit key
-                    ui.text_input_mode = false;
-                    ui.active_filter_id = 0;
-                    printf("%s\n", ui.text_input_buffer);
-                    save_filter_values(&collection->filters);
-                    apply_filter_values(collection);
-                }
+                if (key >= SDLK_0 && key <= SDLK_9)
+                    ui_text_input_digit(collection, (char)('0' + (key - SDLK_0)));
+                else
+                    ui_text_input_finish(collection); // any non-digit key commits
             } else if (event.type == SDL_MOUSEBUTTONDOWN) {
-                // Exit input mode on any mouse click
-                ui.text_input_mode = false;
-                ui.active_filter_id = 0;
-                printf("%s\n", ui.text_input_buffer);
-                save_filter_values(&collection->filters);
-                apply_filter_values(collection);
+                ui_text_input_finish(collection); // so does clicking away
             }
         } else if (event.type == SDL_MOUSEWHEEL) {
             appl->wheel_y = event.wheel.y;

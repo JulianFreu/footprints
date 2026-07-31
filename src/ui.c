@@ -27,6 +27,11 @@
 #define MENU_BAR_WIDTH 250
 #define MENU_ICON_SIZE 32 + 2 * GAPS
 
+// Text sizes, in points, for the three kinds of label the UI draws.
+#define FILTER_TEXT_FONT_SIZE 12
+#define LABEL_FONT_SIZE 16
+#define HEADING_FONT_SIZE 20
+
 #define ELEMENTS_HEIGHT 30
 #define ELEMENTS_WIDTH 180
 #define LIST_ENTRY_HEIGHT 30
@@ -52,7 +57,8 @@
 UIState ui = {
     .right_sidebar = {0},
     .run_list = {0},
-    .filters_animation = {0}};
+    .filters_animation = {0},
+    .active_filter_id = NO_ACTIVE_FILTER};
 
 static GpxCollection *g_collection = NULL; // tmp global pointer for compare functions
 static Clay_Arena clay_memory;
@@ -104,7 +110,7 @@ static void clicked_filter_field(
     intptr_t userData) {
     if (pointerData.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME) {
         init_numbers_input();
-        ui.active_filter_id = (uint16_t)userData;
+        ui.active_filter_id = (int)userData;
         LOG_DEBUG("start number input\n");
     }
 }
@@ -194,7 +200,7 @@ static void format_distance_filter_str(char *str) {
 }
 
 // Lays typed digits out into the field's display form. Which layout applies
-// comes from the field's FilterFormat, so a new filter reusing an existing
+// comes from the attribute's FilterFormat, so a new filter reusing an existing
 // shape needs nothing here.
 static void format_filter_input(char *str, FilterFormat format) {
     switch (format) {
@@ -216,26 +222,24 @@ static void format_filter_input(char *str, FilterFormat format) {
     }
 }
 
-static void draw_input_field(uint16_t filter_id, FilterSettings *filters) {
-    const FilterField *field = filter_field_lookup(filter_id);
-    if (!field)
-        return;
+static void draw_input_field(FilterAttribute attribute, FilterBoundEnd end,
+                             FilterSettings *filters) {
+    uint16_t field_id = filter_field_id(attribute, end);
+    bool editing = ui.text_input_mode && ui.active_filter_id == (int)field_id;
 
-    CLAY(CLAY_IDI_LOCAL("InputFieldFilter", filter_id),
+    CLAY(CLAY_IDI_LOCAL("InputFieldFilter", field_id),
          {
-             .border = {.color = border, .width = (ui.text_input_mode && ui.active_filter_id == filter_id) ? (Clay_BorderWidth)CLAY_BORDER_OUTSIDE(3) : (Clay_BorderWidth)CLAY_BORDER_OUTSIDE(0)},
+             .border = {.color = border, .width = editing ? (Clay_BorderWidth)CLAY_BORDER_OUTSIDE(3) : (Clay_BorderWidth)CLAY_BORDER_OUTSIDE(0)},
              .layout = {.sizing = {.width = CLAY_SIZING_FIXED(FILTERS_MINMAX_WIDTH), .height = CLAY_SIZING_FIXED(LIST_ENTRY_HEIGHT)},
                         .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
                         .layoutDirection = CLAY_LEFT_TO_RIGHT},
              .backgroundColor = Clay_Hovered() ? blue : dark_blue,
              .cornerRadius = CORNER_RADIUS,
          }) {
-        Clay_OnHover(clicked_filter_field, filter_id);
-
-        char *text = filter_field_text(filters, field);
-        if (filter_id == ui.active_filter_id)
-            format_filter_input(text, field->format);
-        draw_clay_text(text, 12, bg1, CLAY_TEXT_ALIGN_CENTER);
+        Clay_OnHover(clicked_filter_field, field_id);
+        // Drawing only reads the field. It used to reformat the stored text on
+        // every frame, so laying out the UI rewrote the model it was drawing.
+        draw_clay_text(filter_bound_text(filters, attribute, end), FILTER_TEXT_FONT_SIZE, bg1, CLAY_TEXT_ALIGN_CENTER);
     }
 }
 
@@ -252,7 +256,7 @@ static void draw_filter_header() {
                  .backgroundColor = bg1,
                  .cornerRadius = CORNER_RADIUS,
              }) {
-            draw_clay_text("Min", 20, fg1, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text("Min", HEADING_FONT_SIZE, fg1, CLAY_TEXT_ALIGN_CENTER);
         }
         CLAY(CLAY_ID_LOCAL("FilterType"),
              {
@@ -260,7 +264,7 @@ static void draw_filter_header() {
                  .backgroundColor = bg1,
                  .cornerRadius = CORNER_RADIUS,
              }) {
-            draw_clay_text("Type", 20, fg1, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text("Type", HEADING_FONT_SIZE, fg1, CLAY_TEXT_ALIGN_CENTER);
         }
         CLAY(CLAY_ID_LOCAL("FilterMax"),
              {
@@ -268,7 +272,7 @@ static void draw_filter_header() {
                  .backgroundColor = bg1,
                  .cornerRadius = CORNER_RADIUS,
              }) {
-            draw_clay_text("Max", 20, fg1, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text("Max", HEADING_FONT_SIZE, fg1, CLAY_TEXT_ALIGN_CENTER);
         }
     }
 }
@@ -291,7 +295,7 @@ static void draw_type_filter(ActivityType type, bool *show_type) {
              .cornerRadius = CORNER_RADIUS,
          }) {
         Clay_OnHover(clicked_type_filter, (intptr_t)show_type);
-        draw_clay_text(activity_type_label(type), 16, bg, CLAY_TEXT_ALIGN_CENTER);
+        draw_clay_text(activity_type_label(type), LABEL_FONT_SIZE, bg, CLAY_TEXT_ALIGN_CENTER);
     }
 }
 
@@ -301,46 +305,44 @@ static void draw_type_filter_container(FilterSettings *filter) {
              .layout = {.padding = CLAY_PADDING_ALL(3 * GAPS), .childGap = GAPS, .sizing = {.width = CLAY_SIZING_FIXED(FILTERS_WIDTH / 2), .height = CLAY_SIZING_FIT(0)}, .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}, .layoutDirection = CLAY_TOP_TO_BOTTOM},
              .cornerRadius = CORNER_RADIUS,
          }) {
-        draw_type_filter(Run, &filter->show_runs);
-        draw_type_filter(Cycling, &filter->show_cycling);
-        draw_type_filter(Hike, &filter->show_hikes);
-        draw_type_filter(Other, &filter->show_other);
+        for (int type = 0; type < ACTIVITY_TYPE_COUNT; type++)
+            draw_type_filter((ActivityType)type, &filter->show_activity[type]);
     }
 }
 
-static void draw_filter(uint16_t filter_id, FilterSettings *filters) {
-    CLAY(CLAY_IDI_LOCAL("Filter", filter_id),
+static void draw_filter(FilterAttribute attribute, FilterSettings *filters) {
+    CLAY(CLAY_IDI_LOCAL("Filter", attribute),
          {
              .layout = {.sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(LIST_ENTRY_HEIGHT)}, .layoutDirection = CLAY_LEFT_TO_RIGHT, .childGap = GAPS},
              .backgroundColor = bg1,
              .cornerRadius = CORNER_RADIUS,
          }) {
-        draw_input_field(filter_id | LOW_LIMIT, filters);
-        CLAY(CLAY_IDI_LOCAL("lesser", filter_id),
+        draw_input_field(attribute, BOUND_LOW, filters);
+        CLAY(CLAY_IDI_LOCAL("lesser", attribute),
              {
                  .layout = {.childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}, .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(LIST_ENTRY_HEIGHT)}},
                  .backgroundColor = bg1,
                  .cornerRadius = CORNER_RADIUS,
              }) {
-            draw_clay_text("<", 16, fg1, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text("<", LABEL_FONT_SIZE, fg1, CLAY_TEXT_ALIGN_CENTER);
         }
-        CLAY(CLAY_IDI_LOCAL("FilterName", filter_id),
+        CLAY(CLAY_IDI_LOCAL("FilterName", attribute),
              {
                  .layout = {.childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}, .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(LIST_ENTRY_HEIGHT)}},
                  .backgroundColor = bg1,
                  .cornerRadius = CORNER_RADIUS,
              }) {
-            draw_clay_text(filter_display_name(filter_id), 16, fg1, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text(filter_display_name(attribute), LABEL_FONT_SIZE, fg1, CLAY_TEXT_ALIGN_CENTER);
         }
-        CLAY(CLAY_IDI_LOCAL("greater", filter_id),
+        CLAY(CLAY_IDI_LOCAL("greater", attribute),
              {
                  .layout = {.childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}, .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(LIST_ENTRY_HEIGHT)}},
                  .backgroundColor = bg1,
                  .cornerRadius = CORNER_RADIUS,
              }) {
-            draw_clay_text("<", 16, fg1, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text("<", LABEL_FONT_SIZE, fg1, CLAY_TEXT_ALIGN_CENTER);
         }
-        draw_input_field(filter_id | HIGH_LIMIT, filters);
+        draw_input_field(attribute, BOUND_HIGH, filters);
     }
 }
 
@@ -511,7 +513,7 @@ static void draw_run_list_header_attribute(GpxCollection *collection, int width,
             collection->to_be_sorted_by = sort_type;
         }
         Clay_OnHover(clicked_list_headers, (intptr_t)collection);
-        draw_clay_text(str, 16, bg_d, CLAY_TEXT_ALIGN_CENTER);
+        draw_clay_text(str, LABEL_FONT_SIZE, bg_d, CLAY_TEXT_ALIGN_CENTER);
         switch (sort_type) {
         case DATE:
             draw_clay_text("[dd:mm:yyyy]", 12, bg_d, CLAY_TEXT_ALIGN_CENTER);
@@ -591,7 +593,7 @@ static void draw_run_entry_attribute(int width, const char *str, int id) {
          {.layout = {.sizing = {.width = CLAY_SIZING_FIXED(width), .height = CLAY_SIZING_FIXED(LIST_ENTRY_HEIGHT)},
                      .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}}}) {
         // showClayText(str, 16, bg_d, CLAY_TEXT_ALIGN_CENTER);
-        draw_clay_text(str, 16, fg_l, CLAY_TEXT_ALIGN_CENTER);
+        draw_clay_text(str, LABEL_FONT_SIZE, fg_l, CLAY_TEXT_ALIGN_CENTER);
     }
 }
 
@@ -877,7 +879,7 @@ static void draw_sidebar_track_info(SDL_Surface *icon, const char *value, const 
                      .childAlignment = {.x = CLAY_ALIGN_X_RIGHT, .y = CLAY_ALIGN_Y_CENTER},
                  },
              }) {
-            draw_clay_text(value, 16, fg_l, CLAY_TEXT_ALIGN_CENTER);
+            draw_clay_text(value, LABEL_FONT_SIZE, fg_l, CLAY_TEXT_ALIGN_CENTER);
         }
         CLAY(CLAY_IDI_LOCAL("Unit", id),
              {
@@ -1015,25 +1017,17 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
             if (Clay_Hovered())
                 appl->mouse_over_ui = true;
             draw_filter_header();
-            draw_filter(FILTER_DISTANCE, &collection->filters);
-            draw_filter(FILTER_DURATION, &collection->filters);
-            draw_filter(FILTER_PACE, &collection->filters);
-            draw_filter(FILTER_DATE, &collection->filters);
-            draw_filter(FILTER_UPHILL, &collection->filters);
-            draw_filter(FILTER_DOWNHILL, &collection->filters);
-            draw_filter(FILTER_PEAK, &collection->filters);
+            for (int attribute = 0; attribute < FILTER_COUNT; attribute++)
+                draw_filter((FilterAttribute)attribute, &collection->filters);
 
-            bool pre_showRuns = collection->filters.show_runs;
-            bool pre_showHikes = collection->filters.show_hikes;
-            bool pre_showCycling = collection->filters.show_cycling;
-            bool pre_showOther = collection->filters.show_other;
+            bool shown_before[ACTIVITY_TYPE_COUNT];
+            memcpy(shown_before, collection->filters.show_activity, sizeof(shown_before));
             draw_type_filter_container(&collection->filters);
-            // check if anything changed
 
             CLAY(CLAY_ID_LOCAL("FilterTracksState"), {.layout = {
                                                           .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW()},
                                                           .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}}}) {
-                draw_clay_text(collection->total_visible_tracks_str, 16, fg, CLAY_TEXT_ALIGN_CENTER);
+                draw_clay_text(collection->total_visible_tracks_str, LABEL_FONT_SIZE, fg, CLAY_TEXT_ALIGN_CENTER);
             }
             CLAY(CLAY_ID_LOCAL("space"), {.layout = {
                                               .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW()}}}) {
@@ -1046,7 +1040,7 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
                                              .backgroundColor = Clay_Hovered() ? bg_l : bg_d,
                                              .cornerRadius = CORNER_RADIUS}) {
                 Clay_OnHover(clicked_calculate_heat, (intptr_t)collection);
-                draw_clay_text("Calculate Heat", 16, dark_aqua, CLAY_TEXT_ALIGN_CENTER);
+                draw_clay_text("Calculate Heat", LABEL_FONT_SIZE, dark_aqua, CLAY_TEXT_ALIGN_CENTER);
             }
 
             CLAY(CLAY_ID("DisplayFilteredButton"), {.layout = {
@@ -1057,15 +1051,11 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
                                                     .backgroundColor = Clay_Hovered() ? bg_l : bg_d,
                                                     .cornerRadius = CORNER_RADIUS}) {
                 Clay_OnHover(clicked_show_filtered_tracks, (intptr_t)collection);
-                draw_clay_text("Show Filtered Tracks", 16, dark_aqua, CLAY_TEXT_ALIGN_CENTER);
+                draw_clay_text("Show Filtered Tracks", LABEL_FONT_SIZE, dark_aqua, CLAY_TEXT_ALIGN_CENTER);
             }
-            // Re-filter only when a type toggle actually changed. This read
-            // `==` joined by `||`, i.e. "if anything is unchanged", which was
-            // true on nearly every frame.
-            if (pre_showRuns != collection->filters.show_runs ||
-                pre_showHikes != collection->filters.show_hikes ||
-                pre_showCycling != collection->filters.show_cycling ||
-                pre_showOther != collection->filters.show_other)
+            // Re-filter only when a type toggle actually changed.
+            if (memcmp(shown_before, collection->filters.show_activity,
+                       sizeof(shown_before)) != 0)
                 apply_filter_values(collection);
         }
     }
@@ -1090,4 +1080,44 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
     Clay_RenderCommandArray ui_renderCommands = Clay_EndLayout();
     Clay_SDL2_Render(appl->renderer, ui_renderCommands, appl->fonts);
     // end UI
+}
+
+// Rewrites the active field's text from the digits typed so far. Called on each
+// keystroke rather than from the layout pass, so drawing stays read-only.
+static void refresh_active_filter_text(FilterSettings *filters) {
+    FilterAttribute attribute;
+    FilterBoundEnd end;
+    if (ui.active_filter_id < 0 ||
+        !filter_field_unpack((uint16_t)ui.active_filter_id, &attribute, &end))
+        return;
+
+    format_filter_input(filter_bound_text(filters, attribute, end),
+                        filter_format(attribute));
+}
+
+void ui_text_input_begin(void) {
+    init_numbers_input();
+}
+
+bool ui_text_input_active(void) {
+    return ui.text_input_mode;
+}
+
+// Accepts one typed digit into the field being edited.
+void ui_text_input_digit(GpxCollection *collection, char digit) {
+    // Leave space for the null terminator.
+    if (ui.text_input_length < sizeof(ui.text_input_buffer) - 1) {
+        ui.text_input_buffer[ui.text_input_length++] = digit;
+        ui.text_input_buffer[ui.text_input_length] = '\0';
+    }
+    refresh_active_filter_text(&collection->filters);
+}
+
+// Leaves input mode and commits what was typed.
+void ui_text_input_finish(GpxCollection *collection) {
+    ui.text_input_mode = false;
+    ui.active_filter_id = NO_ACTIVE_FILTER;
+    LOG_DEBUG("%s\n", ui.text_input_buffer);
+    save_filter_values(&collection->filters);
+    apply_filter_values(collection);
 }

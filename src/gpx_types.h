@@ -5,6 +5,7 @@
 #include <time.h>
 
 #include "config.h"
+#include "gpx_activity.h"
 #include "filter_types.h"
 #include "map_types.h"
 
@@ -18,13 +19,6 @@ typedef struct GpxPoint {
     float elevation;        // metres above sea level
     float partial_distance; // distance covered up to this point
 } GpxPoint;
-
-typedef enum {
-    Run,
-    Hike,
-    Cycling,
-    Other,
-} ActivityType;
 
 typedef enum {
     ID,
