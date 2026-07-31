@@ -11,7 +11,6 @@
 
 #include "fifo.h"
 #include "log.h"
-#include "tracks.h" // get_or_render_track_tile
 
 // The Stadia Maps key is optional: it is only read when -stadiamaps is passed,
 // and the default OpenStreetMap tiles need no key at all. Including the header
@@ -305,74 +304,77 @@ static SDL_Texture *load_tile_texture(struct application *appl, MapTile key, con
     return texture;
 }
 
-void get_map_background(struct application *appl, GpxCollection *collection) {
-    // How many tiles do we need?
+// The tiles covering the window at the current zoom, with where each one lands
+// on screen. Returned rather than drawn, so the caller decides what is layered
+// over what -- this module used to reach into the track renderer to composite
+// the heat overlay itself, which put the layer order in the wrong place and
+// made the map depend on the tracks.
+int map_visible_tiles(const struct application *appl, VisibleTile *out, int max_tiles) {
     int tiles_x = appl->window_width / TILE_SIZE + 2;
     int tiles_y = appl->window_height / TILE_SIZE + 2;
 
-    // Calculate tile coordinate in the center
     int center_tile_x, center_tile_y;
     int tile_offset_x, tile_offset_y;
-
     conv_pixel_to_tile_and_offset(appl->world_x, appl->world_y, MAX_ZOOM, appl->zoom,
                                   &center_tile_x, &center_tile_y,
                                   &tile_offset_x, &tile_offset_y);
 
+    int tiles_at_zoom = 1 << appl->zoom;
+    int count = 0;
+
     for (int dx = -tiles_x / 2; dx <= tiles_x / 2; dx++) {
         for (int dy = -tiles_y / 2; dy <= tiles_y / 2; dy++) {
+            if (count >= max_tiles)
+                return count;
+
             int tile_x = center_tile_x + dx;
             int tile_y = center_tile_y + dy;
 
-            if (tile_x < 0 || tile_y < 0 || tile_x >= (1 << appl->zoom) ||
-                tile_y >= (1 << appl->zoom))
+            // Off the edge of the world at this zoom.
+            if (tile_x < 0 || tile_y < 0 || tile_x >= tiles_at_zoom || tile_y >= tiles_at_zoom)
                 continue;
 
-            MapTile key = {tile_x, tile_y, appl->zoom};
-
-            // Only a tile that is not already in video memory needs the
-            // filesystem consulted at all.
-            SDL_Texture *texture = tile_cache_lookup(&appl->tile_cache, key);
-            if (!texture) {
-                char tile_path[TILE_PATH_MAX];
-                tile_cache_path(tile_path, sizeof(tile_path), key);
-
-                if (file_exists(tile_path)) {
-                    texture = load_tile_texture(appl, key, tile_path);
-                } else {
-                    // add tile to download queue if it is not in there already
-                    pthread_mutex_lock(&appl->download_queue.lock);
-
-                    bool already_queued = fifo_search_data(&appl->download_queue, key);
-                    bool already_downloading = tile_key_equal(appl->download_queue.tile_in_dl, key);
-
-                    if (!already_queued && !already_downloading) {
-                        fifo_write_data(&appl->download_queue, key);
-                    }
-
-                    pthread_mutex_unlock(&appl->download_queue.lock);
-                }
-            }
-
-            int screen_x = (tile_x - center_tile_x) * TILE_SIZE - tile_offset_x + appl->window_width / 2;
-            int screen_y = (tile_y - center_tile_y) * TILE_SIZE - tile_offset_y + appl->window_height / 2;
-
-            if (texture) {
-                SDL_Rect dest = {screen_x, screen_y, TILE_SIZE, TILE_SIZE};
-                SDL_RenderCopy(appl->renderer, texture, NULL, &dest);
-            }
-
-            SDL_Texture *track_tex = get_or_render_track_tile(appl, collection, key);
-            if (track_tex) {
-                SDL_Rect dst = {
-                    .x = screen_x,
-                    .y = screen_y,
-                    .w = TILE_SIZE,
-                    .h = TILE_SIZE};
-                SDL_RenderCopy(appl->renderer, track_tex, NULL, &dst);
-            }
+            out[count++] = (VisibleTile){
+                .tile = {tile_x, tile_y, appl->zoom},
+                .screen_x = (tile_x - center_tile_x) * TILE_SIZE - tile_offset_x + appl->window_width / 2,
+                .screen_y = (tile_y - center_tile_y) * TILE_SIZE - tile_offset_y + appl->window_height / 2};
         }
     }
-    if (appl->selected_track_overlay[appl->zoom]) {
-        SDL_RenderCopy(appl->renderer, appl->selected_track_overlay[appl->zoom], NULL, NULL);
+    return count;
+}
+
+// Queues a tile for download unless it is already queued or in flight.
+static void queue_tile_download(struct application *appl, MapTile tile) {
+    pthread_mutex_lock(&appl->download_queue.lock);
+
+    bool already_queued = fifo_search_data(&appl->download_queue, tile);
+    bool already_downloading = tile_key_equal(appl->download_queue.tile_in_dl, tile);
+    if (!already_queued && !already_downloading)
+        fifo_write_data(&appl->download_queue, tile);
+
+    pthread_mutex_unlock(&appl->download_queue.lock);
+}
+
+void map_draw_tiles(struct application *appl, const VisibleTile *tiles, int count) {
+    for (int i = 0; i < count; i++) {
+        MapTile key = tiles[i].tile;
+
+        // Only a tile that is not already in video memory needs the filesystem
+        // consulted at all.
+        SDL_Texture *texture = tile_cache_lookup(&appl->tile_cache, key);
+        if (!texture) {
+            char tile_path[TILE_PATH_MAX];
+            tile_cache_path(tile_path, sizeof(tile_path), key);
+
+            if (file_exists(tile_path))
+                texture = load_tile_texture(appl, key, tile_path);
+            else
+                queue_tile_download(appl, key);
+        }
+
+        if (texture) {
+            SDL_Rect dest = {tiles[i].screen_x, tiles[i].screen_y, TILE_SIZE, TILE_SIZE};
+            SDL_RenderCopy(appl->renderer, texture, NULL, &dest);
+        }
     }
 }

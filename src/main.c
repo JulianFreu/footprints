@@ -59,6 +59,7 @@ int main(int argc, char *argv[]) {
         .dragging = 0,
         .left_mouse_button_pressed = false,
         .selected_track = -1,
+        .rendered_overlay_track = -1,
         .download_queue.read_p = 0,
         .download_queue.write_p = 0,
         .download_queue.tile_in_dl = {.tile_x = -1, .tile_y = -1, .zoom = -1},
@@ -122,7 +123,13 @@ int main(int argc, char *argv[]) {
 
             update_selected_track_overlay(&appl, &collection);
 
-            get_map_background(&appl, &collection);
+            // Layer order lives here, where the frame is composed, rather
+            // than inside whichever module happens to draw first.
+            VisibleTile tiles[MAX_VISIBLE_TILES];
+            int tile_count = map_visible_tiles(&appl, tiles, MAX_VISIBLE_TILES);
+            map_draw_tiles(&appl, tiles, tile_count);
+            tracks_draw_heat_tiles(&appl, &collection, tiles, tile_count);
+            tracks_draw_selected_overlay(&appl);
 
             clay_draw_ui(&appl, &collection);
 
@@ -166,7 +173,7 @@ static void appl_cleanup(struct application *appl, GpxCollection *collection) {
     tracks_free_collection_cache(collection);
     for (int zoom = 0; zoom <= MAX_ZOOM; zoom++)
         SDL_DestroyTexture(appl->selected_track_overlay[zoom]);
-    tracks_free_scratch();
+    tracks_free_scratch(appl);
     LOG_DEBUG("Clean tracks...\n");
     for (int i = 0; i < collection->total_tracks; i++)
         free(collection->tracks[i].points);

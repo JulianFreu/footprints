@@ -10,11 +10,16 @@
 #include "log.h"
 
 #include "map.h" // conv_pixel_to_tile_and_offset, tile_key_equal
+#include "colors.h"
 #include "point_index.h"
 
+// The heat ramp is a data-visualisation scale rather than UI chrome, so it is
+// its own thing rather than part of the palette in colors.h: it has to stay
+// perceptually ordered from cold to hot, which is a different constraint from
+// looking right next to a button.
 #define HEAT_COLOR_COUNT 32
 
-static SDL_Color heat_colors[HEAT_COLOR_COUNT] = {
+static const SDL_Color heat_colors[HEAT_COLOR_COUNT] = {
     {0, 0, 4, 255}, // dark purple
     {1, 0, 33, 255},
     {12, 1, 57, 255},
@@ -141,11 +146,6 @@ static void draw_smooth_thick_polyline(SDL_Renderer *renderer,
     draw_circle(renderer, points[count - 1].x, points[count - 1].y, thickness / 2.0f, color);
 }
 
-// Screen-space points for the selected track's polyline, reused across frames
-// and grown only when a longer track is selected.
-static SDL_Point *overlay_points = NULL;
-static int overlay_points_capacity = 0;
-
 const char *activity_type_label(ActivityType type) {
     switch (type) {
     case Run:
@@ -161,11 +161,11 @@ const char *activity_type_label(ActivityType type) {
     return "Other";
 }
 
-// Releases the scratch buffer this module keeps between frames.
-void tracks_free_scratch(void) {
-    free(overlay_points);
-    overlay_points = NULL;
-    overlay_points_capacity = 0;
+// Releases the scratch buffer kept between frames.
+void tracks_free_scratch(struct application *appl) {
+    free(appl->overlay_points);
+    appl->overlay_points = NULL;
+    appl->overlay_points_capacity = 0;
 }
 
 // Drops everything derived from the visible set: the rendered tiles and the
@@ -182,7 +182,7 @@ void tracks_free_collection_cache(GpxCollection *collection) {
     point_index_free(&collection->point_index);
 }
 
-SDL_Texture *get_or_render_track_tile(struct application *appl, GpxCollection *collection, MapTile key) {
+static SDL_Texture *get_or_render_track_tile(struct application *appl, GpxCollection *collection, MapTile key) {
     SDL_Texture *cached = tile_cache_lookup(&collection->track_tile_cache, key);
     if (cached)
         return cached;
@@ -244,6 +244,27 @@ SDL_Texture *get_or_render_track_tile(struct application *appl, GpxCollection *c
     }
 
     return tex;
+}
+
+// Draws the heat overlay over the given tiles. Layer order is the frame loop's
+// business; this only knows how to draw its own layer.
+void tracks_draw_heat_tiles(struct application *appl, GpxCollection *collection,
+                            const VisibleTile *tiles, int count) {
+    for (int i = 0; i < count; i++) {
+        SDL_Texture *texture = get_or_render_track_tile(appl, collection, tiles[i].tile);
+        if (!texture)
+            continue;
+
+        SDL_Rect dest = {tiles[i].screen_x, tiles[i].screen_y, TILE_SIZE, TILE_SIZE};
+        SDL_RenderCopy(appl->renderer, texture, NULL, &dest);
+    }
+}
+
+// The polyline for the selected track, rendered once per zoom level and drawn
+// over the whole window.
+void tracks_draw_selected_overlay(struct application *appl) {
+    if (appl->selected_track_overlay[appl->zoom])
+        SDL_RenderCopy(appl->renderer, appl->selected_track_overlay[appl->zoom], NULL, NULL);
 }
 
 int find_track_near_click(GpxCollection *collection, int click_world_x, int click_world_y, int current_zoom, int max_pixel_distance) {
@@ -324,23 +345,23 @@ void update_selected_track_overlay(struct application *appl, GpxCollection *coll
 
     // This was a stack VLA sized by the track's point count, which puts
     // hundreds of kilobytes on the stack for a long recording.
-    if (track->total_points > overlay_points_capacity) {
-        SDL_Point *grown = realloc(overlay_points, track->total_points * sizeof(SDL_Point));
+    if (track->total_points > appl->overlay_points_capacity) {
+        SDL_Point *grown = realloc(appl->overlay_points, track->total_points * sizeof(SDL_Point));
         if (!grown) {
             SDL_SetRenderTarget(appl->renderer, NULL);
             SDL_DestroyTexture(overlay);
             return;
         }
-        overlay_points = grown;
-        overlay_points_capacity = track->total_points;
+        appl->overlay_points = grown;
+        appl->overlay_points_capacity = track->total_points;
     }
 
     for (int i = 0; i < track->total_points; i++) {
-        overlay_points[i].x = ((track->points[i].world_x - appl->world_x) / zoom_factor) + (appl->window_width / 2);
-        overlay_points[i].y = ((track->points[i].world_y - appl->world_y) / zoom_factor) + (appl->window_height / 2);
+        appl->overlay_points[i].x = ((track->points[i].world_x - appl->world_x) / zoom_factor) + (appl->window_width / 2);
+        appl->overlay_points[i].y = ((track->points[i].world_y - appl->world_y) / zoom_factor) + (appl->window_height / 2);
     }
-    SDL_Color color = {.a = 255, .r = 255, .g = 255, .b = 0};
-    draw_smooth_thick_polyline(appl->renderer, overlay_points, track->total_points, 10.0f, color);
+    SDL_Color color = sdl_color(yellow);
+    draw_smooth_thick_polyline(appl->renderer, appl->overlay_points, track->total_points, SELECTED_TRACK_THICKNESS, color);
 
     // Switch back to normal render target
     SDL_SetRenderTarget(appl->renderer, NULL);
@@ -407,7 +428,8 @@ static SDL_Texture *generate_elevation_profile_texture(SDL_Renderer *renderer, c
     polygon_points[track->total_points] = (SDL_Point){polygon_points[track->total_points - 1].x, height};
     polygon_points[track->total_points + 1] = (SDL_Point){polygon_points[0].x, height};
 
-    SDL_SetRenderDrawColor(renderer, 150, 200, 255, 255); // fill color
+    SDL_Color profile_fill = sdl_color(blue);
+    SDL_SetRenderDrawColor(renderer, profile_fill.r, profile_fill.g, profile_fill.b, profile_fill.a);
     SDL_RenderDrawLines(renderer, polygon_points, track->total_points + 2);
 
     for (int i = 1; i < track->total_points; i++) {
@@ -430,7 +452,8 @@ static SDL_Texture *generate_elevation_profile_texture(SDL_Renderer *renderer, c
     }
 
     // Draw top line
-    SDL_SetRenderDrawColor(renderer, 0, 100, 200, 255); // dark blue
+    SDL_Color profile_line = sdl_color(dark_blue);
+    SDL_SetRenderDrawColor(renderer, profile_line.r, profile_line.g, profile_line.b, profile_line.a);
     SDL_RenderDrawLines(renderer, polygon_points, track->total_points);
 
     free(polygon_points);
@@ -464,11 +487,9 @@ static SDL_Surface *render_elevation_profile_surface(SDL_Renderer *renderer, con
 // Regenerates the elevation profile only when the selection actually changes;
 // each regeneration is two textures and a full pixel readback.
 void update_track_info_graphs(struct application *appl, const GpxCollection *collection) {
-    static int prev_selected_track = -1;
-
-    if (appl->selected_track == prev_selected_track)
+    if (appl->selected_track == appl->rendered_overlay_track)
         return;
-    prev_selected_track = appl->selected_track;
+    appl->rendered_overlay_track = appl->selected_track;
 
     if (appl->icons.elev_profile) {
         SDL_FreeSurface(appl->icons.elev_profile);

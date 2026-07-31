@@ -43,6 +43,10 @@
 // least recently used is dropped.
 #define TILE_CACHE_MAX_ENTRIES 256
 
+// Upper bound on tiles drawn in one frame. A 4K window at TILE_SIZE needs about
+// 170; past this the outermost tiles are simply not drawn.
+#define MAX_VISIBLE_TILES 512
+
 // --- Startup view ---
 // World pixel coordinates at MAX_ZOOM, and the zoom level to open at.
 #define START_ZOOM 12
@@ -58,6 +62,9 @@
 // Side length, in pixels, of the square stamped down for each track point on
 // the heat tiles.
 #define TRACK_POINT_SIZE 4
+
+// Line thickness of the selected track's polyline overlay.
+#define SELECTED_TRACK_THICKNESS 10.0f
 
 // Pixel size of the elevation profile rendered for the selected track.
 #define ELEVATION_PROFILE_WIDTH 200

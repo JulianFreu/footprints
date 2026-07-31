@@ -40,6 +40,14 @@ typedef struct
     bool valid;
 } TrackPointIndex;
 
+// A tile that is on screen this frame, and where it lands. Produced once per
+// frame and handed to each layer in turn.
+typedef struct VisibleTile {
+    MapTile tile;
+    int screen_x;
+    int screen_y;
+} VisibleTile;
+
 // One cached tile texture. The map background and the track heat overlay hold
 // structurally identical caches, so they share one type and one set of
 // operations rather than two copies that drifted apart.

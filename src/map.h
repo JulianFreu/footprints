@@ -18,7 +18,13 @@ extern bool use_osm_tiles;
 // decide whether the map still needs redrawing.
 extern _Atomic bool download_in_progress;
 
-void get_map_background(struct application *appl, GpxCollection *collection);
+// Fills `out` with the tiles covering the window and returns how many were
+// written, never more than max_tiles.
+int map_visible_tiles(const struct application *appl, VisibleTile *out, int max_tiles);
+
+// Draws the map background for those tiles, fetching or queueing what is
+// missing. The overlays that go on top are drawn by their own modules.
+void map_draw_tiles(struct application *appl, const VisibleTile *tiles, int count);
 void *download_tiles(void *arg);
 void download_thread_stop(struct fifo *download_queue);
 void conv_pixel_to_tile_and_offset(int pixel_x, int pixel_y, int source_zoom, int target_zoom,

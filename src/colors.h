@@ -1,12 +1,19 @@
 #ifndef COLORS_H
 #define COLORS_H
 
+#include <SDL2/SDL.h>
+
 #include "clay.h"
 
 // Header-only palette. These are `static` so each translation unit that
 // includes this file gets its own copy; as plain `const` at file scope they had
 // external linkage, and a second includer would fail to link with
 // "multiple definition of 'bg'".
+//
+// The colours are Clay_Color because that is what most of the UI wants, but the
+// palette is not Clay's: sdl_color() converts for the renderers that draw
+// straight to SDL, so the map, the track overlays and the UI all name the same
+// colours instead of keeping separate copies.
 
 // Dark medium palette
 static const Clay_Color bg0 = {0x19, 0x1a, 0x1a, 0xff}; // #191a1aff
@@ -67,4 +74,10 @@ static const Clay_Color accent_color_hl = red;
 static const Clay_Color big_button_color = fg1;
 static const Clay_Color border_hl = dark_orange;
 static const Clay_Color border = fg_l;
+
+// Clay_Color carries its channels as floats in 0..255; SDL wants bytes.
+static inline SDL_Color sdl_color(Clay_Color color) {
+    return (SDL_Color){(Uint8)color.r, (Uint8)color.g, (Uint8)color.b, (Uint8)color.a};
+}
+
 #endif

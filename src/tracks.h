@@ -13,9 +13,13 @@
 void tracks_invalidate_cache(GpxCollection *collection);
 // Teardown counterpart: also releases the index's allocation.
 void tracks_free_collection_cache(GpxCollection *collection);
-void tracks_free_scratch(void);
+void tracks_free_scratch(struct application *appl);
 void update_track_info_graphs(struct application *appl, const GpxCollection *collection);
-SDL_Texture *get_or_render_track_tile(struct application *appl, GpxCollection *collection, MapTile key);
+// Draws the heat overlay over the tiles map_visible_tiles produced.
+void tracks_draw_heat_tiles(struct application *appl, GpxCollection *collection,
+                            const VisibleTile *tiles, int count);
+// Draws the selected track's polyline over the whole window.
+void tracks_draw_selected_overlay(struct application *appl);
 int find_track_near_click(GpxCollection *collection, int click_x, int click_y, int current_zoom, int max_pixel_distance);
 void update_selected_track_overlay(struct application *appl, GpxCollection *collection);
 

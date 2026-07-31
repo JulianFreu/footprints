@@ -33,6 +33,13 @@ struct application {
     UiIcons icons;
     TileTextureCache tile_cache;
     SDL_Texture *selected_track_overlay[MAX_ZOOM + 1]; // +1 for zoom level 0 to 20
+    // Which track the overlay and the elevation profile were last built for,
+    // so neither is redone on a frame where the selection has not moved.
+    int rendered_overlay_track;
+    // Screen-space scratch for the selected track's polyline, kept between
+    // frames and grown only when a longer track is selected.
+    SDL_Point *overlay_points;
+    int overlay_points_capacity;
     int current_fps;
     Uint32 last_frame_time;
     bool mouse_over_ui;
