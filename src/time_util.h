@@ -6,8 +6,8 @@
 #include <time.h>
 
 // Every timestamp in the application is handled as UTC. GPX records times in
-// UTC, so comparing them against a bound parsed in local time -- as the date
-// filter used to -- shifts the filter boundary by the machine's offset.
+// UTC, so a bound parsed in local time would shift the filter boundary by the
+// machine's offset.
 
 // Parses "YYYY-MM-DDTHH:MM:SS[.sss][Z]", ignoring anything after the seconds.
 // Returns (time_t)-1 if the string does not start with that shape.

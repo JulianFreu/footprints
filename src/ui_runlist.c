@@ -253,9 +253,8 @@ void ui_runlist_free_scratch(void) {
 
 // Advances a panel's slide by however much wall-clock time has passed.
 //
-// The step used to be a fixed number of degrees per frame, which tied the
-// speed of every panel to the frame rate: the same slide took a quarter of a
-// second at 60 fps and a second and a half at 10.
+// The step is in degrees per second rather than per frame, so a panel takes
+// the same time to slide regardless of the frame rate.
 void ui_draw_run_list(struct application *appl, GpxCollection *collection,
                       int list_offset_y) {
     CLAY(CLAY_ID("RunsListMenu"),

@@ -171,11 +171,6 @@ static void print_progress_bar(int current, int total, int bar_width, struct tim
     clock_gettime(CLOCK_MONOTONIC, &current_time);
     double elapsed = (current_time.tv_sec - start_time->tv_sec) +
                      (current_time.tv_nsec - start_time->tv_nsec) / 1e9;
-    elapsed++;
-    int points_per_second = current / (int)elapsed;
-    if (points_per_second == 0)
-        points_per_second = 1;
-    int points_left = total - current;
 
     float progress = (float)current / total;
     int pos = (int)(bar_width * progress);
@@ -188,7 +183,20 @@ static void print_progress_bar(int current, int total, int bar_width, struct tim
         else
             printf(" ");
     }
-    printf("] %3d%% | pps: %4d | eta: %3dmin %2ds   ", (int)(progress * 100), points_per_second, (int)(points_left / points_per_second) / 60, (points_left / points_per_second) % 60);
+    printf("] %3d%%", (int)(progress * 100));
+
+    // A rate needs some elapsed time and some completed work to divide by;
+    // before that there is nothing honest to report, and the first sample
+    // claimed an eta of days.
+    if (elapsed > 0.5 && current > 0) {
+        int points_per_second = (int)(current / elapsed);
+        if (points_per_second > 0) {
+            int seconds_left = (total - current) / points_per_second;
+            printf(" | pps: %6d | eta: %3dmin %2ds", points_per_second,
+                   seconds_left / 60, seconds_left % 60);
+        }
+    }
+    printf("   ");
     fflush(stdout);
 }
 
@@ -256,7 +264,7 @@ bool calculate_heatmap(GpxCollection *collection) {
             LOG_DEBUG("%d points in track %d\n", collection->tracks[i].total_points, i);
         }
     }
-    printf("There are %d data points in total\n", total_points);
+    LOG_DEBUG("There are %d data points in total\n", total_points);
     LOG_DEBUG("Collecting all points in one array\n");
     GpxPoint **points = (GpxPoint **)malloc(total_points * sizeof(GpxPoint *));
     if (!points) {
@@ -276,13 +284,13 @@ bool calculate_heatmap(GpxCollection *collection) {
     if (total_points == 0) {
         free(points);
         collection->max_heat = 0;
-        printf("No visible points; nothing to calculate\n");
+        LOG_DEBUG("No visible points; nothing to calculate\n");
         return true;
     }
 
     struct timespec start_time, end_time;
     clock_gettime(CLOCK_MONOTONIC, &start_time);
-    printf("Building kdtree\n");
+    LOG_DEBUG("Building kdtree\n");
     float radius2 = HEAT_RADIUS_PIXELS * HEAT_RADIUS_PIXELS;
     build_kdtree(points, 0, total_points, 0);
 
@@ -293,7 +301,7 @@ bool calculate_heatmap(GpxCollection *collection) {
     if (thread_count > total_points)
         thread_count = total_points;
 
-    printf("Calculating heat in %d threads\n", thread_count);
+    LOG_DEBUG("Calculating heat in %d threads\n", thread_count);
 
     pthread_t threads[thread_count];
     HeatmapTask tasks[thread_count];
@@ -343,10 +351,8 @@ bool calculate_heatmap(GpxCollection *collection) {
 
     free(points);
     clock_gettime(CLOCK_MONOTONIC, &end_time);
-
-    double elapsed = (end_time.tv_sec - start_time.tv_sec) +
-                     (end_time.tv_nsec - start_time.tv_nsec) / 1e9;
-
-    printf("\nHeatmap calculation took %.3f seconds\n", elapsed);
+    LOG_DEBUG("\nHeatmap calculation took %.3f seconds\n",
+              (end_time.tv_sec - start_time.tv_sec) +
+                  (end_time.tv_nsec - start_time.tv_nsec) / 1e9);
     return true;
 }

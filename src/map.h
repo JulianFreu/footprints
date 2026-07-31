@@ -18,7 +18,7 @@ extern bool use_osm_tiles;
 // decide whether the map still needs redrawing.
 extern _Atomic bool download_in_progress;
 
-bool get_map_background(struct application *appl, GpxCollection *collection);
+void get_map_background(struct application *appl, GpxCollection *collection);
 void *download_tiles(void *arg);
 void download_thread_stop(struct fifo *download_queue);
 void conv_pixel_to_tile_and_offset(int pixel_x, int pixel_y, int source_zoom, int target_zoom,

@@ -29,6 +29,10 @@
 // Where downloaded tiles are kept, and enough room to format a path or a tile
 // URL into.
 #define TILE_CACHE_DIR "tilecache"
+
+// Scanned at startup for .gpx files. Both this and the tile cache are relative
+// to the working directory, so the binary is run from the project root.
+#define GPX_INPUT_DIR "./gpx_files"
 #define TILE_PATH_MAX 256
 
 // Sent to the tile provider; OSM's usage policy asks for an identifying agent.

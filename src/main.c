@@ -7,6 +7,7 @@
 #include <SDL2/SDL_ttf.h>
 
 #include "app.h"
+#include "log.h"
 #include "filters.h"
 #include "gpx_parser.h"
 #include "gpx_types.h"
@@ -17,7 +18,7 @@
 
 static bool sdl_initialize(struct application *appl);
 static void appl_cleanup(struct application *appl, GpxCollection *collection);
-static bool handle_events(struct application *appl, GpxCollection *collection);
+static void handle_events(struct application *appl, GpxCollection *collection);
 
 static bool animation_running(const AnimationState *anim) {
     return anim->opening || anim->closing;
@@ -79,13 +80,15 @@ int main(int argc, char *argv[]) {
     ui_load_icons(&appl);
     SDL_RenderPresent(appl.renderer);
 
-    gpx_parse_all_files(&collection);
+    if (!gpx_parse_all_files(&collection))
+        fprintf(stderr, "No tracks were loaded from %s\n", GPX_INPUT_DIR);
 
     reset_filters(&collection.filters);
     apply_filter_values(&collection);
 
-    calculate_heatmap(&collection);
-    printf("Maximum heat is %d\n", collection.max_heat);
+    if (!calculate_heatmap(&collection))
+        fprintf(stderr, "Heat calculation failed; the map will render unshaded\n");
+    LOG_DEBUG("Maximum heat is %d\n", collection.max_heat);
 
     // start thread that will donwload missing tiles of the map
     // the thread will constantly check the download queue for missing tiles and download them
@@ -148,7 +151,7 @@ int main(int argc, char *argv[]) {
 }
 
 static void appl_cleanup(struct application *appl, GpxCollection *collection) {
-    printf("Clean threads...\n");
+    LOG_DEBUG("Clean threads...\n");
     // Wake the download worker out of its wait and wait for it to return before
     // tearing down the mutex and condvar it is blocked on.
     if (appl->download_thread_started) {
@@ -158,27 +161,27 @@ static void appl_cleanup(struct application *appl, GpxCollection *collection) {
         pthread_mutex_destroy(&appl->download_queue.lock);
         pthread_cond_destroy(&appl->download_queue.cond);
     }
-    printf("Clean textures...\n");
+    LOG_DEBUG("Clean textures...\n");
     tile_cache_free(&appl->tile_cache);
     tracks_free_collection_cache(collection);
     for (int zoom = 0; zoom <= MAX_ZOOM; zoom++)
         SDL_DestroyTexture(appl->selected_track_overlay[zoom]);
     tracks_free_scratch();
-    printf("Clean tracks...\n");
+    LOG_DEBUG("Clean tracks...\n");
     for (int i = 0; i < collection->total_tracks; i++)
         free(collection->tracks[i].points);
     free(collection->tracks);
     free(collection->list_order);
-    printf("Clean UI...\n");
+    LOG_DEBUG("Clean UI...\n");
     ui_free_icons(appl);
     clay_free_memory();
-    printf("Clean renderer...\n");
+    LOG_DEBUG("Clean renderer...\n");
     SDL_DestroyRenderer(appl->renderer);
-    printf("Clean window...\n");
+    LOG_DEBUG("Clean window...\n");
     SDL_DestroyWindow(appl->window);
-    printf("Clean parser...\n");
+    LOG_DEBUG("Clean parser...\n");
     gpx_parser_cleanup();
-    printf("Clean SDL...\n");
+    LOG_DEBUG("Clean SDL...\n");
     for (size_t i = 0; i < sizeof(appl->fonts) / sizeof(appl->fonts[0]); i++) {
         TTF_CloseFont(appl->fonts[i].font);
         appl->fonts[i].font = NULL;
@@ -186,7 +189,7 @@ static void appl_cleanup(struct application *appl, GpxCollection *collection) {
     TTF_Quit();
     SDL_Quit();
     IMG_Quit();
-    printf("exit...\n");
+    LOG_DEBUG("exit...\n");
 }
 
 static bool sdl_initialize(struct application *appl) {
@@ -230,7 +233,7 @@ static bool sdl_initialize(struct application *appl) {
     return false;
 }
 
-static bool handle_events(struct application *appl, GpxCollection *collection) {
+static void handle_events(struct application *appl, GpxCollection *collection) {
     appl->wheel_y = 0; // reset to zero if no mousewheel action
 
     SDL_Event event;
@@ -308,5 +311,4 @@ static bool handle_events(struct application *appl, GpxCollection *collection) {
                 ui_toggle_run_list();
         }
     }
-    return true;
 }

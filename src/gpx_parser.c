@@ -156,14 +156,14 @@ static bool gpx_extract_coords(xmlNode *node, GpxTrack *track) {
         if (cur_node->type == XML_ELEMENT_NODE && xmlStrcmp(cur_node->name, (const xmlChar *)"trkpt") == 0) {
             int new_total = track->total_points + 1;
             if (new_total > track->points_capacity) {
-                // This used to realloc once per point, so loading a track of n
-                // points did n reallocations and copied O(n^2) bytes.
+                // Doubling, so a track of n points costs O(log n)
+                // reallocations rather than one per point.
                 int grown_capacity = track->points_capacity == 0 ? 256 : track->points_capacity * 2;
                 GpxPoint *temp = (GpxPoint *)realloc(track->points, (size_t)grown_capacity * sizeof(GpxPoint));
                 if (temp == NULL) {
                     fprintf(stderr, "Memory reallocation for track points failed.\n");
-                    // track points into the middle of collection->tracks[]; freeing
-                    // it here would corrupt the heap. The collection owns it.
+                    // The collection owns track->points, so it is left alone
+                    // here and released with the rest of the collection.
                     return false;
                 }
                 track->points = temp;
@@ -394,7 +394,7 @@ static bool gpx_parse_file(char *filename, GpxTrack *track) {
 }
 
 bool gpx_parse_all_files(GpxCollection *collection) {
-    const char *folder_path = "./gpx_files"; // Folder containing GPX files
+    const char *folder_path = GPX_INPUT_DIR;
     DIR *dir;
     struct dirent *entry;
 
@@ -449,11 +449,9 @@ bool gpx_parse_all_files(GpxCollection *collection) {
 
     closedir(dir);
 
-    // list_order is sized from the tracks actually parsed rather than from a
-    // second scan of the directory. The two counts could disagree -- the
-    // directory can change between the scans, and the counting pass reported 0
-    // when it could not open the directory at all -- and the loop below then
-    // wrote past the end of the caller's array.
+    // Sized from the tracks actually parsed. A second scan of the directory
+    // could disagree with the first, and the loop below would then write past
+    // the end of the array.
     free(collection->list_order);
     collection->list_order = NULL;
     if (collection->total_tracks > 0) {
@@ -470,7 +468,7 @@ bool gpx_parse_all_files(GpxCollection *collection) {
         // give list order initial values
         collection->list_order[i] = i;
     }
-    printf("Tracks: %d\n", collection->total_tracks);
+    LOG_DEBUG("Tracks: %d\n", collection->total_tracks);
 
     return true;
 }

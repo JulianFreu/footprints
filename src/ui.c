@@ -54,8 +54,7 @@ void ui_draw_text(const char *string, uint16_t font_size, Clay_Color color, Clay
 
 float get_delta_time(Uint32 last_frame_time) {
     Uint32 now = SDL_GetTicks();
-    float deltaTime = ((float)now - (float)last_frame_time) / 1000.0f;
-    return deltaTime;
+    return ((float)now - (float)last_frame_time) / 1000.0f;
 }
 
 static void continue_animation(struct AnimationState *anim_obj, float delta_time) {
@@ -97,8 +96,6 @@ static void clay_handle_error(Clay_ErrorData error) {
 }
 
 void clay_init(struct application *appl) {
-    printf("[CLAY] clay_Init called\n");
-
     Clay_SetMaxElementCount(32000);
     // Configure Clay
     uint32_t clay_required_memory = Clay_MinMemorySize();

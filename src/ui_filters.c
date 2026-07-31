@@ -167,8 +167,8 @@ static void draw_input_field(FilterAttribute attribute, FilterBoundEnd end,
              .cornerRadius = CORNER_RADIUS,
          }) {
         Clay_OnHover(clicked_filter_field, field_id);
-        // Drawing only reads the field. It used to reformat the stored text on
-        // every frame, so laying out the UI rewrote the model it was drawing.
+        // Drawing only reads the field; the text is reformatted on the
+        // keystroke that changes it, not from the layout pass.
         ui_draw_text(filter_bound_text(filters, attribute, end), FILTER_TEXT_FONT_SIZE, bg1, CLAY_TEXT_ALIGN_CENTER);
     }
 }

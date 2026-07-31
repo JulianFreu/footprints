@@ -16,7 +16,7 @@ typedef struct TrackSortEntry {
 //
 // Everything reads largest-first except pace, where a lower number is the
 // better run; negating its key puts it in the same descending order as the
-// rest instead of needing a second comparator.
+// rest, so one comparator serves every criteria.
 static double track_sort_key(const GpxTrack *track, AttributeType criteria) {
     switch (criteria) {
     case DISTANCE:

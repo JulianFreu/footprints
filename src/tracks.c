@@ -438,10 +438,8 @@ static SDL_Texture *generate_elevation_profile_texture(SDL_Renderer *renderer, c
     return texture;
 }
 
-// Clay draws images from an SDL_Surface, so the profile has to come back off
-// the GPU one way or another -- but it used to do that by writing a PNG to
-// resources/ and immediately IMG_Load()ing it again. The readback below is the
-// only part that was ever needed.
+// Clay draws images from an SDL_Surface, so the profile drawn on the GPU has to
+// be read back into one.
 static SDL_Surface *render_elevation_profile_surface(SDL_Renderer *renderer, const GpxTrack *track, int width, int height) {
     SDL_Texture *profile = generate_elevation_profile_texture(renderer, track, width, height);
     if (!profile)
@@ -463,10 +461,8 @@ static SDL_Surface *render_elevation_profile_surface(SDL_Renderer *renderer, con
     return surface;
 }
 
-// Regenerates the elevation profile only when the selection actually changes.
-// prev_selected_track was previously compared but never assigned, so this ran
-// every frame: two textures created, a full pixel readback, and a PNG written
-// to disk at the frame rate.
+// Regenerates the elevation profile only when the selection actually changes;
+// each regeneration is two textures and a full pixel readback.
 void update_track_info_graphs(struct application *appl, const GpxCollection *collection) {
     static int prev_selected_track = -1;
 

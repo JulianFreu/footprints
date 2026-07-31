@@ -250,9 +250,8 @@ bool tile_cache_insert(TileTextureCache *cache, MapTile key, SDL_Texture *textur
             grown_capacity = TILE_CACHE_MAX_ENTRIES;
         TileTexture *grown = realloc(cache->entries, (size_t)grown_capacity * sizeof(TileTexture));
         if (!grown) {
-            // realloc's return was previously assigned straight back over the
-            // cache pointer, so a failure here leaked the old array and left a
-            // NULL that the very next line indexed into.
+            // The old array is still valid and still owned by the cache, so a
+            // failure here leaves the cache exactly as it was.
             fprintf(stderr, "Could not grow tile cache\n");
             return false;
         }
@@ -306,7 +305,7 @@ static SDL_Texture *load_tile_texture(struct application *appl, MapTile key, con
     return texture;
 }
 
-bool get_map_background(struct application *appl, GpxCollection *collection) {
+void get_map_background(struct application *appl, GpxCollection *collection) {
     // How many tiles do we need?
     int tiles_x = appl->window_width / TILE_SIZE + 2;
     int tiles_y = appl->window_height / TILE_SIZE + 2;
@@ -331,9 +330,7 @@ bool get_map_background(struct application *appl, GpxCollection *collection) {
             MapTile key = {tile_x, tile_y, appl->zoom};
 
             // Only a tile that is not already in video memory needs the
-            // filesystem consulted. This used to stat every visible tile on
-            // every frame -- some thirty syscalls per frame, sixty times a
-            // second, to answer a question the cache had already answered.
+            // filesystem consulted at all.
             SDL_Texture *texture = tile_cache_lookup(&appl->tile_cache, key);
             if (!texture) {
                 char tile_path[TILE_PATH_MAX];
@@ -378,5 +375,4 @@ bool get_map_background(struct application *appl, GpxCollection *collection) {
     if (appl->selected_track_overlay[appl->zoom]) {
         SDL_RenderCopy(appl->renderer, appl->selected_track_overlay[appl->zoom], NULL, NULL);
     }
-    return true;
 }
