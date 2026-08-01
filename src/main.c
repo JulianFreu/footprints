@@ -305,7 +305,9 @@ static void dispatch_event(struct application *appl, GpxCollection *collection,
             ui_text_input_finish(collection); // so does clicking away
         }
     } else if (event.type == SDL_MOUSEWHEEL) {
-        appl->wheel_y = event.wheel.y;
+        // Accumulated, not assigned: several detents can be drained in one
+        // iteration, and every one of them has to count.
+        appl->wheel_y += event.wheel.y;
 
         // The model moves a whole level here; how the picture gets there is
         // the map's business.

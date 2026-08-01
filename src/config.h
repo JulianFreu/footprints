@@ -123,8 +123,13 @@
 // How long a side panel takes to slide all the way open or shut.
 #define PANEL_ANIMATION_SECONDS 0.33f
 
-// Scroll distance contributed by one mouse-wheel detent.
-#define SCROLL_PIXELS_PER_WHEEL_STEP 5
+// Rows the run list moves for one mouse-wheel detent. Scrolling in whole rows
+// from a row-aligned start is what keeps the rows on their grid.
+#define RUN_LIST_SCROLL_ROWS_PER_STEP 3
+
+// How long the list takes to catch up with where the wheel has put it, as a
+// half-life. The one number the scroll feel is retuned by.
+#define RUN_LIST_SCROLL_TAU 0.06f
 
 // --- Zooming ---
 // How long the picture takes to catch up with a zoom level the model has

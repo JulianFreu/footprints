@@ -207,7 +207,7 @@ static void draw_menu_button(SDL_Surface *icon, Clay_Color color, uint32_t butto
          {
              .layout = MenuButtonLayout,
              .backgroundColor = Clay_Hovered() ? big_button_color : color,
-             .cornerRadius = CORNER_RADIUS,
+             .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS),
          }) {
         Clay_OnHover(clicked_menu_button, button_id);
         CLAY(CLAY_IDI_LOCAL("MenuButtonIcon", button_id),
@@ -284,7 +284,7 @@ static void draw_progress_panel(struct application *appl) {
           .layout = {.padding = CLAY_PADDING_ALL(2 * GAPS), .childGap = GAPS, .sizing = {.width = CLAY_SIZING_FIXED(PROGRESS_PANEL_WIDTH), .height = CLAY_SIZING_FIXED(PROGRESS_PANEL_HEIGHT)}, .childAlignment = {.x = CLAY_ALIGN_X_CENTER}, .layoutDirection = CLAY_TOP_TO_BOTTOM},
           .backgroundColor = bg,
           .border = {.color = dark_aqua, .width = CLAY_BORDER_OUTSIDE(2)},
-          .cornerRadius = CORNER_RADIUS}) {
+          .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS)}) {
         // The panel covers the map, so clicks on it must not fall through to
         // the map underneath.
         if (Clay_Hovered())
@@ -297,12 +297,12 @@ static void draw_progress_panel(struct application *appl) {
              {.layout = {.sizing = {.width = CLAY_SIZING_GROW(0),
                                     .height = CLAY_SIZING_FIXED(PROGRESS_BAR_HEIGHT)}},
               .backgroundColor = bg4,
-              .cornerRadius = CORNER_RADIUS}) {
+              .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS)}) {
             CLAY(CLAY_ID("ProgressFill"),
                  {.layout = {.sizing = {.width = CLAY_SIZING_PERCENT(fraction),
                                         .height = CLAY_SIZING_GROW(0)}},
                   .backgroundColor = dark_aqua,
-                  .cornerRadius = CORNER_RADIUS}) {
+                  .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS)}) {
             }
         }
     }
@@ -332,10 +332,11 @@ void ui_update(struct application *appl, GpxCollection *collection) {
     Clay_SetPointerState(
         (Clay_Vector2){appl->mouse_x, appl->mouse_y}, appl->left_mouse_button_pressed);
 
-    Clay_UpdateScrollContainers(
-        false,
-        (Clay_Vector2){0, (float)appl->wheel_y * SCROLL_PIXELS_PER_WHEEL_STEP},
-        delta_time);
+    // Clay's own scroll containers are not used: it forgets a container's
+    // position after two updates without a layout, and this application lays out
+    // only on the frames it draws. The run list keeps its own offset instead.
+    if (appl->wheel_y)
+        ui_runlist_scroll_by_wheel(appl->mouse_x, appl->mouse_y, appl->wheel_y);
 
     // The sidebar follows the selection rather than a button, so what it should
     // be doing is decided here rather than by a click handler. Re-asking for
@@ -348,6 +349,7 @@ void ui_update(struct application *appl, GpxCollection *collection) {
     bool moved = anim_tick(&ui.filters, delta_time);
     moved |= anim_tick(&ui.right_sidebar, delta_time);
     moved |= anim_tick(&ui.run_list, delta_time);
+    moved |= ui_runlist_scroll_tick(delta_time);
     if (moved)
         app_request_redraw(appl);
 }
@@ -374,7 +376,7 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
                   .y = SCREEN_BORDER_PADDING},
           },
           .layout = {.childGap = GAPS, .sizing = {.width = CLAY_SIZING_FIXED(MENU_BAR_WIDTH), .height = CLAY_SIZING_FIT()}, .layoutDirection = CLAY_LEFT_TO_RIGHT},
-          .cornerRadius = CORNER_RADIUS}) {
+          .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS)}) {
         if (Clay_Hovered())
             appl->mouse_over_ui = true;
 
@@ -393,7 +395,7 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
           .layout = {.padding = CLAY_PADDING_ALL(GAPS), .childGap = GAPS, .sizing = {.width = CLAY_SIZING_FIXED(SIDEBAR_WIDTH), .height = appl->window_height - 2 * SCREEN_BORDER_PADDING}, .childAlignment = {.x = CLAY_ALIGN_X_CENTER}, .layoutDirection = CLAY_TOP_TO_BOTTOM},
           .backgroundColor = bg,
           .border = {.color = dark_aqua, .width = {.betweenChildren = 2}},
-          .cornerRadius = CORNER_RADIUS}) {
+          .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS)}) {
         if (Clay_Hovered())
             appl->mouse_over_ui = true;
 

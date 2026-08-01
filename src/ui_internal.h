@@ -18,19 +18,30 @@
 #define GAPS 5
 #define SIDEBAR_WIDTH 250
 #define MENU_BAR_WIDTH 250
-#define MENU_ICON_SIZE 32 + 2 * GAPS
+#define MENU_ICON_SIZE (32 + 2 * GAPS)
 
 #define ELEMENTS_HEIGHT 30
 #define ELEMENTS_WIDTH 180
 #define LIST_ENTRY_HEIGHT 30
 #define HEADER_HEIGHT 50
+// Fixed rather than fitted to the button inside it, so the panel's height is
+// the sum of three known numbers rather than something to be measured.
+#define RUN_LIST_FOOTER_HEIGHT (LIST_ENTRY_HEIGHT + 2 * GAPS)
 #define FILTERS_WIDTH 300
 #define FILTERS_MINMAX_WIDTH 80
 
-// Every run-list column is the same width; the list is as wide as the sum.
+// The scroll position indicator, in its own column to the right of the rows so
+// it never sits on top of one.
+#define RUN_LIST_SCROLLBAR_WIDTH 8
+#define RUN_LIST_SCROLLBAR_MIN_THUMB 24
+#define RUN_LIST_GUTTER_WIDTH (RUN_LIST_SCROLLBAR_WIDTH + 2 * GAPS)
+
+// Every run-list column is the same width; the list is as wide as the sum, plus
+// the gutter the indicator lives in.
 #define RUN_LIST_COLUMN_WIDTH 100
 #define RUN_LIST_COLUMN_COUNT 8
-#define RUN_LIST_WIDTH (RUN_LIST_COLUMN_COUNT * RUN_LIST_COLUMN_WIDTH + 2 * GAPS)
+#define RUN_LIST_WIDTH \
+    (RUN_LIST_COLUMN_COUNT * RUN_LIST_COLUMN_WIDTH + 2 * GAPS + RUN_LIST_GUTTER_WIDTH)
 
 // --- Text ---
 #define FILTER_TEXT_FONT_SIZE 12
@@ -68,6 +79,12 @@ void ui_draw_run_list(struct application *appl, GpxCollection *collection,
 void ui_runlist_free_scratch(void);
 // A row click, consumed once by the next layout pass.
 bool ui_runlist_take_click(int *track_id);
+// Moves the run list by whole mouse-wheel detents, if the pointer is over it.
+// Returns whether the wheel was the list's to take.
+bool ui_runlist_scroll_by_wheel(int mouse_x, int mouse_y, int detents);
+// Eases the drawn offset toward where the wheel has put it. Returns whether it
+// moved, which is what keeps the frames coming while it settles.
+bool ui_runlist_scroll_tick(float dt);
 // The row drawn with a selection border, or -1.
 int ui_runlist_selected_row(void);
 

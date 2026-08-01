@@ -1,5 +1,6 @@
 #include "ui_internal.h"
 
+#include <math.h>
 #include <stdlib.h>
 
 #include "colors.h"
@@ -7,13 +8,27 @@
 #include "track_sort.h"
 #include "tracks.h"
 
-// The run list: its sortable header, its rows, and the virtualised scroll
-// container that emits only the rows actually on screen.
+// The run list: its sortable header, its rows, the virtualised scroll container
+// that emits only the rows actually on screen, and the indicator beside them.
+
+// One row and the gap under it: the unit everything about the list is measured
+// in, from which row is first on screen to how far a wheel detent moves.
+#define ROW_PITCH (LIST_ENTRY_HEIGHT + GAPS)
 
 // Set by a row click and consumed by the next layout pass, which is when the
 // selection and the map centre can both be updated.
 static bool row_clicked = false;
 static int clicked_track_id = -1;
+
+// The list owns its scroll offset rather than leaving it to Clay. Clay drops a
+// scroll container's position as soon as two updates pass without a layout, and
+// this application only lays out on the frames it draws -- so on an otherwise
+// idle window a wheel detent kept landing on a container Clay had already
+// forgotten, doing nothing and putting the list back at the top. Owning it here
+// also gives the indicator and the smoothing something to read.
+static float scroll_target = 0.0f;  // where the wheel has put the list, in pixels
+static float scroll_current = 0.0f; // what the layout draws; eases toward the target
+static float scroll_max = 0.0f;     // set by the layout, from the rows and the viewport
 
 bool ui_runlist_take_click(int *track_id) {
     if (!row_clicked)
@@ -25,6 +40,49 @@ bool ui_runlist_take_click(int *track_id) {
 
 int ui_runlist_selected_row(void) {
     return clicked_track_id;
+}
+
+static void clamp_scroll(void) {
+    if (scroll_target > scroll_max)
+        scroll_target = scroll_max;
+    if (scroll_target < 0.0f)
+        scroll_target = 0.0f;
+    if (scroll_current > scroll_max)
+        scroll_current = scroll_max;
+    if (scroll_current < 0.0f)
+        scroll_current = 0.0f;
+}
+
+bool ui_runlist_scroll_by_wheel(int mouse_x, int mouse_y, int detents) {
+    // Last frame's box. The wheel is the pointer's, and the pointer was over
+    // whatever was drawn last -- which is the same thing Clay resolves hover
+    // against.
+    Clay_ElementData container = Clay_GetElementData(CLAY_ID("RunListScrollContainer"));
+    if (!container.found)
+        return false;
+
+    Clay_BoundingBox box = container.boundingBox;
+    if (mouse_x < box.x || mouse_x >= box.x + box.width ||
+        mouse_y < box.y || mouse_y >= box.y + box.height)
+        return false;
+
+    // SDL reports a wheel turned away from the hand as positive, which is a
+    // move toward the top of the list.
+    scroll_target -= (float)detents * (RUN_LIST_SCROLL_ROWS_PER_STEP * ROW_PITCH);
+    clamp_scroll();
+    return true;
+}
+
+bool ui_runlist_scroll_tick(float dt) {
+    if (scroll_current == scroll_target)
+        return false;
+
+    scroll_current = anim_approach(scroll_current, scroll_target, RUN_LIST_SCROLL_TAU, dt);
+    // Arriving exactly is what lets the list stop asking for frames; an
+    // asymptote never would.
+    if (fabsf(scroll_target - scroll_current) < 0.5f)
+        scroll_current = scroll_target;
+    return true;
 }
 
 static void clicked_toggle_filter_view(
@@ -60,7 +118,7 @@ static void draw_run_list_header_attribute(GpxCollection *collection, int width,
                                                                           .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
                                                                           .layoutDirection = CLAY_TOP_TO_BOTTOM},
                                                                .backgroundColor = Clay_Hovered() ? accent_color_hl : accent_color,
-                                                               .cornerRadius = CORNER_RADIUS}) {
+                                                               .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS)}) {
         if (Clay_Hovered()) {
             collection->to_be_sorted_by = sort_type;
         }
@@ -97,7 +155,7 @@ static void draw_run_list_header_attribute(GpxCollection *collection, int width,
 static void draw_run_list_bottom(const char *total_visible_tracks, GpxCollection *collection) {
     CLAY(CLAY_ID("RunListBottom"), {.layout = {
                                         .padding = CLAY_PADDING_ALL(GAPS),
-                                        .sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIT()},
+                                        .sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(RUN_LIST_FOOTER_HEIGHT)},
                                         .childGap = GAPS,
                                         .layoutDirection = CLAY_LEFT_TO_RIGHT,
                                         .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}},
@@ -112,7 +170,7 @@ static void draw_run_list_bottom(const char *total_visible_tracks, GpxCollection
                                                   .layoutDirection = CLAY_LEFT_TO_RIGHT,
                                                   .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}},
                                               .backgroundColor = Clay_Hovered() ? bg_l : bg_d,
-                                              .cornerRadius = CORNER_RADIUS}) {
+                                              .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS)}) {
             Clay_OnHover(clicked_toggle_filter_view, 0);
             ui_draw_text("Toggle Filter View", 16, dark_aqua, CLAY_TEXT_ALIGN_CENTER);
         }
@@ -193,54 +251,123 @@ static int collect_visible_rows(const GpxCollection *collection) {
     return count;
 }
 
-// Stands in for the rows scrolled past, so the scrollbar and the content height
-// stay the same as if every row had been emitted. The container puts a childGap
-// after the spacer, which is part of the pitch being replaced.
-static void draw_run_list_spacer(int rows, int row_pitch, int id) {
+// Stands in for the rows scrolled past, so the content is laid out where it
+// would be if every row had been emitted. The container puts a childGap after
+// the spacer, which is part of the pitch being replaced.
+static void draw_run_list_spacer(int rows, int id) {
     if (rows <= 0)
         return;
     CLAY(CLAY_IDI_LOCAL("RunListSpacer", id),
-         {.layout = {.sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(rows * row_pitch - GAPS)}}}) {
+         {.layout = {.sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(rows * ROW_PITCH - GAPS)}}}) {
     }
+}
+
+// How far the list can be scrolled and where the indicator sits, worked out
+// together so the thumb cannot come to disagree with what the list does. The
+// offset is clamped on the way past: a filter that shortens the list must not
+// leave the view hanging past the end of it.
+typedef struct ScrollMetrics {
+    float thumb_y; // top of the thumb, from the top of the track it runs in
+    float thumb_h;
+} ScrollMetrics;
+
+static ScrollMetrics update_scroll_metrics(int visible_count, int viewport_h) {
+    // The rows and the container's padding: the height a fully drawn list has.
+    float content_h = visible_count > 0
+                          ? (float)(visible_count * ROW_PITCH - GAPS + 2 * GAPS)
+                          : 0.0f;
+
+    scroll_max = content_h - (float)viewport_h;
+    if (scroll_max < 0.0f)
+        scroll_max = 0.0f;
+    clamp_scroll();
+
+    ScrollMetrics metrics = {0};
+    if (scroll_max <= 0.0f)
+        return metrics; // the list fits; there is nothing to indicate
+
+    const float track_h = (float)(viewport_h - 2 * GAPS);
+    metrics.thumb_h = track_h * (float)viewport_h / content_h;
+    if (metrics.thumb_h < RUN_LIST_SCROLLBAR_MIN_THUMB)
+        metrics.thumb_h = RUN_LIST_SCROLLBAR_MIN_THUMB;
+    if (metrics.thumb_h > track_h)
+        metrics.thumb_h = track_h;
+    metrics.thumb_y = (scroll_current / scroll_max) * (track_h - metrics.thumb_h);
+    return metrics;
 }
 
 // Only the rows actually on screen are handed to Clay. Every emitted row costs
 // eight text elements, and the renderer rasterises and uploads each one every
 // frame, so a library of several hundred tracks was paying for thousands of
 // glyph rasterisations per frame to draw the twenty-odd rows that are visible.
-static void draw_run_list_scroll_container(GpxCollection *collection, int height) {
-    const int row_pitch = LIST_ENTRY_HEIGHT + GAPS;
-    int visible_count = collect_visible_rows(collection);
-
+static void draw_run_list_scroll_container(GpxCollection *collection, int height,
+                                           int visible_count) {
     CLAY(CLAY_ID("RunListScrollContainer"),
          {
              .layout = {
                  .padding = CLAY_PADDING_ALL(GAPS),
                  .childGap = GAPS,
-                 .sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(height)},
+                 .sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW()},
                  .layoutDirection = CLAY_TOP_TO_BOTTOM},
-             .clip = {.vertical = true, .childOffset = Clay_GetScrollOffset()},
-             .backgroundColor = bg,
+             .clip = {.vertical = true, .childOffset = {0, -scroll_current}},
          }) {
-        // Must be read with the container open -- Clay resolves the offset
-        // against the currently open element.
-        float scroll_y = Clay_GetScrollOffset().y;
-
-        int first_row = (int)(-scroll_y / row_pitch);
+        int first_row = (int)(scroll_current / ROW_PITCH);
         if (first_row < 0)
             first_row = 0;
         if (first_row > visible_count)
             first_row = visible_count;
 
         // One extra row at each end so a partially scrolled row is still drawn.
-        int last_row = first_row + height / row_pitch + 2;
+        int last_row = first_row + height / ROW_PITCH + 2;
         if (last_row > visible_count)
             last_row = visible_count;
 
-        draw_run_list_spacer(first_row, row_pitch, 0);
+        draw_run_list_spacer(first_row, 0);
         for (int row = first_row; row < last_row; row++)
             draw_run_list_entry(&collection->tracks[visible_rows[row]]);
-        draw_run_list_spacer(visible_count - last_row, row_pitch, 1);
+        draw_run_list_spacer(visible_count - last_row, 1);
+    }
+}
+
+// The gutter is always emitted, thumb or no thumb: a list that shrinks below a
+// screenful would otherwise change the panel's width as it went.
+static void draw_run_list_scrollbar(ScrollMetrics metrics) {
+    CLAY(CLAY_ID("RunListScrollbar"),
+         {.layout = {.padding = CLAY_PADDING_ALL(GAPS),
+                     .sizing = {.width = CLAY_SIZING_FIXED(RUN_LIST_GUTTER_WIDTH), .height = CLAY_SIZING_GROW()},
+                     .layoutDirection = CLAY_TOP_TO_BOTTOM}}) {
+        // A list that fits leaves the gutter empty. Written as a condition
+        // rather than an early return: CLAY() is a loop that closes the element
+        // on its way round, and returning out of the middle of one leaves it
+        // open for everything drawn after it to be nested inside.
+        if (metrics.thumb_h > 0.0f) {
+            // A spacer above the thumb is how a plain element puts a child at an
+            // offset; nothing here has to float.
+            CLAY(CLAY_ID("RunListScrollbarSpacer"),
+                 {.layout = {.sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(metrics.thumb_y)}}}) {
+            }
+            CLAY(CLAY_ID("RunListScrollbarThumb"),
+                 {.layout = {.sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(metrics.thumb_h)}},
+                  .backgroundColor = grey0,
+                  .cornerRadius = CLAY_CORNER_RADIUS(RUN_LIST_SCROLLBAR_WIDTH / 2)}) {
+            }
+        }
+    }
+}
+
+// The rows and the indicator beside them. The background lives here rather than
+// on the scroll container, so the gutter is the same colour as what it sits next
+// to without being clipped along with the rows.
+static void draw_run_list_body(GpxCollection *collection, int height) {
+    int visible_count = collect_visible_rows(collection);
+    ScrollMetrics metrics = update_scroll_metrics(visible_count, height);
+
+    CLAY(CLAY_ID("RunListBody"),
+         {.layout = {.sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(height)},
+                     .layoutDirection = CLAY_LEFT_TO_RIGHT},
+          .backgroundColor = bg}) {
+        draw_run_list_scroll_container(collection, height, visible_count);
+        draw_run_list_scrollbar(metrics);
     }
 }
 
@@ -253,6 +380,15 @@ void ui_runlist_free_scratch(void) {
 
 void ui_draw_run_list(struct application *appl, GpxCollection *collection,
                       int list_offset_y) {
+    // The one place the height is divided up. The header and footer are fixed,
+    // so the rows get whatever is left between them and the bottom of the
+    // screen, and the panel is the sum of the three -- rather than the panel and
+    // the rows each working out a height of their own and disagreeing.
+    int body_height = appl->window_height - list_offset_y - SCREEN_BORDER_PADDING -
+                      HEADER_HEIGHT - RUN_LIST_FOOTER_HEIGHT;
+    if (body_height < ROW_PITCH)
+        body_height = ROW_PITCH;
+
     CLAY(CLAY_ID("RunsListMenu"),
          {
              .floating = {
@@ -261,13 +397,13 @@ void ui_draw_run_list(struct application *appl, GpxCollection *collection,
                      .x = -RUN_LIST_WIDTH + anim_value(&ui.run_list) * (SCREEN_BORDER_PADDING + RUN_LIST_WIDTH),
                      .y = list_offset_y},
              },
-             .layout = {.sizing = {.width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIXED(appl->window_height - 2 * SCREEN_BORDER_PADDING - GAPS - MENU_ICON_SIZE)}, .layoutDirection = CLAY_TOP_TO_BOTTOM},
+             .layout = {.sizing = {.width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT()}, .layoutDirection = CLAY_TOP_TO_BOTTOM},
          }) {
         if (Clay_Hovered())
             appl->mouse_over_ui = true;
 
         draw_run_list_header(collection);
-        draw_run_list_scroll_container(collection, appl->window_height - (MENU_ICON_SIZE + 2 * GAPS) - (LIST_ENTRY_HEIGHT + 2 * GAPS) - (LIST_ENTRY_HEIGHT + 2 * GAPS) - (2 * SCREEN_BORDER_PADDING));
+        draw_run_list_body(collection, body_height);
         draw_run_list_bottom(collection->total_visible_tracks_str, collection);
     }
 }
