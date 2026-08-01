@@ -15,7 +15,7 @@ SOURCES  := $(SRC_DIR)/main.c $(SRC_DIR)/map.c $(SRC_DIR)/fifo.c \
             $(SRC_DIR)/point_index.c $(SRC_DIR)/track_sort.c $(SRC_DIR)/track_format.c \
             $(SRC_DIR)/background.c $(SRC_DIR)/anim.c $(SRC_DIR)/zoom.c \
             $(SRC_DIR)/clay_sdl.c $(SRC_DIR)/ui_filters.c \
-            $(SRC_DIR)/ui_runlist.c \
+            $(SRC_DIR)/ui_runlist.c $(SRC_DIR)/ui_panels.c \
             $(SRC_DIR)/time_util.c
 OBJECTS  := $(SOURCES:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
 DEPS     := $(OBJECTS:.o=.d)

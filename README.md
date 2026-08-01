@@ -174,9 +174,10 @@ Keep the description a few kebab-case words, not a full sentence.
 | `map.c` | The world-to-screen projection, tile URLs, the download thread, the tile texture cache, map background |
 | `fifo.c` | The bounded queue between the main loop and the download thread |
 | `time_util.c` | The single place timestamps are parsed — everything is UTC |
-| `ui.c` | Clay setup, icons, menu, sidebar, and the composition of the panels |
+| `ui.c` | Clay setup, icons, the left menu bar, sidebar, and the composition of the panels |
 | `ui_filters.c` | The filter panel and the text input that feeds it |
 | `ui_runlist.c` | The run list: sortable header, rows, virtualised scrolling |
+| `ui_panels.c` | The statistics, records and settings panels |
 | `ui_internal.h` | Layout vocabulary shared by `ui*.c`; not part of the UI's interface |
 | `progress.h` | How a long operation reports progress and is asked to stop |
 | `clay_sdl.c` | The one translation unit carrying Clay and its vendored SDL renderer |

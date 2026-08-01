@@ -13,10 +13,28 @@
 
 #define NO_ACTIVE_FILTER (-1)
 
+// The panels the menu bar toggles, in the order their buttons are stacked.
+// One button, one panel, one anim: the enum is what ties the three together,
+// and PANEL_COUNT is how many buttons the bar draws.
+typedef enum MenuPanel {
+    PANEL_NONE = -1,
+    PANEL_RUN_LIST = 0,
+    PANEL_STATISTICS,
+    PANEL_RECORDS,
+    PANEL_SETTINGS,
+    PANEL_COUNT
+} MenuPanel;
+
 typedef struct UIState {
     // Each runs 0 (shut) to 1 (open); the layout offsets are scaled by it.
     Anim right_sidebar;
-    Anim run_list;
+    // Indexed by MenuPanel. Only one is ever headed for 1: opening a panel
+    // sends the others back to 0.
+    Anim panels[PANEL_COUNT];
+    // Which panel the buttons show as active, or PANEL_NONE. Read from the
+    // target of the anims would not do: a panel on its way shut is not the
+    // open one.
+    MenuPanel open_panel;
     Anim filters;
     bool text_input_mode;
     char text_input_buffer[INPUT_BUFFER_SIZE];
@@ -37,6 +55,9 @@ typedef struct
 typedef struct
 {
     SDL_Surface *menu_burger;
+    SDL_Surface *statistics;
+    SDL_Surface *records;
+    SDL_Surface *settings;
     SDL_Surface *date;
     SDL_Surface *clock;
     SDL_Surface *duration;

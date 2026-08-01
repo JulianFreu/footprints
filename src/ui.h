@@ -17,8 +17,10 @@ void clay_init(struct application *appl);
 void ui_update(struct application *appl, GpxCollection *collection);
 void clay_draw_ui(struct application *appl, GpxCollection *collection);
 void clay_free_memory(void);
-// Slides the run list and filter panel in or out, whichever is the reverse
-// of what they are doing now.
+// Shows one panel and shuts the rest; pressing the one already open shuts it
+// too. The menu buttons and the TAB key both come through here.
+void ui_toggle_panel(MenuPanel panel);
+// The run list, which is what TAB has always toggled.
 void ui_toggle_run_list(void);
 // Text input for the filter fields. The event loop routes keystrokes here
 // rather than reaching into UIState itself.

@@ -24,14 +24,6 @@
 #include "clay_sdl.h"
 #include "colors.h"
 
-// Menu identifiers. Only LIST_RUNS is wired up so far; the rest name the
-// buttons the menu is expected to grow.
-#define NONE 0
-#define IMPORT_DATA 1
-#define LIST_RUNS 2
-#define SETTINGS 3
-#define STATISTICS 4
-
 // Text drawn this frame.
 //
 // Clay stores the pointer to a string's characters rather than copying them,
@@ -80,7 +72,8 @@ const char *ui_frame_printf(const char *fmt, ...) {
 
 UIState ui = {
     .right_sidebar = {0},
-    .run_list = {0},
+    .panels = {{0}},
+    .open_panel = PANEL_NONE,
     .filters = {0},
     .active_filter_id = NO_ACTIVE_FILTER};
 
@@ -97,6 +90,12 @@ void ui_panel_move(Anim *panel, float target) {
 // to make a second press during a close do nothing.
 void ui_panel_toggle(Anim *panel) {
     ui_panel_move(panel, anim_target(panel) > 0.5f ? 0.0f : 1.0f);
+}
+
+// All four panels slide in from off the left edge to the same corner, so where
+// one is depends only on how far along its anim is and how wide it is.
+float ui_panel_offset_x(MenuPanel panel, int width) {
+    return -width + anim_value(&ui.panels[panel]) * (PANEL_ORIGIN_X + width);
 }
 
 void ui_draw_text(const char *string, uint16_t font_size, Clay_Color color, Clay_TextAlignment align) {
@@ -155,6 +154,12 @@ void ui_load_icons(struct application *appl) {
     if (appl->icons.menu_burger)
         SDL_SetSurfaceColorMod(appl->icons.menu_burger, 250, 0, 0);
 
+    // A menu icon that is missing is not fatal: load_icon says so and the
+    // button falls back to its label.
+    appl->icons.statistics = load_icon("resources/statistics.png");
+    appl->icons.records = load_icon("resources/records.png");
+    appl->icons.settings = load_icon("resources/settings.png");
+
     appl->icons.date = load_icon("resources/date.png");
     appl->icons.clock = load_icon("resources/clock.png");
     appl->icons.duration = load_icon("resources/duration.png");
@@ -168,7 +173,8 @@ void ui_load_icons(struct application *appl) {
 
 void ui_free_icons(struct application *appl) {
     SDL_Surface **surfaces[] = {
-        &appl->icons.menu_burger, &appl->icons.date, &appl->icons.clock,
+        &appl->icons.menu_burger, &appl->icons.statistics, &appl->icons.records,
+        &appl->icons.settings, &appl->icons.date, &appl->icons.clock,
         &appl->icons.duration, &appl->icons.pace, &appl->icons.distance,
         &appl->icons.elev_up, &appl->icons.elev_down, &appl->icons.peak,
         &appl->icons.elev_profile};
@@ -186,12 +192,25 @@ static const Clay_LayoutConfig MenuButtonLayout = {
     .childGap = GAPS,
     .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
 };
-// The run list and the filter panel slide together, from the menu button and
-// from the TAB key alike.
+// One panel is open at a time: they all occupy the same corner, so a second one
+// sliding in over the first would only hide it. Pressing the button of the
+// panel already showing shuts it and leaves nothing open.
+void ui_toggle_panel(MenuPanel panel) {
+    bool opening = ui.open_panel != panel;
+
+    for (int i = 0; i < PANEL_COUNT; i++)
+        ui_panel_move(&ui.panels[i], (opening && i == panel) ? 1.0f : 0.0f);
+
+    // The filter panel is a wing of the run list rather than a menu panel of
+    // its own, so it goes wherever the run list goes.
+    ui_panel_move(&ui.filters, anim_target(&ui.panels[PANEL_RUN_LIST]));
+
+    ui.open_panel = opening ? panel : PANEL_NONE;
+}
+
+// What TAB has always done, now one of four.
 void ui_toggle_run_list(void) {
-    float target = anim_target(&ui.run_list) > 0.5f ? 0.0f : 1.0f;
-    ui_panel_move(&ui.run_list, target);
-    ui_panel_move(&ui.filters, target);
+    ui_toggle_panel(PANEL_RUN_LIST);
 }
 
 static void clicked_menu_button(
@@ -199,23 +218,52 @@ static void clicked_menu_button(
     Clay_PointerData pointerData,
     intptr_t userData) {
     if (pointerData.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME)
-        ui_toggle_run_list();
+        ui_toggle_panel((MenuPanel)userData);
 }
 
-static void draw_menu_button(SDL_Surface *icon, Clay_Color color, uint32_t button_id) {
-    CLAY(CLAY_IDI_LOCAL("MenuButton", button_id),
+// The button for one panel. `label` is drawn in place of an icon that failed to
+// load, so a button is still worth pressing before its artwork exists.
+static void draw_menu_button(SDL_Surface *icon, const char *label, MenuPanel panel) {
+    Clay_Color color = accent_color;
+    if (ui.open_panel == panel)
+        color = accent_color_hl;
+
+    CLAY(CLAY_IDI_LOCAL("MenuButton", panel),
          {
              .layout = MenuButtonLayout,
              .backgroundColor = Clay_Hovered() ? big_button_color : color,
              .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS),
          }) {
-        Clay_OnHover(clicked_menu_button, button_id);
-        CLAY(CLAY_IDI_LOCAL("MenuButtonIcon", button_id),
-             {.layout = {
-                  .padding = CLAY_PADDING_ALL(GAPS),
-                  .sizing = {.width = CLAY_SIZING_FIXED(32),
-                             .height = CLAY_SIZING_FIXED(32)}},
-              .image = icon}) {}
+        Clay_OnHover(clicked_menu_button, panel);
+        if (icon) {
+            CLAY(CLAY_IDI_LOCAL("MenuButtonIcon", panel),
+                 {.layout = {
+                      .padding = CLAY_PADDING_ALL(GAPS),
+                      .sizing = {.width = CLAY_SIZING_FIXED(32),
+                                 .height = CLAY_SIZING_FIXED(32)}},
+                  .image = icon}) {}
+        } else {
+            ui_draw_text(label, FILTER_TEXT_FONT_SIZE, fg_l, CLAY_TEXT_ALIGN_CENTER);
+        }
+    }
+}
+
+// The buttons down the left edge, one per panel, in the order of the enum.
+static void draw_menu_bar(struct application *appl) {
+    CLAY(CLAY_ID("MenuBar"),
+         {.floating = {
+              .attachTo = CLAY_ATTACH_TO_ROOT,
+              .offset = {.x = SCREEN_BORDER_PADDING, .y = SCREEN_BORDER_PADDING},
+          },
+          .layout = {.childGap = GAPS, .sizing = {.width = CLAY_SIZING_FIXED(MENU_BAR_WIDTH), .height = CLAY_SIZING_FIT()}, .layoutDirection = CLAY_TOP_TO_BOTTOM},
+          .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS)}) {
+        if (Clay_Hovered())
+            appl->mouse_over_ui = true;
+
+        draw_menu_button(appl->icons.menu_burger, "Runs", PANEL_RUN_LIST);
+        draw_menu_button(appl->icons.statistics, "Stats", PANEL_STATISTICS);
+        draw_menu_button(appl->icons.records, "Recs", PANEL_RECORDS);
+        draw_menu_button(appl->icons.settings, "Set", PANEL_SETTINGS);
     }
 }
 
@@ -348,7 +396,8 @@ void ui_update(struct application *appl, GpxCollection *collection) {
     // whole of what the frame loop needs to know about the UI's animations.
     bool moved = anim_tick(&ui.filters, delta_time);
     moved |= anim_tick(&ui.right_sidebar, delta_time);
-    moved |= anim_tick(&ui.run_list, delta_time);
+    for (int panel = 0; panel < PANEL_COUNT; panel++)
+        moved |= anim_tick(&ui.panels[panel], delta_time);
     moved |= ui_runlist_scroll_tick(delta_time);
     if (moved)
         app_request_redraw(appl);
@@ -368,20 +417,7 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
     ui_frame_text_reset();
     Clay_BeginLayout();
 
-    CLAY(CLAY_ID("MenuBar"),
-         {.floating = {
-              .attachTo = CLAY_ATTACH_TO_ROOT,
-              .offset = {
-                  .x = -MENU_BAR_WIDTH + (SCREEN_BORDER_PADDING + MENU_BAR_WIDTH),
-                  .y = SCREEN_BORDER_PADDING},
-          },
-          .layout = {.childGap = GAPS, .sizing = {.width = CLAY_SIZING_FIXED(MENU_BAR_WIDTH), .height = CLAY_SIZING_FIT()}, .layoutDirection = CLAY_LEFT_TO_RIGHT},
-          .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS)}) {
-        if (Clay_Hovered())
-            appl->mouse_over_ui = true;
-
-        draw_menu_button(appl->icons.menu_burger, dark_red, LIST_RUNS);
-    }
+    draw_menu_bar(appl);
 
     CLAY(CLAY_ID("Right sidebar"),
          {.floating = {
@@ -423,12 +459,14 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
         }
     }
 
-    int list_offset_y = MENU_ICON_SIZE + 2 * SCREEN_BORDER_PADDING;
     if (background_busy(&appl->background)) {
         draw_progress_panel(appl);
     } else {
-        ui_draw_filter_panel(appl, collection, list_offset_y);
-        ui_draw_run_list(appl, collection, list_offset_y);
+        ui_draw_filter_panel(appl, collection);
+        ui_draw_run_list(appl, collection);
+        ui_draw_simple_panel(appl, PANEL_STATISTICS, "Statistics");
+        ui_draw_simple_panel(appl, PANEL_RECORDS, "Records");
+        ui_draw_simple_panel(appl, PANEL_SETTINGS, "Settings");
     }
 
     Clay_RenderCommandArray render_commands = Clay_EndLayout();

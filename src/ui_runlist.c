@@ -378,14 +378,13 @@ void ui_runlist_free_scratch(void) {
     visible_rows_capacity = 0;
 }
 
-void ui_draw_run_list(struct application *appl, GpxCollection *collection,
-                      int list_offset_y) {
+void ui_draw_run_list(struct application *appl, GpxCollection *collection) {
     // The one place the height is divided up. The header and footer are fixed,
     // so the rows get whatever is left between them and the bottom of the
     // screen, and the panel is the sum of the three -- rather than the panel and
     // the rows each working out a height of their own and disagreeing.
-    int body_height = appl->window_height - list_offset_y - SCREEN_BORDER_PADDING -
-                      HEADER_HEIGHT - RUN_LIST_FOOTER_HEIGHT;
+    int body_height = PANEL_HEIGHT(appl->window_height) - HEADER_HEIGHT -
+                      RUN_LIST_FOOTER_HEIGHT;
     if (body_height < ROW_PITCH)
         body_height = ROW_PITCH;
 
@@ -394,8 +393,8 @@ void ui_draw_run_list(struct application *appl, GpxCollection *collection,
              .floating = {
                  .attachTo = CLAY_ATTACH_TO_ROOT,
                  .offset = {
-                     .x = -RUN_LIST_WIDTH + anim_value(&ui.run_list) * (SCREEN_BORDER_PADDING + RUN_LIST_WIDTH),
-                     .y = list_offset_y},
+                     .x = ui_panel_offset_x(PANEL_RUN_LIST, RUN_LIST_WIDTH),
+                     .y = PANEL_ORIGIN_Y},
              },
              .layout = {.sizing = {.width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT()}, .layoutDirection = CLAY_TOP_TO_BOTTOM},
          }) {

@@ -300,18 +300,17 @@ static void clicked_show_filtered_tracks(
     }
 }
 
-void ui_draw_filter_panel(struct application *appl, GpxCollection *collection,
-                          int list_offset_y) {
+void ui_draw_filter_panel(struct application *appl, GpxCollection *collection) {
     if (anim_value(&ui.filters) > 0.0f) {
         CLAY(CLAY_ID("FilterOptions"),
              {.floating = {
                   .attachTo = CLAY_ATTACH_TO_ROOT,
                   .offset = {
-                      .x = anim_value(&ui.run_list) * (SCREEN_BORDER_PADDING + RUN_LIST_WIDTH) - (FILTERS_WIDTH + GAPS) + anim_value(&ui.filters) * (FILTERS_WIDTH + 2 * GAPS),
-                      .y = list_offset_y},
+                      .x = ui_panel_offset_x(PANEL_RUN_LIST, RUN_LIST_WIDTH) + RUN_LIST_WIDTH - (FILTERS_WIDTH + GAPS) + anim_value(&ui.filters) * (FILTERS_WIDTH + 2 * GAPS),
+                      .y = PANEL_ORIGIN_Y},
               },
               .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS),
-              .layout = {.childAlignment = {.x = CLAY_ALIGN_X_CENTER}, .padding = CLAY_PADDING_ALL(GAPS), .sizing = {.width = CLAY_SIZING_FIXED(FILTERS_WIDTH), .height = CLAY_SIZING_FIXED(appl->window_height - 3 * GAPS - MENU_ICON_SIZE - 25)}, .layoutDirection = CLAY_TOP_TO_BOTTOM, .childGap = GAPS},
+              .layout = {.childAlignment = {.x = CLAY_ALIGN_X_CENTER}, .padding = CLAY_PADDING_ALL(GAPS), .sizing = {.width = CLAY_SIZING_FIXED(FILTERS_WIDTH), .height = CLAY_SIZING_FIXED(PANEL_HEIGHT(appl->window_height))}, .layoutDirection = CLAY_TOP_TO_BOTTOM, .childGap = GAPS},
               .backgroundColor = bg}) {
             if (Clay_Hovered())
                 appl->mouse_over_ui = true;

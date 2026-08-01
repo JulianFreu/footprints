@@ -17,8 +17,20 @@
 #define CORNER_RADIUS 8
 #define GAPS 5
 #define SIDEBAR_WIDTH 250
-#define MENU_BAR_WIDTH 250
 #define MENU_ICON_SIZE (32 + 2 * GAPS)
+// The menu bar is a column of square buttons down the left edge, so it is one
+// button wide. It used to be a 250px row, most of it empty -- and that empty
+// part still swallowed the clicks meant for the map behind it.
+#define MENU_BAR_WIDTH MENU_ICON_SIZE
+
+// Every panel hangs off the same corner: clear of the bar beside it, and the
+// screen border away from the top. Their heights are all measured from there.
+#define PANEL_ORIGIN_X (SCREEN_BORDER_PADDING + MENU_BAR_WIDTH + GAPS)
+#define PANEL_ORIGIN_Y SCREEN_BORDER_PADDING
+#define PANEL_HEIGHT(window_height) ((window_height) - 2 * SCREEN_BORDER_PADDING)
+// The panels that are still empty. The run list has a width of its own, being
+// the sum of its columns.
+#define PANEL_WIDTH 400
 
 #define ELEMENTS_HEIGHT 30
 #define ELEMENTS_WIDTH 180
@@ -70,11 +82,17 @@ void ui_draw_text(const char *string, uint16_t font_size, Clay_Color color,
 void ui_panel_move(Anim *panel, float target);
 void ui_panel_toggle(Anim *panel);
 
-// The two side panels, each drawn by its own translation unit.
-void ui_draw_filter_panel(struct application *appl, GpxCollection *collection,
-                          int list_offset_y);
-void ui_draw_run_list(struct application *appl, GpxCollection *collection,
-                      int list_offset_y);
+// Where a panel `width` wide sits this frame: off the left edge when shut, at
+// PANEL_ORIGIN_X when open, and proportionally between the two while it slides.
+float ui_panel_offset_x(MenuPanel panel, int width);
+
+// The panels, each drawn by its own translation unit.
+void ui_draw_filter_panel(struct application *appl, GpxCollection *collection);
+void ui_draw_run_list(struct application *appl, GpxCollection *collection);
+// An empty panel with a titled header: what statistics, records and settings
+// are until they have something to show.
+void ui_draw_simple_panel(struct application *appl, MenuPanel panel,
+                          const char *title);
 // Releases the run list's between-frames row buffer.
 void ui_runlist_free_scratch(void);
 // A row click, consumed once by the next layout pass.
