@@ -508,11 +508,63 @@ void map_update(struct application *appl, float dt) {
         app_request_redraw(appl);
 }
 
+// What the centre-out walk below needs to place one tile, so the helper takes
+// one argument rather than six.
+typedef struct TileGridFrame {
+    int center_tile_x, center_tile_y;
+    int tile_offset_x, tile_offset_y;
+    int tiles_at_zoom;  // tiles across the world at this zoom
+    int half_x, half_y; // how far the window reaches from the centre tile
+} TileGridFrame;
+
+// Records the tile `dx, dy` from the centre tile, if it is on screen and on the
+// map at all. Reports whether `out` still has room, which is what stops the
+// walk.
+static bool emit_visible_tile(const struct application *appl, const TileGridFrame *grid,
+                              int dx, int dy, VisibleTile *out, int *count, int max_tiles) {
+    if (*count >= max_tiles)
+        return false;
+
+    // A ring runs past the window's rectangle of tiles on its long sides once
+    // the short sides have been reached; those candidates are simply not
+    // window tiles.
+    if (dx < -grid->half_x || dx > grid->half_x || dy < -grid->half_y || dy > grid->half_y)
+        return true;
+
+    int tile_x = grid->center_tile_x + dx;
+    int tile_y = grid->center_tile_y + dy;
+
+    // Off the edge of the world at this zoom.
+    if (tile_x < 0 || tile_y < 0 || tile_x >= grid->tiles_at_zoom || tile_y >= grid->tiles_at_zoom)
+        return true;
+
+    // Both are linear in the tile index, so after the transform two
+    // neighbours still share an edge exactly and the grid has no
+    // seams to show.
+    float unscaled_x = (float)((tile_x - grid->center_tile_x) * TILE_SIZE - grid->tile_offset_x +
+                               appl->window_width / 2);
+    float unscaled_y = (float)((tile_y - grid->center_tile_y) * TILE_SIZE - grid->tile_offset_y +
+                               appl->window_height / 2);
+    SDL_FRect placed = map_transform_rect(appl, unscaled_x, unscaled_y,
+                                          (float)TILE_SIZE, (float)TILE_SIZE);
+
+    out[(*count)++] = (VisibleTile){
+        .tile = {tile_x, tile_y, appl->zoom},
+        .screen_x = placed.x,
+        .screen_y = placed.y,
+        .size = placed.w};
+    return true;
+}
+
 // The tiles covering the window at the current zoom, with where each one lands
 // on screen. Returned rather than drawn, so the caller decides what is layered
 // over what -- this module used to reach into the track renderer to composite
 // the heat overlay itself, which put the layer order in the wrong place and
 // made the map depend on the tracks.
+//
+// Ordered outward from the centre, because every layer works through this list
+// in order against a per-frame budget -- so the order tiles are listed in is
+// the order the window fills in.
 int map_visible_tiles(const struct application *appl, VisibleTile *out, int max_tiles) {
     // Scaled down, a tile covers less of the window and more of them are
     // needed to fill it.
@@ -521,43 +573,37 @@ int map_visible_tiles(const struct application *appl, VisibleTile *out, int max_
     int tiles_x = (int)((float)appl->window_width / scaled_tile) + 2;
     int tiles_y = (int)((float)appl->window_height / scaled_tile) + 2;
 
-    int center_tile_x, center_tile_y;
-    int tile_offset_x, tile_offset_y;
+    TileGridFrame grid = {.tiles_at_zoom = 1 << appl->zoom,
+                          .half_x = tiles_x / 2,
+                          .half_y = tiles_y / 2};
     conv_pixel_to_tile_and_offset(appl->world_x, appl->world_y, MAX_ZOOM, appl->zoom,
-                                  &center_tile_x, &center_tile_y,
-                                  &tile_offset_x, &tile_offset_y);
+                                  &grid.center_tile_x, &grid.center_tile_y,
+                                  &grid.tile_offset_x, &grid.tile_offset_y);
 
-    int tiles_at_zoom = 1 << appl->zoom;
     int count = 0;
 
-    for (int dx = -tiles_x / 2; dx <= tiles_x / 2; dx++) {
-        for (int dy = -tiles_y / 2; dy <= tiles_y / 2; dy++) {
-            if (count >= max_tiles)
+    // Outward from the centre, one square ring at a time. The decode budget in
+    // map_draw_tiles, the heat budget in tracks_draw_heat_tiles and the
+    // download queue all take this list in order, so what fills in first is
+    // what is under the middle of the window rather than what is down its left
+    // edge. It is also what makes the max_tiles cutoff drop the outermost
+    // tiles, which is what MAX_VISIBLE_TILES has always claimed it does.
+    if (!emit_visible_tile(appl, &grid, 0, 0, out, &count, max_tiles))
+        return count;
+
+    const int max_ring = grid.half_x > grid.half_y ? grid.half_x : grid.half_y;
+    for (int ring = 1; ring <= max_ring; ring++) {
+        // Top and bottom rows of the ring, corners included...
+        for (int dx = -ring; dx <= ring; dx++)
+            if (!emit_visible_tile(appl, &grid, dx, -ring, out, &count, max_tiles) ||
+                !emit_visible_tile(appl, &grid, dx, ring, out, &count, max_tiles))
                 return count;
 
-            int tile_x = center_tile_x + dx;
-            int tile_y = center_tile_y + dy;
-
-            // Off the edge of the world at this zoom.
-            if (tile_x < 0 || tile_y < 0 || tile_x >= tiles_at_zoom || tile_y >= tiles_at_zoom)
-                continue;
-
-            // Both are linear in the tile index, so after the transform two
-            // neighbours still share an edge exactly and the grid has no
-            // seams to show.
-            float unscaled_x = (float)((tile_x - center_tile_x) * TILE_SIZE - tile_offset_x +
-                                       appl->window_width / 2);
-            float unscaled_y = (float)((tile_y - center_tile_y) * TILE_SIZE - tile_offset_y +
-                                       appl->window_height / 2);
-            SDL_FRect placed = map_transform_rect(appl, unscaled_x, unscaled_y,
-                                                  (float)TILE_SIZE, (float)TILE_SIZE);
-
-            out[count++] = (VisibleTile){
-                .tile = {tile_x, tile_y, appl->zoom},
-                .screen_x = placed.x,
-                .screen_y = placed.y,
-                .size = placed.w};
-        }
+        // ...then the sides, whose corners the rows already took.
+        for (int dy = -ring + 1; dy <= ring - 1; dy++)
+            if (!emit_visible_tile(appl, &grid, -ring, dy, out, &count, max_tiles) ||
+                !emit_visible_tile(appl, &grid, ring, dy, out, &count, max_tiles))
+                return count;
     }
     return count;
 }
