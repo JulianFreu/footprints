@@ -114,14 +114,26 @@ Clay_Color ui_fade(Clay_Color color) {
     return color;
 }
 
-void ui_draw_text(const char *string, uint16_t font_size, Clay_Color color, Clay_TextAlignment align) {
+static void draw_text(const char *string, uint16_t font_size, Clay_Color color,
+                      Clay_TextAlignment align, Clay_TextElementConfigWrapMode wrap) {
     Clay_String clay_string = {
         .chars = string,
         .length = strlen(string),
         .isStaticallyAllocated = false};
     // Every string in the UI comes through here, so text needs no fading of its
     // own at the call sites.
-    CLAY_TEXT(clay_string, CLAY_TEXT_CONFIG({.fontSize = font_size, .textColor = ui_fade(color), .textAlignment = align}));
+    CLAY_TEXT(clay_string, CLAY_TEXT_CONFIG({.fontSize = font_size, .textColor = ui_fade(color), .textAlignment = align, .wrapMode = wrap}));
+}
+
+void ui_draw_text(const char *string, uint16_t font_size, Clay_Color color, Clay_TextAlignment align) {
+    draw_text(string, font_size, color, align, CLAY_TEXT_WRAP_WORDS);
+}
+
+// The same, for a label deliberately drawn in a box narrower than itself: the
+// statistics x axis puts one under every nth bar, and the room it needs is the
+// empty cells either side of it rather than a second line it has no height for.
+void ui_draw_text_unwrapped(const char *string, uint16_t font_size, Clay_Color color, Clay_TextAlignment align) {
+    draw_text(string, font_size, color, align, CLAY_TEXT_WRAP_NONE);
 }
 
 static void clay_handle_error(Clay_ErrorData error) {
@@ -153,6 +165,7 @@ void clay_init(struct application *appl) {
 
 void clay_free_memory(void) {
     ui_runlist_free_scratch();
+    ui_stats_free_scratch();
     free(clay_memory.memory);
     clay_memory.memory = NULL;
     clay_memory.capacity = 0;
@@ -214,6 +227,10 @@ static const Clay_LayoutConfig MenuButtonLayout = {
 // sliding in over the first would only hide it. Pressing the button of the
 // panel already showing shuts it and leaves nothing open.
 void ui_toggle_panel(MenuPanel panel) {
+    // The statistics panel may have been left stale while it was shut, so
+    // whatever is about to slide in gets a fresh look at the tracks.
+    ui_stats_invalidate();
+
     bool opening = ui.open_panel != panel;
 
     for (int i = 0; i < PANEL_COUNT; i++)
@@ -404,9 +421,16 @@ void ui_update(struct application *appl, GpxCollection *collection) {
 
     // Clay's own scroll containers are not used: it forgets a container's
     // position after two updates without a layout, and this application lays out
-    // only on the frames it draws. The run list keeps its own offset instead.
-    if (appl->wheel_y)
-        ui_runlist_scroll_by_wheel(appl->mouse_x, appl->mouse_y, appl->wheel_y);
+    // only on the frames it draws. The panels keep their own offsets instead.
+    //
+    // Each hit-tests its own box and declines the wheel if the pointer is
+    // somewhere else, so this is an ordered offer rather than a decision about
+    // which panel is open -- which matters on the frames where one is still
+    // sliding out from under another.
+    if (appl->wheel_y) {
+        if (!ui_stats_pan_by_wheel(appl->mouse_x, appl->mouse_y, appl->wheel_y))
+            ui_runlist_scroll_by_wheel(appl->mouse_x, appl->mouse_y, appl->wheel_y);
+    }
 
     // The sidebar follows the selection rather than a button, so what it should
     // be doing is decided here rather than by a click handler. Re-asking for
@@ -436,6 +460,7 @@ void ui_update(struct application *appl, GpxCollection *collection) {
     for (int panel = 0; panel < PANEL_COUNT; panel++)
         moved |= anim_tick(&ui.panels[panel], delta_time);
     moved |= ui_runlist_scroll_tick(delta_time);
+    moved |= ui_stats_update(appl, collection);
     if (moved)
         app_request_redraw(appl);
 }
@@ -512,7 +537,7 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
         ui_draw_run_list(appl, collection);
 
         ui_fade_set(anim_value(&ui.panels[PANEL_STATISTICS]));
-        ui_draw_simple_panel(appl, PANEL_STATISTICS, "Statistics");
+        ui_draw_statistics_panel(appl);
 
         ui_fade_set(anim_value(&ui.panels[PANEL_RECORDS]));
         ui_draw_simple_panel(appl, PANEL_RECORDS, "Records");

@@ -353,8 +353,12 @@ void ui_draw_filter_panel(struct application *appl, GpxCollection *collection) {
             }
             // Re-filter only when a type toggle actually changed.
             if (memcmp(shown_before, collection->filters.show_activity,
-                       sizeof(shown_before)) != 0)
+                       sizeof(shown_before)) != 0) {
                 apply_filter_values(collection);
+                // Raising a flag is all this does from inside a layout pass;
+                // the statistics are rebuilt by the next update.
+                ui_stats_invalidate();
+            }
         }
     }
 }
@@ -393,4 +397,5 @@ void ui_text_input_finish(GpxCollection *collection) {
     LOG_DEBUG("%s\n", ui.text_input_buffer);
     save_filter_values(&collection->filters);
     apply_filter_values(collection);
+    ui_stats_invalidate();
 }

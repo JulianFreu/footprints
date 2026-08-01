@@ -133,6 +133,13 @@
 // half-life. The one number the scroll feel is retuned by.
 #define RUN_LIST_SCROLL_TAU 0.06f
 
+// Periods the statistics plot pans for one mouse-wheel detent, and how long it
+// takes to get there, as a half-life. The two numbers the pan feel is tuned by.
+// Panning is measured in periods rather than pixels, so a detent moves the same
+// amount of calendar whatever the bars happen to be wide.
+#define STATS_PAN_PERIODS_PER_STEP 3
+#define STATS_PAN_TAU 0.06f
+
 // --- Zooming ---
 // How long the picture takes to catch up with a zoom level the model has
 // already snapped to. The one number the feel is retuned by.

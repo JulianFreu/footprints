@@ -9,6 +9,7 @@ Visualize all your runs, hikes, and rides in one place, explore your most freque
 - View **all your GPX tracks** together on one interactive map
 - **Filter** activities by distance, pace, duration, elevation gain, and more
 - **Click any track** for detailed stats and insights
+- **Chart your training** by day, week, month or year — up to two of total distance, longest run, total time and total ascent at once, and scroll the plot back through the years
 - Convert **Garmin `.fit` and `.tcx` files** to `.gpx` with the included Python tool
 
 ## Installation
@@ -135,13 +136,18 @@ otherwise go unnoticed.
 
 Each file under `tests/` `#include`s the module it covers rather than linking
 it, so a module's `static` helpers are reachable without widening its
-interface. Each `src/*.c` must therefore be included by exactly one test file.
+interface. A module is therefore included by at most one test file. The suite
+links no SDL, which is also the line the coverage follows: the modules that are
+only arithmetic are tested, and the ones that draw are not — so a question
+worth testing belongs on the pure side of the split (`stats.c` rather than
+`ui_stats.c`, `filters.c` rather than `ui_filters.c`).
 
 Covered: timestamp parsing, the tile queue, the filter table and the predicate
 it drives, the parser's geometry and elevation maths, the display formatting,
-the k-d tree radius search (against brute force), the spatial index (against
-the full scan it replaced), the background job's concurrency contract, and the
-animation primitive's easing and timing.
+the calendar bucketing and the metrics reduced over it, the k-d tree radius
+search (against brute force), the spatial index (against the full scan it
+replaced), the background job's concurrency contract, and the animation
+primitive's easing and timing.
 
 For threading changes, build the suite with ThreadSanitizer instead:
 
@@ -174,10 +180,12 @@ Keep the description a few kebab-case words, not a full sentence.
 | `map.c` | The world-to-screen projection, tile URLs, the download thread, the tile texture cache, map background |
 | `fifo.c` | The bounded queue between the main loop and the download thread |
 | `time_util.c` | The single place timestamps are parsed — everything is UTC |
+| `stats.c` | Bucketing tracks into days, weeks, months and years, and the metrics reduced over them |
 | `ui.c` | Clay setup, icons, the left menu bar, sidebar, and the composition of the panels |
 | `ui_filters.c` | The filter panel and the text input that feeds it |
 | `ui_runlist.c` | The run list: sortable header, rows, virtualised scrolling |
-| `ui_panels.c` | The statistics, records and settings panels |
+| `ui_stats.c` | The statistics panel: the bar plot, its axes, its buttons, and the pan |
+| `ui_panels.c` | The records and settings panels |
 | `ui_internal.h` | Layout vocabulary shared by `ui*.c`; not part of the UI's interface |
 | `progress.h` | How a long operation reports progress and is asked to stop |
 | `clay_sdl.c` | The one translation unit carrying Clay and its vendored SDL renderer |
@@ -236,7 +244,6 @@ parsing either.
 - Add watermark of tile provider to bottom right
 - Add screenshots to README
 - Export the current heatmap view as a PNG for sharing
-- Yearly/monthly/weekly summary view (total distance, time, elevation per period — a "wrapped"-style recap)
 - Personal records (longest run, fastest pace, most elevation gain)
 - Interactive elevation profile on click instead of the current static image
 - A settings file for defaults (start location/zoom, tile cache path) instead of hardcoded values in `config.h`

@@ -12,6 +12,7 @@ int main(void) {
     run_heat_tests();
     run_point_index_tests();
     run_track_format_tests();
+    run_stats_tests();
     run_background_tests();
     run_anim_tests();
     run_zoom_tests();

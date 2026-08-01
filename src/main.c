@@ -128,6 +128,9 @@ int main(int argc, char *argv[]) {
         // rather than in the middle of one.
         if (background_collect(&appl.background)) {
             apply_filter_values(&collection);
+            // The whole tracks array may have moved, so anything holding
+            // numbers derived from it is stale.
+            ui_stats_invalidate();
             tracks_invalidate_cache(&collection);
             LOG_DEBUG("Maximum heat is %d\n", collection.max_heat);
             app_request_redraw(&appl);

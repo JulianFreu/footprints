@@ -28,6 +28,11 @@ bool ui_text_input_active(void);
 void ui_text_input_digit(GpxCollection *collection, char digit);
 void ui_text_input_finish(GpxCollection *collection);
 
+// Marks the statistics series stale. The panel rebuilds it on the next update
+// rather than in the middle of whatever changed the tracks, which may well be a
+// layout pass or a worker's results landing.
+void ui_stats_invalidate(void);
+
 void ui_load_icons(struct application *appl);
 void ui_free_icons(struct application *appl);
 

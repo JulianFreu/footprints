@@ -4,11 +4,22 @@
 
 // timegm() is the POSIX counterpart to mktime() that reads the struct tm as
 // UTC instead of local time. Windows spells it _mkgmtime.
-static time_t tm_to_utc(struct tm *tm) {
+time_t utc_from_tm(struct tm *tm) {
 #if defined(_WIN32) || defined(_WIN64)
     return _mkgmtime(tm);
 #else
     return timegm(tm);
+#endif
+}
+
+bool utc_to_tm(time_t utc, struct tm *out) {
+    if (utc == (time_t)-1)
+        return false;
+
+#if defined(_WIN32) || defined(_WIN64)
+    return gmtime_s(out, &utc) == 0;
+#else
+    return gmtime_r(&utc, out) != NULL;
 #endif
 }
 
@@ -34,7 +45,7 @@ time_t iso8601_to_utc(const char *timestr) {
     struct tm tm = {0};
     if (!parse_iso8601_fields(timestr, &tm))
         return (time_t)-1;
-    return tm_to_utc(&tm);
+    return utc_from_tm(&tm);
 }
 
 time_t european_date_to_utc(const char *date) {
@@ -48,23 +59,15 @@ time_t european_date_to_utc(const char *date) {
     tm.tm_mon = month - 1;
     tm.tm_mday = day;
     tm.tm_isdst = 0;
-    return tm_to_utc(&tm);
+    return utc_from_tm(&tm);
 }
 
 bool utc_to_display_strings(time_t utc,
                             char *out_date, size_t date_size,
                             char *out_time, size_t time_size) {
-    if (utc == (time_t)-1)
-        return false;
-
     struct tm tm;
-#if defined(_WIN32) || defined(_WIN64)
-    if (gmtime_s(&tm, &utc) != 0)
+    if (!utc_to_tm(utc, &tm))
         return false;
-#else
-    if (!gmtime_r(&utc, &tm))
-        return false;
-#endif
 
     strftime(out_date, date_size, "%d.%m.%Y", &tm);
     strftime(out_time, time_size, "%H:%M", &tm);

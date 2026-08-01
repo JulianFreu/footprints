@@ -55,6 +55,33 @@
 #define RUN_LIST_WIDTH \
     (RUN_LIST_COLUMN_COUNT * RUN_LIST_COLUMN_WIDTH + 2 * GAPS + RUN_LIST_GUTTER_WIDTH)
 
+// The statistics panel stretches to the window instead of taking the fixed
+// PANEL_WIDTH the empty panels do: a bar chart is worth as much width as there
+// is, and how far back it reaches is exactly how much width it was given.
+#define STATS_PANEL_WIDTH(window_width) \
+    ((window_width) - PANEL_ORIGIN_X - SCREEN_BORDER_PADDING)
+#define STATS_PANEL_MIN_WIDTH 320
+// One value-axis column. There are two of them when two metrics are shown.
+#define STATS_AXIS_WIDTH 56
+#define STATS_AXIS_TICKS 5
+#define STATS_XLABEL_HEIGHT 40
+#define STATS_BUTTON_ROW_HEIGHT (ELEMENTS_HEIGHT + 2 * GAPS)
+// Between one period and the next, and between the two bars within a period.
+#define STATS_BAR_GAP 6
+#define STATS_BAR_PAIR_GAP 2
+// The narrowest a bar is drawn -- and so, with the plot's width, how many
+// periods fit -- and the widest, past which a plot with four bars in it would
+// be four slabs.
+#define STATS_BAR_MIN_WIDTH 15
+#define STATS_BAR_MAX_WIDTH 30
+// Below this much room per period the x labels would run into each other, so
+// only every nth is drawn.
+#define STATS_XLABEL_MIN_WIDTH 35
+// Wide enough for the longest thing either row says: "Monthly" and "Total
+// ascended meters".
+#define STATS_TIMESCALE_BUTTON_WIDTH 110
+#define STATS_METRIC_BUTTON_WIDTH 180
+
 // --- Text ---
 #define FILTER_TEXT_FONT_SIZE 12
 #define LABEL_FONT_SIZE 16
@@ -76,6 +103,10 @@ const char *ui_frame_printf(const char *fmt, ...);
 // Emits a Clay text element for a null-terminated string.
 void ui_draw_text(const char *string, uint16_t font_size, Clay_Color color,
                   Clay_TextAlignment align);
+// The same, for a label drawn in a box narrower than itself: it spills into
+// whatever is beside it rather than wrapping onto a line there is no room for.
+void ui_draw_text_unwrapped(const char *string, uint16_t font_size,
+                            Clay_Color color, Clay_TextAlignment align);
 
 // Slides a panel to open (1) or shut (0), and the reverse of whatever it is
 // doing now.
@@ -96,6 +127,7 @@ Clay_Color ui_fade(Clay_Color color);
 // The panels, each drawn by its own translation unit.
 void ui_draw_filter_panel(struct application *appl, GpxCollection *collection);
 void ui_draw_run_list(struct application *appl, GpxCollection *collection);
+void ui_draw_statistics_panel(struct application *appl);
 // An empty panel with a titled header: what statistics, records and settings
 // are until they have something to show.
 void ui_draw_simple_panel(struct application *appl, MenuPanel panel,
@@ -112,5 +144,16 @@ bool ui_runlist_scroll_by_wheel(int mouse_x, int mouse_y, int detents);
 bool ui_runlist_scroll_tick(float dt);
 // The row drawn with a selection border, or -1.
 int ui_runlist_selected_row(void);
+
+// Consumes the statistics panel's pending button presses, rebuilds its series
+// if anything has invalidated it, and eases the pan. Returns whether anything
+// moved. Aggregating here rather than in the layout is what keeps the layout a
+// read of the model.
+bool ui_stats_update(struct application *appl, GpxCollection *collection);
+// Pans the plot by whole periods, if the pointer is over it. Returns whether
+// the wheel was the plot's to take.
+bool ui_stats_pan_by_wheel(int mouse_x, int mouse_y, int detents);
+// Releases the bucket array the series is built into.
+void ui_stats_free_scratch(void);
 
 #endif

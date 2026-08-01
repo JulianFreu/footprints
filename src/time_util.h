@@ -23,4 +23,17 @@ bool utc_to_display_strings(time_t utc,
                             char *out_date, size_t date_size,
                             char *out_time, size_t time_size);
 
+// The two halves of reading a timestamp as UTC rather than as local time, which
+// is the one thing the C library spells differently on Windows. Spelled here
+// once so that whatever needs to take a date apart does not have to.
+
+// Normalises `tm` in place and returns the instant it names. Out-of-range
+// fields are carried, so subtracting from tm_mday or tm_mon is how a step
+// backwards through the calendar is written.
+time_t utc_from_tm(struct tm *tm);
+
+// Fills `out` with the UTC calendar fields of `utc`, tm_wday and tm_yday
+// included. Returns false for (time_t)-1.
+bool utc_to_tm(time_t utc, struct tm *out);
+
 #endif
