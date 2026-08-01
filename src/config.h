@@ -120,8 +120,10 @@
 // --- UI ---
 #define INPUT_BUFFER_SIZE 16
 
-// How long a side panel takes to slide all the way open or shut.
-#define PANEL_ANIMATION_SECONDS 0.33f
+// How long a side panel takes to slide all the way open or shut. The same
+// stretch of time is what it has to fade in over, so a panel is invisible when
+// it starts moving and fully opaque the moment it lands.
+#define PANEL_ANIMATION_SECONDS 0.20f
 
 // Rows the run list moves for one mouse-wheel detent. Scrolling in whole rows
 // from a row-aligned start is what keeps the rows on their grid.

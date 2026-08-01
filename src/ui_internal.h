@@ -86,6 +86,13 @@ void ui_panel_toggle(Anim *panel);
 // PANEL_ORIGIN_X when open, and proportionally between the two while it slides.
 float ui_panel_offset_x(MenuPanel panel, int width);
 
+// The opacity everything drawn from here on is scaled by, and the scaling
+// itself. Set it to a panel's anim value before drawing the panel and back to
+// 1 afterwards; every colour a panel draws with goes through ui_fade, which is
+// what makes it fade in as it slides. Text is already covered by ui_draw_text.
+void ui_fade_set(float alpha);
+Clay_Color ui_fade(Clay_Color color);
+
 // The panels, each drawn by its own translation unit.
 void ui_draw_filter_panel(struct application *appl, GpxCollection *collection);
 void ui_draw_run_list(struct application *appl, GpxCollection *collection);

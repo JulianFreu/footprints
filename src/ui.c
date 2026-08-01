@@ -98,12 +98,30 @@ float ui_panel_offset_x(MenuPanel panel, int width) {
     return -width + anim_value(&ui.panels[panel]) * (PANEL_ORIGIN_X + width);
 }
 
+// How opaque what is being drawn right now should be. Clay has no notion of
+// opacity -- not per element, not inherited, not global -- so a panel fading in
+// is every colour inside it scaled on the way past. The panel being drawn sets
+// this from its own anim and puts it back afterwards, which is what lets a
+// whole subtree fade without anything inside it knowing that it is fading.
+static float panel_fade = 1.0f;
+
+void ui_fade_set(float alpha) {
+    panel_fade = alpha;
+}
+
+Clay_Color ui_fade(Clay_Color color) {
+    color.a *= panel_fade;
+    return color;
+}
+
 void ui_draw_text(const char *string, uint16_t font_size, Clay_Color color, Clay_TextAlignment align) {
     Clay_String clay_string = {
         .chars = string,
         .length = strlen(string),
         .isStaticallyAllocated = false};
-    CLAY_TEXT(clay_string, CLAY_TEXT_CONFIG({.fontSize = font_size, .textColor = color, .textAlignment = align}));
+    // Every string in the UI comes through here, so text needs no fading of its
+    // own at the call sites.
+    CLAY_TEXT(clay_string, CLAY_TEXT_CONFIG({.fontSize = font_size, .textColor = ui_fade(color), .textAlignment = align}));
 }
 
 static void clay_handle_error(Clay_ErrorData error) {
@@ -231,7 +249,7 @@ static void draw_menu_button(SDL_Surface *icon, const char *label, MenuPanel pan
     CLAY(CLAY_IDI_LOCAL("MenuButton", panel),
          {
              .layout = MenuButtonLayout,
-             .backgroundColor = Clay_Hovered() ? big_button_color : color,
+             .backgroundColor = ui_fade(Clay_Hovered() ? big_button_color : color),
              .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS),
          }) {
         Clay_OnHover(clicked_menu_button, panel);
@@ -254,6 +272,10 @@ static void draw_menu_bar(struct application *appl) {
          {.floating = {
               .attachTo = CLAY_ATTACH_TO_ROOT,
               .offset = {.x = SCREEN_BORDER_PADDING, .y = SCREEN_BORDER_PADDING},
+              // Clay sorts floating elements by z order before drawing them,
+              // and everything else leaves this at 0. The buttons are what a
+              // panel slides out from under, so they belong above it.
+              .zIndex = 1,
           },
           .layout = {.childGap = GAPS, .sizing = {.width = CLAY_SIZING_FIXED(MENU_BAR_WIDTH), .height = CLAY_SIZING_FIT()}, .layoutDirection = CLAY_TOP_TO_BOTTOM},
           .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS)}) {
@@ -330,8 +352,8 @@ static void draw_progress_panel(struct application *appl) {
               .offset = {.x = (float)appl->window_width / 2 - PROGRESS_PANEL_WIDTH / 2,
                          .y = (float)appl->window_height / 2 - PROGRESS_PANEL_HEIGHT / 2}},
           .layout = {.padding = CLAY_PADDING_ALL(2 * GAPS), .childGap = GAPS, .sizing = {.width = CLAY_SIZING_FIXED(PROGRESS_PANEL_WIDTH), .height = CLAY_SIZING_FIXED(PROGRESS_PANEL_HEIGHT)}, .childAlignment = {.x = CLAY_ALIGN_X_CENTER}, .layoutDirection = CLAY_TOP_TO_BOTTOM},
-          .backgroundColor = bg,
-          .border = {.color = dark_aqua, .width = CLAY_BORDER_OUTSIDE(2)},
+          .backgroundColor = ui_fade(bg),
+          .border = {.color = ui_fade(dark_aqua), .width = CLAY_BORDER_OUTSIDE(2)},
           .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS)}) {
         // The panel covers the map, so clicks on it must not fall through to
         // the map underneath.
@@ -344,12 +366,12 @@ static void draw_progress_panel(struct application *appl) {
         CLAY(CLAY_ID("ProgressTrough"),
              {.layout = {.sizing = {.width = CLAY_SIZING_GROW(0),
                                     .height = CLAY_SIZING_FIXED(PROGRESS_BAR_HEIGHT)}},
-              .backgroundColor = bg4,
+              .backgroundColor = ui_fade(bg4),
               .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS)}) {
             CLAY(CLAY_ID("ProgressFill"),
                  {.layout = {.sizing = {.width = CLAY_SIZING_PERCENT(fraction),
                                         .height = CLAY_SIZING_GROW(0)}},
-                  .backgroundColor = dark_aqua,
+                  .backgroundColor = ui_fade(dark_aqua),
                   .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS)}) {
             }
         }
@@ -392,6 +414,21 @@ void ui_update(struct application *appl, GpxCollection *collection) {
     // written as a per-frame condition.
     ui_panel_move(&ui.right_sidebar, appl->selected_track > -1 ? 1.0f : 0.0f);
 
+    // Icons fade with the panel they sit in, and an icon's alpha lives on its
+    // surface: the renderer builds a texture from the surface every frame, and
+    // SDL_CreateTextureFromSurface carries the surface's alpha and colour mod
+    // over to it. Set here rather than in the layout, which only reads.
+    Uint8 sidebar_alpha = (Uint8)(anim_value(&ui.right_sidebar) * 255.0f);
+    SDL_Surface *sidebar_icons[] = {
+        appl->icons.date, appl->icons.clock, appl->icons.duration,
+        appl->icons.pace, appl->icons.distance, appl->icons.elev_up,
+        appl->icons.elev_down, appl->icons.peak, appl->icons.elev_profile};
+
+    for (size_t i = 0; i < sizeof(sidebar_icons) / sizeof(sidebar_icons[0]); i++) {
+        if (sidebar_icons[i])
+            SDL_SetSurfaceAlphaMod(sidebar_icons[i], sidebar_alpha);
+    }
+
     // Each panel that moved is a reason to draw another frame. This is the
     // whole of what the frame loop needs to know about the UI's animations.
     bool moved = anim_tick(&ui.filters, delta_time);
@@ -419,6 +456,10 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
 
     draw_menu_bar(appl);
 
+    // Every panel below fades in as it slides, by scaling the colours it draws
+    // with. The fade is put back to 1 after each one so that whatever is drawn
+    // next starts from opaque.
+    ui_fade_set(anim_value(&ui.right_sidebar));
     CLAY(CLAY_ID("Right sidebar"),
          {.floating = {
               .attachTo = CLAY_ATTACH_TO_ROOT,
@@ -429,8 +470,8 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
               },
           },
           .layout = {.padding = CLAY_PADDING_ALL(GAPS), .childGap = GAPS, .sizing = {.width = CLAY_SIZING_FIXED(SIDEBAR_WIDTH), .height = appl->window_height - 2 * SCREEN_BORDER_PADDING}, .childAlignment = {.x = CLAY_ALIGN_X_CENTER}, .layoutDirection = CLAY_TOP_TO_BOTTOM},
-          .backgroundColor = bg,
-          .border = {.color = dark_aqua, .width = {.betweenChildren = 2}},
+          .backgroundColor = ui_fade(bg),
+          .border = {.color = ui_fade(dark_aqua), .width = {.betweenChildren = 2}},
           .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS)}) {
         if (Clay_Hovered())
             appl->mouse_over_ui = true;
@@ -459,16 +500,34 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
         }
     }
 
+    ui_fade_set(1.0f);
+
     if (background_busy(&appl->background)) {
-        draw_progress_panel(appl);
+        draw_progress_panel(appl); // does not slide, so it does not fade
     } else {
+        ui_fade_set(anim_value(&ui.filters));
         ui_draw_filter_panel(appl, collection);
+
+        ui_fade_set(anim_value(&ui.panels[PANEL_RUN_LIST]));
         ui_draw_run_list(appl, collection);
+
+        ui_fade_set(anim_value(&ui.panels[PANEL_STATISTICS]));
         ui_draw_simple_panel(appl, PANEL_STATISTICS, "Statistics");
+
+        ui_fade_set(anim_value(&ui.panels[PANEL_RECORDS]));
         ui_draw_simple_panel(appl, PANEL_RECORDS, "Records");
+
+        ui_fade_set(anim_value(&ui.panels[PANEL_SETTINGS]));
         ui_draw_simple_panel(appl, PANEL_SETTINGS, "Settings");
+
+        ui_fade_set(1.0f);
     }
 
     Clay_RenderCommandArray render_commands = Clay_EndLayout();
+
+    // Alpha is discarded unless the renderer is blending: SDL defaults to
+    // SDL_BLENDMODE_NONE, and the vendored Clay renderer never sets a blend
+    // mode of its own. Set from out here so that file stays untouched.
+    SDL_SetRenderDrawBlendMode(appl->renderer, SDL_BLENDMODE_BLEND);
     clay_sdl_render(appl->renderer, render_commands, appl->fonts);
 }

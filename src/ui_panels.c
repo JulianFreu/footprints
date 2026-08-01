@@ -14,7 +14,7 @@ static void draw_simple_panel_header(const char *title) {
                      .sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(HEADER_HEIGHT)},
                      .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
                      .layoutDirection = CLAY_LEFT_TO_RIGHT},
-          .backgroundColor = accent_color,
+          .backgroundColor = ui_fade(accent_color),
           .cornerRadius = {
               .topLeft = CORNER_RADIUS,
               .topRight = CORNER_RADIUS,
@@ -39,7 +39,7 @@ void ui_draw_simple_panel(struct application *appl, MenuPanel panel,
                          .y = PANEL_ORIGIN_Y},
           },
           .layout = {.sizing = {.width = CLAY_SIZING_FIXED(PANEL_WIDTH), .height = CLAY_SIZING_FIXED(PANEL_HEIGHT(appl->window_height))}, .layoutDirection = CLAY_TOP_TO_BOTTOM},
-          .backgroundColor = bg,
+          .backgroundColor = ui_fade(bg),
           .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS)}) {
         if (Clay_Hovered())
             appl->mouse_over_ui = true;

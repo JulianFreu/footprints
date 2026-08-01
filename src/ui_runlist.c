@@ -117,7 +117,7 @@ static void draw_run_list_header_attribute(GpxCollection *collection, int width,
     CLAY(CLAY_IDI_LOCAL("RunListHeaderAttribute", sort_type), {.layout = {.sizing = {.width = width, .height = CLAY_SIZING_GROW(0)},
                                                                           .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
                                                                           .layoutDirection = CLAY_TOP_TO_BOTTOM},
-                                                               .backgroundColor = Clay_Hovered() ? accent_color_hl : accent_color,
+                                                               .backgroundColor = ui_fade(Clay_Hovered() ? accent_color_hl : accent_color),
                                                                .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS)}) {
         if (Clay_Hovered()) {
             collection->to_be_sorted_by = sort_type;
@@ -159,7 +159,7 @@ static void draw_run_list_bottom(const char *total_visible_tracks, GpxCollection
                                         .childGap = GAPS,
                                         .layoutDirection = CLAY_LEFT_TO_RIGHT,
                                         .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}},
-                                    .backgroundColor = bg6,
+                                    .backgroundColor = ui_fade(bg6),
                                     .cornerRadius = {.bottomLeft = CORNER_RADIUS, .bottomRight = CORNER_RADIUS}}) {
         CLAY(CLAY_ID("RunListBottomSPACE"), {.layout = {
                                                  .sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW()}}}) {
@@ -169,7 +169,7 @@ static void draw_run_list_bottom(const char *total_visible_tracks, GpxCollection
                                                   .sizing = {.width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT()},
                                                   .layoutDirection = CLAY_LEFT_TO_RIGHT,
                                                   .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}},
-                                              .backgroundColor = Clay_Hovered() ? bg_l : bg_d,
+                                              .backgroundColor = ui_fade(Clay_Hovered() ? bg_l : bg_d),
                                               .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS)}) {
             Clay_OnHover(clicked_toggle_filter_view, 0);
             ui_draw_text("Toggle Filter View", 16, dark_aqua, CLAY_TEXT_ALIGN_CENTER);
@@ -181,7 +181,7 @@ static void draw_run_list_header(GpxCollection *collection) {
     CLAY(CLAY_ID("RunListHeader"), {.layout = {.padding = CLAY_PADDING_ALL(GAPS),
                                                .sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(HEADER_HEIGHT)},
                                                .layoutDirection = CLAY_LEFT_TO_RIGHT},
-                                    .backgroundColor = accent_color,
+                                    .backgroundColor = ui_fade(accent_color),
                                     .cornerRadius = {
                                         .topLeft = CORNER_RADIUS,
                                         .topRight = CORNER_RADIUS,
@@ -209,9 +209,9 @@ static void draw_run_entry_attribute(int width, const char *str, int id) {
 static void draw_run_list_entry(GpxTrack *track) {
     CLAY(CLAY_IDI_LOCAL("RunListEntry", track->track_id),
          {
-             .border = {.color = border, .width = (clicked_track_id == track->track_id) ? (Clay_BorderWidth)CLAY_BORDER_OUTSIDE(2) : (Clay_BorderWidth)CLAY_BORDER_OUTSIDE(0)},
+             .border = {.color = ui_fade(border), .width = (clicked_track_id == track->track_id) ? (Clay_BorderWidth)CLAY_BORDER_OUTSIDE(2) : (Clay_BorderWidth)CLAY_BORDER_OUTSIDE(0)},
              .layout = {.sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(LIST_ENTRY_HEIGHT)}, .layoutDirection = CLAY_LEFT_TO_RIGHT},
-             .backgroundColor = Clay_Hovered() ? bg_l : bg_d,
+             .backgroundColor = ui_fade(Clay_Hovered() ? bg_l : bg_d),
              .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS),
          }) {
         Clay_OnHover(clicked_run_entry, track->track_id);
@@ -348,7 +348,7 @@ static void draw_run_list_scrollbar(ScrollMetrics metrics) {
             }
             CLAY(CLAY_ID("RunListScrollbarThumb"),
                  {.layout = {.sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(metrics.thumb_h)}},
-                  .backgroundColor = grey0,
+                  .backgroundColor = ui_fade(grey0),
                   .cornerRadius = CLAY_CORNER_RADIUS(RUN_LIST_SCROLLBAR_WIDTH / 2)}) {
             }
         }
@@ -365,7 +365,7 @@ static void draw_run_list_body(GpxCollection *collection, int height) {
     CLAY(CLAY_ID("RunListBody"),
          {.layout = {.sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(height)},
                      .layoutDirection = CLAY_LEFT_TO_RIGHT},
-          .backgroundColor = bg}) {
+          .backgroundColor = ui_fade(bg)}) {
         draw_run_list_scroll_container(collection, height, visible_count);
         draw_run_list_scrollbar(metrics);
     }

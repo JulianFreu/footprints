@@ -158,11 +158,11 @@ static void draw_input_field(FilterAttribute attribute, FilterBoundEnd end,
 
     CLAY(CLAY_IDI_LOCAL("InputFieldFilter", field_id),
          {
-             .border = {.color = border, .width = editing ? (Clay_BorderWidth)CLAY_BORDER_OUTSIDE(3) : (Clay_BorderWidth)CLAY_BORDER_OUTSIDE(0)},
+             .border = {.color = ui_fade(border), .width = editing ? (Clay_BorderWidth)CLAY_BORDER_OUTSIDE(3) : (Clay_BorderWidth)CLAY_BORDER_OUTSIDE(0)},
              .layout = {.sizing = {.width = CLAY_SIZING_FIXED(FILTERS_MINMAX_WIDTH), .height = CLAY_SIZING_FIXED(LIST_ENTRY_HEIGHT)},
                         .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
                         .layoutDirection = CLAY_LEFT_TO_RIGHT},
-             .backgroundColor = Clay_Hovered() ? blue : dark_blue,
+             .backgroundColor = ui_fade(Clay_Hovered() ? blue : dark_blue),
              .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS),
          }) {
         Clay_OnHover(clicked_filter_field, field_id);
@@ -176,13 +176,13 @@ static void draw_filter_header() {
     CLAY(CLAY_ID_LOCAL("Filter"),
          {
              .layout = {.padding = CLAY_PADDING_ALL(GAPS), .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(HEADER_HEIGHT)}, .layoutDirection = CLAY_LEFT_TO_RIGHT, .childGap = GAPS},
-             .backgroundColor = bg1,
+             .backgroundColor = ui_fade(bg1),
              .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS),
          }) {
         CLAY(CLAY_ID_LOCAL("FilterMin"),
              {
                  .layout = {.childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}, .sizing = {.width = CLAY_SIZING_FIXED(FILTERS_MINMAX_WIDTH), .height = CLAY_SIZING_GROW(0)}},
-                 .backgroundColor = bg1,
+                 .backgroundColor = ui_fade(bg1),
                  .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS),
              }) {
             ui_draw_text("Min", HEADING_FONT_SIZE, fg1, CLAY_TEXT_ALIGN_CENTER);
@@ -190,7 +190,7 @@ static void draw_filter_header() {
         CLAY(CLAY_ID_LOCAL("FilterType"),
              {
                  .layout = {.childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}, .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)}},
-                 .backgroundColor = bg1,
+                 .backgroundColor = ui_fade(bg1),
                  .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS),
              }) {
             ui_draw_text("Type", HEADING_FONT_SIZE, fg1, CLAY_TEXT_ALIGN_CENTER);
@@ -198,7 +198,7 @@ static void draw_filter_header() {
         CLAY(CLAY_ID_LOCAL("FilterMax"),
              {
                  .layout = {.childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}, .sizing = {.width = CLAY_SIZING_FIXED(FILTERS_MINMAX_WIDTH), .height = CLAY_SIZING_GROW(0)}},
-                 .backgroundColor = bg1,
+                 .backgroundColor = ui_fade(bg1),
                  .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS),
              }) {
             ui_draw_text("Max", HEADING_FONT_SIZE, fg1, CLAY_TEXT_ALIGN_CENTER);
@@ -220,7 +220,7 @@ static void draw_type_filter(ActivityType type, bool *show_type) {
     CLAY(CLAY_IDI_LOCAL("TypesFilter", type),
          {
              .layout = {.sizing = {.width = CLAY_SIZING_FIXED(FILTERS_WIDTH / 2), .height = CLAY_SIZING_FIXED(LIST_ENTRY_HEIGHT)}, .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}},
-             .backgroundColor = Clay_Hovered() ? background_color_hl : background_color,
+             .backgroundColor = ui_fade(Clay_Hovered() ? background_color_hl : background_color),
              .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS),
          }) {
         Clay_OnHover(clicked_type_filter, (intptr_t)show_type);
@@ -243,14 +243,14 @@ static void draw_filter(FilterAttribute attribute, FilterSettings *filters) {
     CLAY(CLAY_IDI_LOCAL("Filter", attribute),
          {
              .layout = {.sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(LIST_ENTRY_HEIGHT)}, .layoutDirection = CLAY_LEFT_TO_RIGHT, .childGap = GAPS},
-             .backgroundColor = bg1,
+             .backgroundColor = ui_fade(bg1),
              .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS),
          }) {
         draw_input_field(attribute, BOUND_LOW, filters);
         CLAY(CLAY_IDI_LOCAL("lesser", attribute),
              {
                  .layout = {.childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}, .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(LIST_ENTRY_HEIGHT)}},
-                 .backgroundColor = bg1,
+                 .backgroundColor = ui_fade(bg1),
                  .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS),
              }) {
             ui_draw_text("<", LABEL_FONT_SIZE, fg1, CLAY_TEXT_ALIGN_CENTER);
@@ -258,7 +258,7 @@ static void draw_filter(FilterAttribute attribute, FilterSettings *filters) {
         CLAY(CLAY_IDI_LOCAL("FilterName", attribute),
              {
                  .layout = {.childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}, .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(LIST_ENTRY_HEIGHT)}},
-                 .backgroundColor = bg1,
+                 .backgroundColor = ui_fade(bg1),
                  .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS),
              }) {
             ui_draw_text(filter_display_name(attribute), LABEL_FONT_SIZE, fg1, CLAY_TEXT_ALIGN_CENTER);
@@ -266,7 +266,7 @@ static void draw_filter(FilterAttribute attribute, FilterSettings *filters) {
         CLAY(CLAY_IDI_LOCAL("greater", attribute),
              {
                  .layout = {.childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}, .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(LIST_ENTRY_HEIGHT)}},
-                 .backgroundColor = bg1,
+                 .backgroundColor = ui_fade(bg1),
                  .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS),
              }) {
             ui_draw_text("<", LABEL_FONT_SIZE, fg1, CLAY_TEXT_ALIGN_CENTER);
@@ -311,7 +311,7 @@ void ui_draw_filter_panel(struct application *appl, GpxCollection *collection) {
               },
               .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS),
               .layout = {.childAlignment = {.x = CLAY_ALIGN_X_CENTER}, .padding = CLAY_PADDING_ALL(GAPS), .sizing = {.width = CLAY_SIZING_FIXED(FILTERS_WIDTH), .height = CLAY_SIZING_FIXED(PANEL_HEIGHT(appl->window_height))}, .layoutDirection = CLAY_TOP_TO_BOTTOM, .childGap = GAPS},
-              .backgroundColor = bg}) {
+              .backgroundColor = ui_fade(bg)}) {
             if (Clay_Hovered())
                 appl->mouse_over_ui = true;
             draw_filter_header();
@@ -335,7 +335,7 @@ void ui_draw_filter_panel(struct application *appl, GpxCollection *collection) {
                                                  .sizing = {.width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT()},
                                                  .layoutDirection = CLAY_LEFT_TO_RIGHT,
                                                  .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}},
-                                             .backgroundColor = Clay_Hovered() ? bg_l : bg_d,
+                                             .backgroundColor = ui_fade(Clay_Hovered() ? bg_l : bg_d),
                                              .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS)}) {
                 Clay_OnHover(clicked_calculate_heat, (intptr_t)appl);
                 ui_draw_text("Calculate Heat", LABEL_FONT_SIZE, dark_aqua, CLAY_TEXT_ALIGN_CENTER);
@@ -346,7 +346,7 @@ void ui_draw_filter_panel(struct application *appl, GpxCollection *collection) {
                                                         .sizing = {.width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT()},
                                                         .layoutDirection = CLAY_LEFT_TO_RIGHT,
                                                         .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}},
-                                                    .backgroundColor = Clay_Hovered() ? bg_l : bg_d,
+                                                    .backgroundColor = ui_fade(Clay_Hovered() ? bg_l : bg_d),
                                                     .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS)}) {
                 Clay_OnHover(clicked_show_filtered_tracks, (intptr_t)collection);
                 ui_draw_text("Show Filtered Tracks", LABEL_FONT_SIZE, dark_aqua, CLAY_TEXT_ALIGN_CENTER);
