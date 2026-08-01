@@ -7,6 +7,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "anim.h"
 #include "config.h"
 
 // gpx_types.h includes this header for the caches below, so the point type can
@@ -88,6 +89,12 @@ typedef struct TileTexture {
     // Value of the owning cache's clock when this entry was last handed out.
     // The oldest is what gets evicted once the cache is full.
     uint64_t last_used;
+    // How much of the tile is showing, 0..1. A zeroed Anim reads 0, which is
+    // invisible rather than opaque, so the insert settles this at 1 and only a
+    // caller that wants a fade winds it back to 0 -- which is what leaves the
+    // heat cache, which shares this type, drawing at full strength without
+    // knowing the field is here.
+    Anim fade;
 } TileTexture;
 
 typedef struct

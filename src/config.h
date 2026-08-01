@@ -44,16 +44,21 @@
 #define GPX_INPUT_DIR "./gpx_files"
 #define TILE_PATH_MAX 256
 
-// How far up the pyramid to look for a stand-in when a tile is missing. At
-// depth 4 a 16-pixel square is stretched over 256, which is already a smear;
-// past that there is nothing left to recognise.
-#define TILE_FALLBACK_DEPTH 4
+// Drawn where a tile is missing or has not finished fading in. Close to the
+// land colour of the tiles themselves, so ground that has not arrived yet
+// reads as blank map rather than as a hole.
+#define TILE_FALLBACK_COLOR_R 0
+#define TILE_FALLBACK_COLOR_G 0
+#define TILE_FALLBACK_COLOR_B 0
 
 // Tiles decoded and uploaded per frame. The PNG decode is synchronous, so a
 // pan that reveals forty cached tiles at once would otherwise spend the whole
-// frame on them. The rest arrive over the next few frames, covered by their
-// ancestors in the meantime.
+// frame on them. The rest arrive over the next few frames, covered by the
+// fallback colour in the meantime.
 #define TILE_DECODES_PER_FRAME 3
+
+// How long a tile takes to come up to full strength once its texture exists.
+#define TILE_FADE_SECONDS 0.25f
 
 // Heat tiles rasterised per frame, for the same reason. A frame drawn at half
 // scale needs four times as many tiles, and the first frame of a zoom is

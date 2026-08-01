@@ -327,16 +327,23 @@ bool tile_key_equal(MapTile a, MapTile b) {
     return a.tile_x == b.tile_x && a.tile_y == b.tile_y && a.zoom == b.zoom;
 }
 
-// Hands back the cached texture for `key`, or NULL. Touching the entry marks
-// it as the most recently used, which is what keeps eviction honest.
-SDL_Texture *tile_cache_lookup(TileTextureCache *cache, MapTile key) {
+// Hands back the entry for `key`, or NULL. Touching it marks it as the most
+// recently used, which is what keeps eviction honest.
+TileTexture *tile_cache_find(TileTextureCache *cache, MapTile key) {
     for (int i = 0; i < cache->size; i++) {
         if (tile_key_equal(cache->entries[i].key, key)) {
             cache->entries[i].last_used = ++cache->clock;
-            return cache->entries[i].texture;
+            return &cache->entries[i];
         }
     }
     return NULL;
+}
+
+// The same question asked by a caller that only wants to draw the tile as it
+// is, with no interest in how far along its fade is.
+SDL_Texture *tile_cache_lookup(TileTextureCache *cache, MapTile key) {
+    TileTexture *entry = tile_cache_find(cache, key);
+    return entry ? entry->texture : NULL;
 }
 
 // Drops the least recently used entry. Called only when the cache is full, so
@@ -380,7 +387,20 @@ TileTexture *tile_cache_insert(TileTextureCache *cache, MapTile key, SDL_Texture
 
     TileTexture *entry = &cache->entries[cache->size++];
     *entry = (TileTexture){.key = key, .texture = texture, .last_used = ++cache->clock};
+    // Fully shown unless the caller says otherwise. The designated initialiser
+    // above zeroes the fade, and a zeroed Anim reads as an invisible tile.
+    anim_set(&entry->fade, 1.0f);
     return entry;
+}
+
+// Advances every entry's fade and reports whether any of them moved, which is
+// what asks for the next frame. Bounded by TILE_CACHE_MAX_ENTRIES, so the walk
+// costs nothing next to the drawing it is keeping up with.
+bool tile_cache_tick_fades(TileTextureCache *cache, float dt) {
+    bool moved = false;
+    for (int i = 0; i < cache->size; i++)
+        moved |= anim_tick(&cache->entries[i].fade, dt);
+    return moved;
 }
 
 void tile_cache_free(TileTextureCache *cache) {
@@ -407,7 +427,11 @@ void tile_cache_path(char *out, size_t size, MapTile tile) {
 }
 
 // Decodes a tile PNG off disk and hands it to the cache, which takes ownership.
-static SDL_Texture *load_tile_texture(struct application *appl, MapTile key, const char *path) {
+//
+// Returns the cache entry rather than the texture because the entry is what
+// carries the fade, and because looking it up again afterwards would mean
+// holding a pointer the insert had just invalidated.
+static TileTexture *load_tile_texture(struct application *appl, MapTile key, const char *path) {
     SDL_Surface *surface = IMG_Load(path);
     if (!surface)
         return NULL;
@@ -422,11 +446,18 @@ static SDL_Texture *load_tile_texture(struct application *appl, MapTile key, con
     // alpha modulation needs it either way.
     SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
 
-    if (!tile_cache_insert(&appl->tile_cache, key, texture)) {
+    TileTexture *entry = tile_cache_insert(&appl->tile_cache, key, texture);
+    if (!entry) {
         SDL_DestroyTexture(texture);
         return NULL;
     }
-    return texture;
+
+    // Up from nothing rather than straight to full: the flat colour standing
+    // in for this tile is still drawn underneath while the fade runs, so what
+    // the window shows is a cross-fade rather than a cut.
+    anim_set(&entry->fade, 0.0f);
+    anim_to(&entry->fade, 1.0f, TILE_FADE_SECONDS, ANIM_EASE_OUT);
+    return entry;
 }
 
 SDL_FRect map_transform_rect(const struct application *appl,
@@ -466,11 +497,15 @@ void map_zoom_by_wheel(struct application *appl, int steps) {
 }
 
 void map_update(struct application *appl, float dt) {
-    if (!zoom_tick(&appl->zoom_transition, dt))
-        return;
+    if (zoom_tick(&appl->zoom_transition, dt)) {
+        map_adopt_transform(appl);
+        app_request_redraw(appl);
+    }
 
-    map_adopt_transform(appl);
-    app_request_redraw(appl);
+    // Asked separately rather than behind the zoom: tiles arrive and fade in
+    // while nothing is zooming at all.
+    if (tile_cache_tick_fades(&appl->tile_cache, dt))
+        app_request_redraw(appl);
 }
 
 // The tiles covering the window at the current zoom, with where each one lands
@@ -543,36 +578,16 @@ static bool queue_tile_download(struct application *appl, MapTile tile) {
     return accepted;
 }
 
-// Draws the nearest ancestor of `key` that is in the cache, stretched over the
-// area the missing tile would have covered.
+// Fills the area a missing tile would have covered with a flat colour.
 //
 // Something has to be under a tile that is not there: without this, panning
 // into new ground leaves holes showing whatever the frame was cleared to until
 // the download lands.
-static bool draw_fallback_tile(struct application *appl, const VisibleTile *visible) {
-    for (int depth = 1; depth <= TILE_FALLBACK_DEPTH; depth++) {
-        MapTile ancestor = {.tile_x = visible->tile.tile_x >> depth,
-                            .tile_y = visible->tile.tile_y >> depth,
-                            .zoom = visible->tile.zoom - depth};
-        if (ancestor.zoom < 0)
-            return false;
-
-        SDL_Texture *texture = tile_cache_lookup(&appl->tile_cache, ancestor);
-        if (!texture)
-            continue;
-
-        // The part of the ancestor this tile occupies: one cell of a
-        // 2^depth square grid.
-        const int span = TILE_SIZE >> depth;
-        SDL_Rect source = {.x = (visible->tile.tile_x & ((1 << depth) - 1)) * span,
-                           .y = (visible->tile.tile_y & ((1 << depth) - 1)) * span,
-                           .w = span,
-                           .h = span};
-        SDL_FRect dest = {visible->screen_x, visible->screen_y, visible->size, visible->size};
-        SDL_RenderCopyF(appl->renderer, texture, &source, &dest);
-        return true;
-    }
-    return false;
+static void draw_fallback_tile(struct application *appl, const VisibleTile *visible) {
+    SDL_FRect dest = {visible->screen_x, visible->screen_y, visible->size, visible->size};
+    SDL_SetRenderDrawColor(appl->renderer, TILE_FALLBACK_COLOR_R, TILE_FALLBACK_COLOR_G,
+                           TILE_FALLBACK_COLOR_B, 255);
+    SDL_RenderFillRectF(appl->renderer, &dest);
 }
 
 void map_draw_tiles(struct application *appl, const VisibleTile *tiles, int count) {
@@ -584,18 +599,18 @@ void map_draw_tiles(struct application *appl, const VisibleTile *tiles, int coun
 
         // Only a tile that is not already in video memory needs the filesystem
         // consulted at all.
-        SDL_Texture *texture = tile_cache_lookup(&appl->tile_cache, key);
-        if (!texture && !pending_blocks(key, now_ms)) {
+        TileTexture *entry = tile_cache_find(&appl->tile_cache, key);
+        if (!entry && !pending_blocks(key, now_ms)) {
             char tile_path[TILE_PATH_MAX];
             tile_cache_path(tile_path, sizeof(tile_path), key);
 
             if (file_exists(tile_path)) {
                 // The decode and upload are synchronous, so they are rationed:
                 // a pan that uncovers forty cached tiles at once would spend
-                // the whole frame on them. The rest keep their ancestor for a
-                // frame or two, which is only tolerable because there is one.
+                // the whole frame on them. The rest keep the flat colour for a
+                // frame or two, which is only tolerable because it is there.
                 if (decodes_left > 0) {
-                    texture = load_tile_texture(appl, key, tile_path);
+                    entry = load_tile_texture(appl, key, tile_path);
                     decodes_left--;
                 } else {
                     app_request_redraw(appl); // come back for the rest
@@ -605,13 +620,23 @@ void map_draw_tiles(struct application *appl, const VisibleTile *tiles, int coun
             }
         }
 
-        if (!texture)
+        const float opacity = entry ? anim_value(&entry->fade) : 0.0f;
+
+        // The stand-in stays underneath until the tile is all the way up, so
+        // what a fade is drawn over is the flat colour rather than whatever
+        // the frame was cleared to.
+        if (opacity < 1.0f)
             draw_fallback_tile(appl, &tiles[i]);
 
-        if (texture) {
+        if (entry) {
             SDL_FRect dest = {tiles[i].screen_x, tiles[i].screen_y,
                               tiles[i].size, tiles[i].size};
-            SDL_RenderCopyF(appl->renderer, texture, NULL, &dest);
+            SDL_SetTextureAlphaMod(entry->texture, (Uint8)(opacity * 255.0f));
+            SDL_RenderCopyF(appl->renderer, entry->texture, NULL, &dest);
+            // Put back rather than left: the modulation belongs to the texture
+            // and outlives the draw, so anything that blits this texture
+            // without setting it would inherit whatever a fade left behind.
+            SDL_SetTextureAlphaMod(entry->texture, 255);
         }
     }
 }

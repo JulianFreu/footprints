@@ -97,6 +97,12 @@ bool tile_key_equal(MapTile a, MapTile b);
 // Bounded, least-recently-used texture cache, shared by the map background and
 // the track heat overlay.
 SDL_Texture *tile_cache_lookup(TileTextureCache *cache, MapTile key);
+// The same lookup for a caller that needs the entry itself -- its fade, in
+// practice. The pointer is good only until the next insert.
+TileTexture *tile_cache_find(TileTextureCache *cache, MapTile key);
+// Advances every entry's fade by `dt` seconds. Returns whether any of them
+// moved, which is what asks for another frame.
+bool tile_cache_tick_fades(TileTextureCache *cache, float dt);
 // Takes ownership of `texture` on success and hands back the entry it went
 // into, or NULL if it could not be stored -- the caller destroys it then. The
 // pointer is good only until the next insert.

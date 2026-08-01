@@ -230,7 +230,6 @@ parsing either.
 
 ## ToDo
 
-- Smooth fade-in of tiles after download
 - More statistics in activities (heart-rate, speed, ...)
 - Color overhaul
 - Add watermark of tile provider to bottom right
