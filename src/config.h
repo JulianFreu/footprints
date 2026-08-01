@@ -55,10 +55,10 @@
 // pan that reveals forty cached tiles at once would otherwise spend the whole
 // frame on them. The rest arrive over the next few frames, covered by the
 // fallback colour in the meantime.
-#define TILE_DECODES_PER_FRAME 3
+#define TILE_DECODES_PER_FRAME 8
 
 // How long a tile takes to come up to full strength once its texture exists.
-#define TILE_FADE_SECONDS 0.25f
+#define TILE_FADE_SECONDS 0.50
 
 // Heat tiles rasterised per frame, for the same reason. A frame drawn at half
 // scale needs four times as many tiles, and the first frame of a zoom is
@@ -76,7 +76,7 @@
 // Upper bound on cached tile textures, per cache. Each is a TILE_SIZE-square
 // RGBA texture, so 256 of them is roughly 64 MB of video memory; past that the
 // least recently used is dropped.
-#define TILE_CACHE_MAX_ENTRIES 256
+#define TILE_CACHE_MAX_ENTRIES 1024
 
 // Upper bound on tiles drawn in one frame; past this the outermost tiles are
 // simply not drawn. A 4K window needs about 170 at scale 1. The rest is for a
@@ -96,7 +96,7 @@
 // Half-width, in samples, of the centred moving average applied to elevation
 // before gain and loss are accumulated. GPS altitude is noisy enough that the
 // raw series roughly doubles the real climb.
-#define ELEVATION_SMOOTHING_WINDOW 10
+#define ELEVATION_SMOOTHING_WINDOW 5
 
 // Side length, in pixels, of the square stamped down for each track point on
 // the heat tiles.
