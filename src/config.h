@@ -98,6 +98,18 @@
 // raw series roughly doubles the real climb.
 #define ELEVATION_SMOOTHING_WINDOW 5
 
+// Fastest a runner is taken to be moving, in metres per second, when the record
+// distances are searched for. 7 m/s is 2:23 per kilometre -- quicker than any
+// amateur holds for five kilometres, and slower than anything on wheels.
+//
+// This is not noise filtering. A library exported from a phone app contains
+// files labelled "Running" whose second half is a drive home, and a search for
+// a *minimum* finds exactly those: one such file offered a five-kilometre
+// record of 6:28. A stretch above this speed ends the run being scanned, the
+// same way a clock that goes backwards does, so the honest part of a track can
+// still hold a record while the drive cannot.
+#define SPLIT_MAX_SPEED_MPS 7.0f
+
 // Side length, in pixels, of the square stamped down for each track point on
 // the heat tiles.
 #define TRACK_POINT_SIZE 4

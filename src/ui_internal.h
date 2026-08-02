@@ -43,17 +43,18 @@
 #define FILTERS_MINMAX_WIDTH 80
 
 // The scroll position indicator, in its own column to the right of the rows so
-// it never sits on top of one.
-#define RUN_LIST_SCROLLBAR_WIDTH 8
-#define RUN_LIST_SCROLLBAR_MIN_THUMB 24
-#define RUN_LIST_GUTTER_WIDTH (RUN_LIST_SCROLLBAR_WIDTH + 2 * GAPS)
+// it never sits on top of one. Shared by the run list and the records panel,
+// which is why the names lost their RUN_LIST_ prefix.
+#define SCROLLBAR_WIDTH 8
+#define SCROLLBAR_MIN_THUMB 24
+#define SCROLLBAR_GUTTER_WIDTH (SCROLLBAR_WIDTH + 2 * GAPS)
 
 // Every run-list column is the same width; the list is as wide as the sum, plus
 // the gutter the indicator lives in.
 #define RUN_LIST_COLUMN_WIDTH 100
 #define RUN_LIST_COLUMN_COUNT 8
 #define RUN_LIST_WIDTH \
-    (RUN_LIST_COLUMN_COUNT * RUN_LIST_COLUMN_WIDTH + 2 * GAPS + RUN_LIST_GUTTER_WIDTH)
+    (RUN_LIST_COLUMN_COUNT * RUN_LIST_COLUMN_WIDTH + 2 * GAPS + SCROLLBAR_GUTTER_WIDTH)
 
 // The statistics panel stretches to the window instead of taking the fixed
 // PANEL_WIDTH the empty panels do: a bar chart is worth as much width as there
@@ -81,6 +82,28 @@
 // ascended meters".
 #define STATS_TIMESCALE_BUTTON_WIDTH 110
 #define STATS_METRIC_BUTTON_WIDTH 180
+
+// The records panel is as wide as one of its rows, plus the padding and the
+// gutter -- the same arithmetic RUN_LIST_WIDTH is, and for the same reason: a
+// fixed width would be another number to keep in step with the columns.
+#define RECORDS_RANK_WIDTH 28
+#define RECORDS_DATE_WIDTH 92
+#define RECORDS_VALUE_WIDTH 96
+#define RECORDS_DETAIL_WIDTH 170
+#define RECORDS_COLUMN_COUNT 4
+#define RECORDS_ROW_WIDTH                      \
+    (RECORDS_RANK_WIDTH + RECORDS_DATE_WIDTH + \
+     RECORDS_VALUE_WIDTH + RECORDS_DETAIL_WIDTH)
+#define RECORDS_WIDTH (RECORDS_ROW_WIDTH + 2 * GAPS + SCROLLBAR_GUTTER_WIDTH)
+
+// A section header is shorter than the panel header: it is a label over its
+// rows, not the top of the panel.
+#define RECORDS_SECTION_HEADER_HEIGHT 26
+#define RECORDS_ROW_HEIGHT LIST_ENTRY_HEIGHT
+#define RECORDS_ROW_PITCH (RECORDS_ROW_HEIGHT + GAPS)
+// Between one category and the next, so the sections read as separate lists
+// rather than as one long one.
+#define RECORDS_SECTION_GAP (2 * GAPS)
 
 // --- Text ---
 #define FILTER_TEXT_FONT_SIZE 12
@@ -128,8 +151,9 @@ Clay_Color ui_fade(Clay_Color color);
 void ui_draw_filter_panel(struct application *appl, GpxCollection *collection);
 void ui_draw_run_list(struct application *appl, GpxCollection *collection);
 void ui_draw_statistics_panel(struct application *appl);
-// An empty panel with a titled header: what statistics, records and settings
-// are until they have something to show.
+void ui_draw_records_panel(struct application *appl);
+// An empty panel with a titled header: what a panel is until it has something
+// to show, which now means the settings.
 void ui_draw_simple_panel(struct application *appl, MenuPanel panel,
                           const char *title);
 // Releases the run list's between-frames row buffer.
@@ -155,5 +179,22 @@ bool ui_stats_update(struct application *appl, GpxCollection *collection);
 bool ui_stats_pan_by_wheel(int mouse_x, int mouse_y, int detents);
 // Releases the bucket array the series is built into.
 void ui_stats_free_scratch(void);
+
+// Rebuilds the records table if anything has invalidated it, and eases the
+// scroll. Returns whether anything moved. Aggregating here rather than in the
+// layout is what keeps the layout a read of the model.
+bool ui_records_update(struct application *appl, GpxCollection *collection);
+// Marks the table stale. Panel-local, so it is reached from outside the UI
+// through ui_invalidate_derived rather than directly.
+void ui_records_invalidate(void);
+// A row click, consumed once by the next update pass.
+bool ui_records_take_click(int *track_id);
+// Moves the panel by whole mouse-wheel detents, if the pointer is over it.
+// Returns whether the wheel was the panel's to take.
+bool ui_records_scroll_by_wheel(int mouse_x, int mouse_y, int detents);
+
+// Marks the statistics series stale; declared here rather than in ui.h now that
+// ui_invalidate_derived is what the rest of the application calls.
+void ui_stats_invalidate(void);
 
 #endif

@@ -8,6 +8,7 @@
 #include "gpx_activity.h"
 #include "filter_types.h"
 #include "map_types.h"
+#include "track_splits.h"
 
 typedef struct GpxPoint {
     double lat;
@@ -58,6 +59,12 @@ typedef struct GpxTrack {
     float elev_down;
     float high_point;
     float low_point;
+
+    // The fastest time, in seconds, over each of the record distances found
+    // anywhere in the track; zero where the track never covered it. Filled
+    // once at load by track_splits_compute, from per-point timestamps that are
+    // scratch for the parse and are not kept.
+    float splits[SPLIT_COUNT];
 } GpxTrack;
 
 typedef struct GpxCollection {

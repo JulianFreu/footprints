@@ -28,10 +28,12 @@ bool ui_text_input_active(void);
 void ui_text_input_digit(GpxCollection *collection, char digit);
 void ui_text_input_finish(GpxCollection *collection);
 
-// Marks the statistics series stale. The panel rebuilds it on the next update
-// rather than in the middle of whatever changed the tracks, which may well be a
-// layout pass or a worker's results landing.
-void ui_stats_invalidate(void);
+// Marks everything derived from the tracks stale -- the statistics series and
+// the records table. Each panel rebuilds on its next update rather than in the
+// middle of whatever changed the tracks, which may well be a layout pass or a
+// worker's results landing. One call rather than one per panel, so a fifth
+// panel does not mean a fifth line at each of these sites.
+void ui_invalidate_derived(void);
 
 void ui_load_icons(struct application *appl);
 void ui_free_icons(struct application *appl);

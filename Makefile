@@ -10,13 +10,16 @@ TEST_BIN := run-tests
 # vendored SDL2 renderer; clay.h and clay_renderer_sdl.c are pulled in there and
 # are not translation units of their own.
 SOURCES  := $(SRC_DIR)/main.c $(SRC_DIR)/map.c $(SRC_DIR)/fifo.c \
-            $(SRC_DIR)/gpx_parser.c $(SRC_DIR)/tracks.c $(SRC_DIR)/filters.c \
+            $(SRC_DIR)/gpx_parser.c $(SRC_DIR)/gpx_activity.c \
+            $(SRC_DIR)/tracks.c $(SRC_DIR)/filters.c \
             $(SRC_DIR)/heat.c $(SRC_DIR)/ui.c \
             $(SRC_DIR)/point_index.c $(SRC_DIR)/track_sort.c $(SRC_DIR)/track_format.c \
+            $(SRC_DIR)/track_splits.c \
             $(SRC_DIR)/background.c $(SRC_DIR)/anim.c $(SRC_DIR)/zoom.c \
             $(SRC_DIR)/clay_sdl.c $(SRC_DIR)/ui_filters.c \
             $(SRC_DIR)/ui_runlist.c $(SRC_DIR)/ui_panels.c \
             $(SRC_DIR)/ui_stats.c $(SRC_DIR)/stats.c \
+            $(SRC_DIR)/ui_records.c $(SRC_DIR)/records.c \
             $(SRC_DIR)/time_util.c
 OBJECTS  := $(SOURCES:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
 DEPS     := $(OBJECTS:.o=.d)

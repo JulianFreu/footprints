@@ -226,10 +226,15 @@ static const Clay_LayoutConfig MenuButtonLayout = {
 // One panel is open at a time: they all occupy the same corner, so a second one
 // sliding in over the first would only hide it. Pressing the button of the
 // panel already showing shuts it and leaves nothing open.
-void ui_toggle_panel(MenuPanel panel) {
-    // The statistics panel may have been left stale while it was shut, so
-    // whatever is about to slide in gets a fresh look at the tracks.
+void ui_invalidate_derived(void) {
     ui_stats_invalidate();
+    ui_records_invalidate();
+}
+
+void ui_toggle_panel(MenuPanel panel) {
+    // A panel may have been left stale while it was shut, so whatever is about
+    // to slide in gets a fresh look at the tracks.
+    ui_invalidate_derived();
 
     bool opening = ui.open_panel != panel;
 
@@ -395,6 +400,23 @@ static void draw_progress_panel(struct application *appl) {
     }
 }
 
+// A row click from either of the two lists that have them. The bounds check is
+// not paranoia: the records table holds a snapshot of track ids, and a rescan
+// that found fewer files would otherwise index past the end of the array.
+static void select_clicked_track(struct application *appl,
+                                 GpxCollection *collection, int track_id) {
+    if (track_id < 0 || track_id >= collection->total_tracks)
+        return;
+
+    appl->selected_track = track_id;
+    // Offset by a quarter of the window so the track lands clear of the
+    // panels on the left rather than dead centre.
+    appl->world_x = collection->tracks[track_id].mid_x -
+                    (appl->window_width / 4) * map_world_per_pixel(appl);
+    appl->world_y = collection->tracks[track_id].mid_y;
+    app_request_redraw(appl);
+}
+
 // Input and animation, ahead of the layout that reads them. Clay resolves the
 // pointer against the previous frame's boxes either way, so doing it here is
 // where it always belonged: what changes the model happens on the event that
@@ -405,16 +427,13 @@ void ui_update(struct application *appl, GpxCollection *collection) {
 
     float delta_time = appl->delta_time;
 
+    // Asked of each list in turn rather than through a short circuit: a click
+    // the other one is holding has to be taken this frame too, not left pending.
     int clicked_track;
-    if (ui_runlist_take_click(&clicked_track)) {
-        appl->selected_track = clicked_track;
-        // Offset by a quarter of the window so the track lands clear of the
-        // panels on the left rather than dead centre.
-        appl->world_x = collection->tracks[clicked_track].mid_x -
-                        (appl->window_width / 4) * map_world_per_pixel(appl);
-        appl->world_y = collection->tracks[clicked_track].mid_y;
-        app_request_redraw(appl);
-    }
+    if (ui_runlist_take_click(&clicked_track))
+        select_clicked_track(appl, collection, clicked_track);
+    if (ui_records_take_click(&clicked_track))
+        select_clicked_track(appl, collection, clicked_track);
 
     Clay_SetPointerState(
         (Clay_Vector2){appl->mouse_x, appl->mouse_y}, appl->left_mouse_button_pressed);
@@ -428,7 +447,8 @@ void ui_update(struct application *appl, GpxCollection *collection) {
     // which panel is open -- which matters on the frames where one is still
     // sliding out from under another.
     if (appl->wheel_y) {
-        if (!ui_stats_pan_by_wheel(appl->mouse_x, appl->mouse_y, appl->wheel_y))
+        if (!ui_stats_pan_by_wheel(appl->mouse_x, appl->mouse_y, appl->wheel_y) &&
+            !ui_records_scroll_by_wheel(appl->mouse_x, appl->mouse_y, appl->wheel_y))
             ui_runlist_scroll_by_wheel(appl->mouse_x, appl->mouse_y, appl->wheel_y);
     }
 
@@ -461,6 +481,7 @@ void ui_update(struct application *appl, GpxCollection *collection) {
         moved |= anim_tick(&ui.panels[panel], delta_time);
     moved |= ui_runlist_scroll_tick(delta_time);
     moved |= ui_stats_update(appl, collection);
+    moved |= ui_records_update(appl, collection);
     if (moved)
         app_request_redraw(appl);
 }
@@ -540,7 +561,7 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
         ui_draw_statistics_panel(appl);
 
         ui_fade_set(anim_value(&ui.panels[PANEL_RECORDS]));
-        ui_draw_simple_panel(appl, PANEL_RECORDS, "Records");
+        ui_draw_records_panel(appl);
 
         ui_fade_set(anim_value(&ui.panels[PANEL_SETTINGS]));
         ui_draw_simple_panel(appl, PANEL_SETTINGS, "Settings");

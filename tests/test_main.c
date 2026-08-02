@@ -9,10 +9,12 @@ int main(void) {
     run_fifo_tests();
     run_filters_tests();
     run_gpx_tests();
+    run_track_splits_tests();
     run_heat_tests();
     run_point_index_tests();
     run_track_format_tests();
     run_stats_tests();
+    run_records_tests();
     run_background_tests();
     run_anim_tests();
     run_zoom_tests();

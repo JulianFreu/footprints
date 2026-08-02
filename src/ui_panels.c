@@ -3,10 +3,10 @@
 #include "clay.h"
 #include "colors.h"
 
-// The panels that have a button but nothing in them yet: statistics, records
-// and settings. All three are the same shape -- a titled header over an empty
-// body -- so they share one drawer and differ only by which anim moves them and
-// what the header says.
+// A panel that has a button but nothing in it yet: a titled header over an
+// empty body. Statistics and records have both grown into panels of their own
+// since, so settings is the last one left -- but the drawer stays general,
+// since it costs one argument and is what the next new button starts as.
 
 static void draw_simple_panel_header(const char *title) {
     CLAY(CLAY_ID_LOCAL("SimplePanelHeader"),

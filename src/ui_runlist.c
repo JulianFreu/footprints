@@ -288,8 +288,8 @@ static ScrollMetrics update_scroll_metrics(int visible_count, int viewport_h) {
 
     const float track_h = (float)(viewport_h - 2 * GAPS);
     metrics.thumb_h = track_h * (float)viewport_h / content_h;
-    if (metrics.thumb_h < RUN_LIST_SCROLLBAR_MIN_THUMB)
-        metrics.thumb_h = RUN_LIST_SCROLLBAR_MIN_THUMB;
+    if (metrics.thumb_h < SCROLLBAR_MIN_THUMB)
+        metrics.thumb_h = SCROLLBAR_MIN_THUMB;
     if (metrics.thumb_h > track_h)
         metrics.thumb_h = track_h;
     metrics.thumb_y = (scroll_current / scroll_max) * (track_h - metrics.thumb_h);
@@ -334,7 +334,7 @@ static void draw_run_list_scroll_container(GpxCollection *collection, int height
 static void draw_run_list_scrollbar(ScrollMetrics metrics) {
     CLAY(CLAY_ID("RunListScrollbar"),
          {.layout = {.padding = CLAY_PADDING_ALL(GAPS),
-                     .sizing = {.width = CLAY_SIZING_FIXED(RUN_LIST_GUTTER_WIDTH), .height = CLAY_SIZING_GROW()},
+                     .sizing = {.width = CLAY_SIZING_FIXED(SCROLLBAR_GUTTER_WIDTH), .height = CLAY_SIZING_GROW()},
                      .layoutDirection = CLAY_TOP_TO_BOTTOM}}) {
         // A list that fits leaves the gutter empty. Written as a condition
         // rather than an early return: CLAY() is a loop that closes the element
@@ -349,7 +349,7 @@ static void draw_run_list_scrollbar(ScrollMetrics metrics) {
             CLAY(CLAY_ID("RunListScrollbarThumb"),
                  {.layout = {.sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(metrics.thumb_h)}},
                   .backgroundColor = ui_fade(grey0),
-                  .cornerRadius = CLAY_CORNER_RADIUS(RUN_LIST_SCROLLBAR_WIDTH / 2)}) {
+                  .cornerRadius = CLAY_CORNER_RADIUS(SCROLLBAR_WIDTH / 2)}) {
             }
         }
     }

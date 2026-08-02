@@ -144,21 +144,6 @@ static void draw_smooth_thick_polyline(SDL_Renderer *renderer,
     draw_circle(renderer, points[count - 1].x, points[count - 1].y, thickness / 2.0f, color);
 }
 
-const char *activity_type_label(ActivityType type) {
-    switch (type) {
-    case Run:
-        return "Run";
-    case Hike:
-        return "Hike";
-    case Cycling:
-        return "Cycling";
-    case Other:
-    case ACTIVITY_TYPE_COUNT:
-        break;
-    }
-    return "Other";
-}
-
 // Releases the scratch buffer kept between frames.
 void tracks_free_scratch(struct application *appl) {
     free(appl->overlay_points);

@@ -10,6 +10,7 @@ Visualize all your runs, hikes, and rides in one place, explore your most freque
 - **Filter** activities by distance, pace, duration, elevation gain, and more
 - **Click any track** for detailed stats and insights
 - **Chart your training** by day, week, month or year — up to two of total distance, longest run, total time and total ascent at once, and scroll the plot back through the years
+- **Track your personal records** — longest run and activity, highest peak, most elevation gain, and your fastest 5k, 10k, half marathon and marathon, found anywhere inside a longer run rather than only from its start
 - Convert **Garmin `.fit` and `.tcx` files** to `.gpx` with the included Python tool
 
 ## Installation
@@ -144,7 +145,9 @@ worth testing belongs on the pure side of the split (`stats.c` rather than
 
 Covered: timestamp parsing, the tile queue, the filter table and the predicate
 it drives, the parser's geometry and elevation maths, the display formatting,
-the calendar bucketing and the metrics reduced over it, the k-d tree radius
+the calendar bucketing and the metrics reduced over it, the sliding window
+that finds a record distance inside a longer track, the records table and its
+exclusions, the k-d tree radius
 search (against brute force), the spatial index (against the full scan it
 replaced), the background job's concurrency contract, and the animation
 primitive's easing and timing.
@@ -173,6 +176,8 @@ Keep the description a few kebab-case words, not a full sentence.
 | `filters.c` | The filter table: what each filter reads, how it parses, which tracks pass |
 | `track_sort.c` | Ordering the run list |
 | `track_format.c` | Turning a track's numbers into the strings shown beside them |
+| `track_splits.c` | The fastest 5k/10k/half/marathon found anywhere inside one track |
+| `gpx_activity.c` | The one place activity types are spelled for display |
 | `background.c` | Runs the library scan and the heat calculation off the main thread |
 | `heat.c` | The implicit k-d tree and the threaded heat calculation |
 | `point_index.c` | Tile-keyed spatial index over the visible points, shared by all zooms |
@@ -181,11 +186,13 @@ Keep the description a few kebab-case words, not a full sentence.
 | `fifo.c` | The bounded queue between the main loop and the download thread |
 | `time_util.c` | The single place timestamps are parsed — everything is UTC |
 | `stats.c` | Bucketing tracks into days, weeks, months and years, and the metrics reduced over them |
+| `records.c` | Which activities hold each personal record, ranked over the whole collection |
 | `ui.c` | Clay setup, icons, the left menu bar, sidebar, and the composition of the panels |
 | `ui_filters.c` | The filter panel and the text input that feeds it |
 | `ui_runlist.c` | The run list: sortable header, rows, virtualised scrolling |
 | `ui_stats.c` | The statistics panel: the bar plot, its axes, its buttons, and the pan |
-| `ui_panels.c` | The records and settings panels |
+| `ui_records.c` | The records panel: a scrolling section per category, its rows clickable |
+| `ui_panels.c` | The settings panel, and the shape a panel takes before it has content |
 | `ui_internal.h` | Layout vocabulary shared by `ui*.c`; not part of the UI's interface |
 | `progress.h` | How a long operation reports progress and is asked to stop |
 | `clay_sdl.c` | The one translation unit carrying Clay and its vendored SDL renderer |
@@ -244,7 +251,6 @@ parsing either.
 - Add watermark of tile provider to bottom right
 - Add screenshots to README
 - Export the current heatmap view as a PNG for sharing
-- Personal records (longest run, fastest pace, most elevation gain)
 - Interactive elevation profile on click instead of the current static image
 - A settings file for defaults (start location/zoom, tile cache path) instead of hardcoded values in `config.h`
 - GPS noise filtering (smooth out jumpy points before distance/pace calculations)

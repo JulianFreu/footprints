@@ -13,6 +13,7 @@
 #include "log.h"
 #include "progress.h"
 #include "time_util.h"
+#include "track_splits.h"
 
 static double haversine_distance(double lat1, double lon1, double lat2, double lon2) {
     double dlat = (lat2 - lat1) * M_PI / 180.0;
@@ -46,45 +47,39 @@ static void track_calculate_distance(GpxTrack *track) {
     track->distance = track->distance / 1000; // meters to kilometers
 }
 
-// The first and last timestamps seen while walking the document. These are
-// scratch for the parse only -- what survives is the pair of time_t on the
-// track -- so they live here rather than on GpxTrack.
-typedef struct TrackTimeRange {
-    char start[64];
-    char end[64];
-    bool found_start;
-} TrackTimeRange;
+// Timestamps for the track being parsed, one slot per point in track->points
+// and grown alongside it. Scratch for the scan only: what survives on the track
+// is the pair of time_t and the split times derived from these, so nothing
+// per-point is carried into the million-point array the collection keeps.
+//
+// Reused across files rather than allocated per file, so the buffer ends up the
+// size of the longest single track instead of being taken and given back a
+// thousand times.
+typedef struct TrackTimes {
+    time_t *at; // (time_t)-1 where a <trkpt> carried no usable <time>
+    int count;  // slots filled; always equal to track->total_points
+    int capacity;
+} TrackTimes;
 
-static bool gpx_extract_time(xmlNode *node, TrackTimeRange *range) {
-    bool found_time = false;
+static bool track_times_reserve(TrackTimes *times, int count) {
+    if (count <= times->capacity)
+        return true;
 
-    for (xmlNode *cur_node = node; cur_node; cur_node = cur_node->next) {
-        if (cur_node->type == XML_ELEMENT_NODE &&
-            xmlStrcmp(cur_node->name, (const xmlChar *)"trkpt") == 0) {
-            for (xmlNode *child = cur_node->children; child; child = child->next) {
-                if (child->type == XML_ELEMENT_NODE &&
-                    xmlStrcmp(child->name, (const xmlChar *)"time") == 0) {
-                    xmlChar *time_content = xmlNodeGetContent(child);
-                    if (time_content) {
-                        if (!range->found_start) {
-                            snprintf(range->start, sizeof(range->start), "%s", (const char *)time_content);
-                            range->found_start = true;
-                        }
+    // Doubling from the same 256 the points grow from, so the two arrays take
+    // the same number of reallocations to fill.
+    int grown_capacity = times->capacity == 0 ? 256 : times->capacity;
+    while (grown_capacity < count)
+        grown_capacity *= 2;
 
-                        snprintf(range->end, sizeof(range->end), "%s", (const char *)time_content);
-
-                        xmlFree(time_content);
-                        found_time = true;
-                    }
-                }
-            }
-        }
-
-        if (gpx_extract_time(cur_node->children, range))
-            found_time = true;
+    time_t *temp = (time_t *)realloc(times->at, (size_t)grown_capacity * sizeof(time_t));
+    if (temp == NULL) {
+        fprintf(stderr, "Memory reallocation for track times failed.\n");
+        return false;
     }
 
-    return found_time;
+    times->at = temp;
+    times->capacity = grown_capacity;
+    return true;
 }
 
 // Web Mercator. The result is in world pixels at `zoom`, which for MAX_ZOOM is
@@ -128,24 +123,26 @@ static void lat_lon_to_pixel(double lat, double lon, int zoom, int *x, int *y) {
         *y = 0;
 }
 
+// Compared case-insensitively. The converter writes "Running", but files that
+// came through other tools spell it "running", and those used to read as Other
+// -- which would keep them out of every record that asks for a run.
+static ActivityType activity_type_from_string(const xmlChar *type_str) {
+    if (xmlStrcasecmp(type_str, (const xmlChar *)"running") == 0)
+        return Run;
+    if (xmlStrcasecmp(type_str, (const xmlChar *)"hiking") == 0)
+        return Hike;
+    if (xmlStrcasecmp(type_str, (const xmlChar *)"cycling") == 0)
+        return Cycling;
+    return Other;
+}
+
 static bool gpx_extract_act_type(xmlNode *node, GpxTrack *track) {
     for (xmlNode *cur_node = node; cur_node; cur_node = cur_node->next) {
         if (cur_node->type == XML_ELEMENT_NODE) {
             if (xmlStrcmp(cur_node->name, (const xmlChar *)"type") == 0) {
                 if (cur_node->children && cur_node->children->content) {
-                    char *type_str = (char *)cur_node->children->content;
-
-                    if (strcmp(type_str, "Running") == 0) {
-                        track->act_type = Run;
-                        LOG_DEBUG("run\n");
-                    } else if (strcmp(type_str, "Hiking") == 0 || strcmp(type_str, "hiking") == 0) {
-                        track->act_type = Hike;
-                        LOG_DEBUG("hike\n");
-                    } else if (strcmp(type_str, "Cycling") == 0) {
-                        track->act_type = Cycling;
-                        LOG_DEBUG("cycle\n");
-                    } else
-                        track->act_type = Other;
+                    track->act_type = activity_type_from_string(cur_node->children->content);
+                    LOG_DEBUG("act_type %d\n", (int)track->act_type);
                 }
                 return true; // found <type>, done
             }
@@ -156,7 +153,12 @@ static bool gpx_extract_act_type(xmlNode *node, GpxTrack *track) {
     return true;
 }
 
-static bool gpx_extract_coords(xmlNode *node, GpxTrack *track) {
+// Walks the document for <trkpt> elements, appending a point for each and its
+// timestamp to `times`. The timestamps used to be read by a second walk of the
+// same nodes that kept only the first and the last; the split search needs all
+// of them, and taking them here is what guarantees times->at[i] belongs to
+// track->points[i].
+static bool gpx_extract_coords(xmlNode *node, GpxTrack *track, TrackTimes *times) {
     for (xmlNode *cur_node = node; cur_node; cur_node = cur_node->next) {
         if (cur_node->type == XML_ELEMENT_NODE && xmlStrcmp(cur_node->name, (const xmlChar *)"trkpt") == 0) {
             int new_total = track->total_points + 1;
@@ -176,22 +178,49 @@ static bool gpx_extract_coords(xmlNode *node, GpxTrack *track) {
             }
             track->total_points = new_total;
 
+            // Grown in lockstep with the points, so times->at[i] is always the
+            // timestamp of track->points[i]. The slot is defaulted here rather
+            // than after the lat/lon check below, so the two arrays cannot fall
+            // out of step on a <trkpt> that is missing its coordinates.
+            if (!track_times_reserve(times, new_total))
+                return false;
+            times->at[new_total - 1] = (time_t)-1;
+            times->count = new_total;
+
             xmlChar *s_lat = xmlGetProp(cur_node, (const xmlChar *)"lat");
             xmlChar *s_lon = xmlGetProp(cur_node, (const xmlChar *)"lon");
 
             double elevation = 0.0;
             bool elevation_found = false;
+            bool time_found = false;
 
+            // One pass of the children for both. This loop used to break out as
+            // soon as it had the elevation, which would now leave the timestamp
+            // behind on every point of every file.
             for (xmlNode *child = cur_node->children; child; child = child->next) {
-                if (child->type == XML_ELEMENT_NODE && xmlStrcmp(child->name, (const xmlChar *)"ele") == 0) {
+                if (child->type != XML_ELEMENT_NODE)
+                    continue;
+
+                if (!elevation_found && xmlStrcmp(child->name, (const xmlChar *)"ele") == 0) {
                     xmlChar *ele_content = xmlNodeGetContent(child);
                     if (ele_content) {
                         elevation = atof((const char *)ele_content);
                         elevation_found = true;
                         xmlFree(ele_content);
-                        break;
+                    }
+                } else if (!time_found && xmlStrcmp(child->name, (const xmlChar *)"time") == 0) {
+                    xmlChar *time_content = xmlNodeGetContent(child);
+                    if (time_content) {
+                        // The first <time> wins, as the first <ele> does. A
+                        // well-formed trkpt only has the one.
+                        times->at[new_total - 1] = iso8601_to_utc((const char *)time_content);
+                        time_found = true;
+                        xmlFree(time_content);
                     }
                 }
+
+                if (elevation_found && time_found)
+                    break;
             }
 
             if (s_lat && s_lon) {
@@ -220,7 +249,8 @@ static bool gpx_extract_coords(xmlNode *node, GpxTrack *track) {
                 xmlFree(s_lon);
         }
 
-        gpx_extract_coords(cur_node->children, track);
+        if (!gpx_extract_coords(cur_node->children, track, times))
+            return false;
     }
     return true;
 }
@@ -306,7 +336,7 @@ static void track_calculate_elevation_gain_loss(GpxTrack *track) {
     free(smoothed);
 }
 
-static bool gpx_parse_file(char *filename, GpxTrack *track) {
+static bool gpx_parse_file(char *filename, GpxTrack *track, TrackTimes *times) {
     LOG_DEBUG("Parsing: %s\n", filename);
     xmlDocPtr doc;
     xmlNode *root_element;
@@ -319,9 +349,13 @@ static bool gpx_parse_file(char *filename, GpxTrack *track) {
     }
     root_element = xmlDocGetRootElement(doc);
 
+    // The buffer carries over from the file before this one; the count does
+    // not.
+    times->count = 0;
+
     gpx_extract_act_type(root_element, track);
 
-    if (gpx_extract_coords(root_element, track)) {
+    if (gpx_extract_coords(root_element, track, times)) {
         track_calculate_mid_point(track);
         LOG_DEBUG("Mid_x: %d, Mid_y: %d\n", track->mid_x, track->mid_y);
 
@@ -334,28 +368,40 @@ static bool gpx_parse_file(char *filename, GpxTrack *track) {
         LOG_DEBUG("Total elevation up: %.2f m\n", track->elev_up);
         LOG_DEBUG("Total elevation down: %.2f m\n", track->elev_down);
 
-        TrackTimeRange times = {0};
-        if (gpx_extract_time(root_element, &times)) {
-            time_t start = iso8601_to_utc(times.start);
-            time_t end = iso8601_to_utc(times.end);
+        // The first and last <trkpt> that carried a usable time -- the same two
+        // the retired second walk of the document picked out, now read off the
+        // array the first walk has already filled. A track with no times at all
+        // keeps the (time_t)-1 it was initialised with, so the four planned
+        // routes in a library of recordings stay out of everything that is
+        // dated.
+        time_t start = (time_t)-1;
+        time_t end = (time_t)-1;
+        for (int i = 0; i < times->count; i++) {
+            if (times->at[i] == (time_t)-1)
+                continue;
+            if (start == (time_t)-1)
+                start = times->at[i];
+            end = times->at[i];
+        }
+
+        if (start != (time_t)-1) {
             track->start_utc = start;
             track->end_utc = end;
 
-            if (start != (time_t)-1 && end != (time_t)-1 && end >= start) {
+            if (end >= start) {
                 track->duration_secs = difftime(end, start);
                 track->secs_per_km = (track->distance > 0.0f)
                                          ? track->duration_secs / track->distance
                                          : 0.0f;
-            } else {
-                track->duration_secs = 0.0f;
-                track->secs_per_km = 0.0f;
             }
-            LOG_DEBUG("start_time: %s\n", times.start);
-            LOG_DEBUG("end_time: %s\n", times.end);
             LOG_DEBUG("duration_secs: %f\n", track->duration_secs);
             LOG_DEBUG("distance: %f\n", track->distance);
             LOG_DEBUG("secs_per_km: %f\n", track->secs_per_km);
         }
+
+        track_splits_compute(track, times->at);
+        LOG_DEBUG("5k: %f, 10k: %f\n", track->splits[SPLIT_5K],
+                  track->splits[SPLIT_10K]);
     }
 
     // xmlCleanupParser() is a once-per-process teardown call, not a per-document
@@ -396,6 +442,10 @@ bool gpx_parse_all_files(GpxCollection *collection, const Progress *progress) {
     collection->total_tracks = 0;
     collection->tracks = NULL;
 
+    // One buffer for the whole scan, grown to whatever the longest file needs
+    // and released at the end. Nothing on the collection points into it.
+    TrackTimes times = {0};
+
     progress_set_total(progress, count_gpx_files(folder_path));
     progress_set_completed(progress, 0);
 
@@ -416,6 +466,7 @@ bool gpx_parse_all_files(GpxCollection *collection, const Progress *progress) {
         if (!collection->tracks) {
             perror("realloc");
             closedir(dir);
+            free(times.at);
             return false;
         }
 
@@ -433,13 +484,14 @@ bool gpx_parse_all_files(GpxCollection *collection, const Progress *progress) {
         current->start_utc = (time_t)-1;
         current->end_utc = (time_t)-1;
 
-        gpx_parse_file(full_path, current);
+        gpx_parse_file(full_path, current, &times);
         LOG_DEBUG("Tracks %d has %d data points\n", collection->total_tracks, collection->tracks[collection->total_tracks].total_points);
         collection->total_tracks++;
         progress_add(progress, 1);
     }
 
     closedir(dir);
+    free(times.at);
 
     // Sized from the tracks actually parsed. A second scan of the directory
     // could disagree with the first, and the loop below would then write past

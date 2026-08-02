@@ -4,6 +4,18 @@
 
 #include <stdlib.h>
 
+// Runs gpx_extract_coords over a document held in memory, so the walk that
+// fills the points and their timestamps is testable without a file on disk.
+static void parse_string(const char *xml, GpxTrack *track, TrackTimes *times) {
+    xmlDocPtr doc = xmlReadMemory(xml, (int)strlen(xml), "test.gpx", NULL, 0);
+    CHECK(doc != NULL);
+    if (!doc)
+        return;
+    times->count = 0;
+    gpx_extract_coords(xmlDocGetRootElement(doc), track, times);
+    xmlFreeDoc(doc);
+}
+
 // Builds a track over a fixed set of elevations. Coordinates advance in a
 // straight line so partial_distance is monotonic; only elevation matters to the
 // suites below that use it.
@@ -150,4 +162,130 @@ void run_gpx_tests(void) {
     CHECK_INT(track.mid_x, 250);
     CHECK_INT(track.mid_y, 1000);
     free_track(&track);
+
+    SUITE("gpx: activity_type_from_string");
+    // The converter writes "Running", other tools write "running", and the
+    // comparison used to be case-sensitive -- which quietly filed every
+    // lowercase run under Other.
+    CHECK_INT(activity_type_from_string((const xmlChar *)"Running"), Run);
+    CHECK_INT(activity_type_from_string((const xmlChar *)"running"), Run);
+    CHECK_INT(activity_type_from_string((const xmlChar *)"RUNNING"), Run);
+    CHECK_INT(activity_type_from_string((const xmlChar *)"Hiking"), Hike);
+    CHECK_INT(activity_type_from_string((const xmlChar *)"hiking"), Hike);
+    CHECK_INT(activity_type_from_string((const xmlChar *)"Cycling"), Cycling);
+    CHECK_INT(activity_type_from_string((const xmlChar *)"cycling"), Cycling);
+    // Anything else is Other, including the walks and the paddleboarding that
+    // no category asks for.
+    CHECK_INT(activity_type_from_string((const xmlChar *)"Walking"), Other);
+    CHECK_INT(activity_type_from_string((const xmlChar *)"9"), Other);
+    CHECK_INT(activity_type_from_string((const xmlChar *)""), Other);
+
+    SUITE("gpx: a timestamp per point, alongside the elevations");
+    // The elevation loop used to break out as soon as it had the <ele>, which
+    // would leave every timestamp behind. Both have to come out of one pass.
+    {
+        GpxTrack recorded = {0};
+        TrackTimes times = {0};
+        parse_string(
+            "<gpx><trk><trkseg>"
+            "<trkpt lat='48.0' lon='11.0'><ele>500.0</ele><time>2025-05-01T06:00:00Z</time></trkpt>"
+            "<trkpt lat='48.1' lon='11.0'><ele>510.0</ele><time>2025-05-01T06:00:10Z</time></trkpt>"
+            "<trkpt lat='48.2' lon='11.0'><ele>520.0</ele><time>2025-05-01T06:00:25Z</time></trkpt>"
+            "</trkseg></trk></gpx>",
+            &recorded, &times);
+
+        CHECK_INT(recorded.total_points, 3);
+        CHECK_INT(times.count, recorded.total_points);
+        CHECK_NEAR(recorded.points[0].elevation, 500.0, 1e-6);
+        CHECK_NEAR(recorded.points[2].elevation, 520.0, 1e-6);
+        CHECK_INT(times.at[0], iso8601_to_utc("2025-05-01T06:00:00Z"));
+        CHECK_INT(times.at[2], iso8601_to_utc("2025-05-01T06:00:25Z"));
+        // The order of the children must not matter either.
+        CHECK(times.at[1] > times.at[0]);
+
+        free(recorded.points);
+        free(times.at);
+    }
+
+    SUITE("gpx: a planned route carries no times at all");
+    // What the AllTrails exports in the library look like: coordinates and
+    // elevations, no <time> anywhere. Every slot stays unset, which is what
+    // keeps such a track out of the dated statistics and off the records.
+    {
+        GpxTrack route = {0};
+        TrackTimes times = {0};
+        parse_string(
+            "<gpx><trk><trkseg>"
+            "<trkpt lat='50.8' lon='14.7'><ele>400.0</ele></trkpt>"
+            "<trkpt lat='50.9' lon='14.7'><ele>401.0</ele></trkpt>"
+            "</trkseg></trk></gpx>",
+            &route, &times);
+
+        CHECK_INT(route.total_points, 2);
+        CHECK_INT(times.count, 2);
+        CHECK_INT(times.at[0], (time_t)-1);
+        CHECK_INT(times.at[1], (time_t)-1);
+        CHECK_NEAR(route.points[1].elevation, 401.0, 1e-6);
+
+        free(route.points);
+        free(times.at);
+    }
+
+    SUITE("gpx: times only in the middle of the track");
+    // The first and last usable timestamps are what become start_utc and
+    // end_utc, so a fix that lost its clock at either end must be skipped over
+    // rather than taken as the bound.
+    {
+        GpxTrack patchy = {0};
+        TrackTimes times = {0};
+        parse_string(
+            "<gpx><trk><trkseg>"
+            "<trkpt lat='48.0' lon='11.0'><ele>500.0</ele></trkpt>"
+            "<trkpt lat='48.1' lon='11.0'><time>2025-05-01T06:00:10Z</time></trkpt>"
+            "<trkpt lat='48.2' lon='11.0'><time>2025-05-01T06:00:20Z</time></trkpt>"
+            "<trkpt lat='48.3' lon='11.0'><ele>530.0</ele></trkpt>"
+            "</trkseg></trk></gpx>",
+            &patchy, &times);
+
+        CHECK_INT(times.count, 4);
+        CHECK_INT(times.at[0], (time_t)-1);
+        CHECK_INT(times.at[3], (time_t)-1);
+
+        time_t start = (time_t)-1, end = (time_t)-1;
+        for (int i = 0; i < times.count; i++) {
+            if (times.at[i] == (time_t)-1)
+                continue;
+            if (start == (time_t)-1)
+                start = times.at[i];
+            end = times.at[i];
+        }
+        CHECK_INT(start, iso8601_to_utc("2025-05-01T06:00:10Z"));
+        CHECK_INT(end, iso8601_to_utc("2025-05-01T06:00:20Z"));
+
+        free(patchy.points);
+        free(times.at);
+    }
+
+    SUITE("gpx: a point with no coordinates keeps the arrays in step");
+    // A malformed <trkpt> still counts as a point, so its timestamp slot has to
+    // exist too -- otherwise every point after it would be paired with the
+    // wrong time.
+    {
+        GpxTrack broken = {0};
+        TrackTimes times = {0};
+        parse_string(
+            "<gpx><trk><trkseg>"
+            "<trkpt lat='48.0' lon='11.0'><time>2025-05-01T06:00:00Z</time></trkpt>"
+            "<trkpt><time>2025-05-01T06:00:10Z</time></trkpt>"
+            "<trkpt lat='48.2' lon='11.0'><time>2025-05-01T06:00:20Z</time></trkpt>"
+            "</trkseg></trk></gpx>",
+            &broken, &times);
+
+        CHECK_INT(broken.total_points, 3);
+        CHECK_INT(times.count, 3);
+        CHECK_INT(times.at[2], iso8601_to_utc("2025-05-01T06:00:20Z"));
+
+        free(broken.points);
+        free(times.at);
+    }
 }

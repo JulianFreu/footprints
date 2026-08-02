@@ -130,7 +130,7 @@ int main(int argc, char *argv[]) {
             apply_filter_values(&collection);
             // The whole tracks array may have moved, so anything holding
             // numbers derived from it is stale.
-            ui_stats_invalidate();
+            ui_invalidate_derived();
             tracks_invalidate_cache(&collection);
             LOG_DEBUG("Maximum heat is %d\n", collection.max_heat);
             app_request_redraw(&appl);
