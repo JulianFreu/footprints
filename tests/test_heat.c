@@ -224,4 +224,49 @@ void run_heat_tests(void) {
         storage[0].world_y = 93000000;
         check_against_brute_force(storage, 1, 1, 100.0f);
     }
+
+    SUITE("heat: the threaded maximum is the maximum over every point");
+    {
+        // The workers each keep their own maximum and the join reduces them,
+        // rather than every point taking a shared lock to answer the same
+        // question. Whatever the split, the answer has to be the one a single
+        // pass would give.
+        enum {
+            TRACKS = 9,
+            PER_TRACK = 120,
+            N = TRACKS * PER_TRACK
+        };
+        static GpxTrack tracks[TRACKS];
+        static GpxPoint storage[N];
+        GpxCollection collection = {0};
+        collection.tracks = tracks;
+        collection.total_tracks = TRACKS;
+
+        for (int t = 0; t < TRACKS; t++) {
+            tracks[t] = (GpxTrack){0};
+            tracks[t].points = &storage[t * PER_TRACK];
+            tracks[t].total_points = PER_TRACK;
+            tracks[t].track_id = t;
+            tracks[t].visible_in_list = true;
+            for (int i = 0; i < PER_TRACK; i++) {
+                // Deliberately overlapping, so the tracks see each other and
+                // the heat is not uniformly one.
+                tracks[t].points[i] = (GpxPoint){0};
+                tracks[t].points[i].world_x = 93000000 + next_random(1200);
+                tracks[t].points[i].world_y = 93000000 + next_random(1200);
+                tracks[t].points[i].track_id = t;
+            }
+        }
+
+        CHECK(calculate_heatmap(&collection, NULL));
+
+        int highest = 0;
+        for (int i = 0; i < N; i++)
+            if (storage[i].heat > highest)
+                highest = storage[i].heat;
+        CHECK_INT(collection.max_heat, highest);
+        // Overlapping tracks, so this is a real maximum rather than the
+        // no-overlap floor.
+        CHECK(collection.max_heat > 1);
+    }
 }

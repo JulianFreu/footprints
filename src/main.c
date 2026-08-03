@@ -131,7 +131,9 @@ int main(int argc, char *argv[]) {
             // The whole tracks array may have moved, so anything holding
             // numbers derived from it is stale.
             ui_invalidate_derived();
-            tracks_invalidate_cache(&collection);
+            // Only the tiles: the worker rebuilt the point index itself, on
+            // the far side of the parse that moved the tracks.
+            tracks_invalidate_filtered_view(&collection);
             LOG_DEBUG("Maximum heat is %d\n", collection.max_heat);
             app_request_redraw(&appl);
         }
@@ -291,23 +293,30 @@ static void dispatch_event(struct application *appl, GpxCollection *collection,
 
     if (event.type == SDL_QUIT) {
         appl->running = 0;
-    } else if (event.type == SDL_WINDOWEVENT &&
-               event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
+        return;
+    }
+    if (event.type == SDL_WINDOWEVENT &&
+        event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
         // Asked for here rather than every iteration: the size only ever
         // changes on this event.
         SDL_GetWindowSize(appl->window, &appl->window_width, &appl->window_height);
-    } else if (ui_text_input_active()) {
-        if (event.type == SDL_KEYDOWN) {
-            SDL_Keycode key = event.key.keysym.sym;
+        return;
+    }
 
-            if (key >= SDLK_0 && key <= SDLK_9)
-                ui_text_input_digit(collection, (char)('0' + (key - SDLK_0)));
-            else
-                ui_text_input_finish(collection); // any non-digit key commits
-        } else if (event.type == SDL_MOUSEBUTTONDOWN) {
-            ui_text_input_finish(collection); // so does clicking away
-        }
-    } else if (event.type == SDL_MOUSEWHEEL) {
+    // A filter field takes the keys it has a use for and leaves the rest. Not a
+    // link in the chain below, because a click that leaves a field still has to
+    // reach whatever it landed on -- when this consumed the press outright, a
+    // field was focused by the second click on it rather than the first.
+    if (ui_filters_input_active()) {
+        if (event.type == SDL_KEYDOWN &&
+            ui_filters_handle_key(collection, event.key.keysym.sym,
+                                  (event.key.keysym.mod & KMOD_SHIFT) != 0))
+            return;
+        if (event.type == SDL_MOUSEBUTTONDOWN)
+            ui_filters_blur();
+    }
+
+    if (event.type == SDL_MOUSEWHEEL) {
         // Accumulated, not assigned: several detents can be drained in one
         // iteration, and every one of them has to count.
         appl->wheel_y += event.wheel.y;

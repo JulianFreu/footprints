@@ -8,9 +8,10 @@
 #include "gpx_types.h"
 #include "map_types.h"
 
-// Drops the rendered heat tiles and the spatial index behind them. Call
-// whenever the set of visible tracks, or their heat, changes.
-void tracks_invalidate_cache(GpxCollection *collection);
+// Drops the rendered heat tiles, keeping the spatial index behind them. Call
+// whenever the set of visible tracks, or their heat, changes. The index spans
+// every point whatever the filters say, and is the background job's to build.
+void tracks_invalidate_filtered_view(GpxCollection *collection);
 // Teardown counterpart: also releases the index's allocation.
 void tracks_free_collection_cache(GpxCollection *collection);
 void tracks_free_scratch(struct application *appl);

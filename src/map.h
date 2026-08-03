@@ -107,6 +107,9 @@ bool tile_cache_tick_fades(TileTextureCache *cache, float dt);
 // into, or NULL if it could not be stored -- the caller destroys it then. The
 // pointer is good only until the next insert.
 TileTexture *tile_cache_insert(TileTextureCache *cache, MapTile key, SDL_Texture *texture);
+// Empties the cache but keeps its allocation, for a caller that is about to
+// fill it again. tile_cache_free gives the allocation back as well.
+void tile_cache_clear(TileTextureCache *cache);
 void tile_cache_free(TileTextureCache *cache);
 
 // Formats the on-disk path of a tile. The single place that layout is spelled.

@@ -7,8 +7,8 @@
 #include "gpx_types.h"
 #include "ui_types.h"
 
-// Animation and text-input state for the whole UI. Defined in ui.c; the event
-// loop in main.c both reads and drives it.
+// Animation state for the whole UI. Defined in ui.c; the event loop in main.c
+// both reads and drives it.
 extern UIState ui;
 
 void clay_init(struct application *appl);
@@ -22,11 +22,18 @@ void clay_free_memory(void);
 void ui_toggle_panel(MenuPanel panel);
 // The run list, which is what TAB has always toggled.
 void ui_toggle_run_list(void);
-// Text input for the filter fields. The event loop routes keystrokes here
-// rather than reaching into UIState itself.
-bool ui_text_input_active(void);
-void ui_text_input_digit(GpxCollection *collection, char digit);
-void ui_text_input_finish(GpxCollection *collection);
+// Text input for the filter fields. Which field is being edited, and what has
+// been typed into it, belongs to the filter panel; the event loop routes keys
+// here rather than holding any of it.
+bool ui_filters_input_active(void);
+// Handles one key while a field is focused. False for a key the panel has no
+// use for, which the caller is then free to go on routing -- and which no
+// longer throws the field out of edit mode the way anything but a digit did.
+bool ui_filters_handle_key(GpxCollection *collection, SDL_Keycode key,
+                           bool shift_held);
+// Leaves the field. The click that caused it still counts for whatever it
+// landed on, so moving between two fields is one click rather than two.
+void ui_filters_blur(void);
 
 // Marks everything derived from the tracks stale -- the statistics series and
 // the records table. Each panel rebuilds on its next update rather than in the

@@ -197,11 +197,8 @@ static void *heatmap_worker(void *arg) {
                       task->radius2, &count, seen, i, x_correction);
         task->points[i]->heat = count;
 
-        pthread_mutex_lock(task->max_mutex);
-        if (count > *(task->thread_max_heat)) {
-            *(task->thread_max_heat) = count;
-        }
-        pthread_mutex_unlock(task->max_mutex);
+        if (count > task->max_heat)
+            task->max_heat = count;
 
         // Batched so the workers are not all hammering one cache line.
         task->batch_progress++;
@@ -277,8 +274,6 @@ bool calculate_heatmap(GpxCollection *collection, const Progress *progress) {
 
     pthread_t threads[thread_count];
     HeatmapTask tasks[thread_count];
-    pthread_mutex_t max_mutex = PTHREAD_MUTEX_INITIALIZER;
-    int max_heat = 0;
 
     for (int t = 0; t < thread_count; t++) {
         tasks[t].points = points;
@@ -289,8 +284,7 @@ bool calculate_heatmap(GpxCollection *collection, const Progress *progress) {
         tasks[t].total_points = total_points;
         tasks[t].radius2 = radius2;
         tasks[t].total_tracks = collection->total_tracks;
-        tasks[t].thread_max_heat = &max_heat;
-        tasks[t].max_mutex = &max_mutex;
+        tasks[t].max_heat = 0;
         tasks[t].progress = progress;
         tasks[t].batch_progress = 0;
 
@@ -300,8 +294,13 @@ bool calculate_heatmap(GpxCollection *collection, const Progress *progress) {
             return false;
         }
     }
+    // The reduction the workers no longer do a point at a time. Reading a
+    // task's maximum after its join is ordered by the join itself.
+    int max_heat = 0;
     for (int t = 0; t < thread_count; t++) {
         pthread_join(threads[t], NULL);
+        if (tasks[t].max_heat > max_heat)
+            max_heat = tasks[t].max_heat;
     }
 
     collection->max_heat = max_heat;

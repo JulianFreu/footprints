@@ -14,12 +14,13 @@ static bool point_is_in_tile(const GpxPoint *point, MapTile tile) {
            (point->world_y >> zoom_diff) / TILE_SIZE == tile.tile_y;
 }
 
+// The index spans the whole collection, filtered or not -- what is hidden is
+// skipped by whoever walks a range, so the scan it is compared against does not
+// look at visible_in_list either.
 static int brute_force_count(const GpxCollection *collection, MapTile tile) {
     int count = 0;
     for (int t = 0; t < collection->total_tracks; t++) {
         const GpxTrack *track = &collection->tracks[t];
-        if (!track->visible_in_list)
-            continue;
         for (int i = 0; i < track->total_points; i++)
             if (point_is_in_tile(&track->points[i], tile))
                 count++;
@@ -77,8 +78,9 @@ void run_point_index_tests(void) {
             tracks[t].points = storage[t];
             tracks[t].total_points = PER_TRACK;
             tracks[t].track_id = t;
-            // Two tracks are filtered out, to pin down that the index only
-            // holds visible points.
+            // Two tracks are filtered out, to pin down that the index holds
+            // their points anyway: it is what makes a change to the filters
+            // free, and the caller is what skips them.
             tracks[t].visible_in_list = (t % 6 != 0);
             for (int i = 0; i < PER_TRACK; i++) {
                 storage[t][i] = (GpxPoint){0};
@@ -89,12 +91,14 @@ void run_point_index_tests(void) {
         }
 
         CHECK(point_index_ensure(&collection));
+        CHECK_INT(collection.point_index.count, TRACKS * PER_TRACK);
 
-        int visible_points = 0;
-        for (int t = 0; t < TRACKS; t++)
-            if (tracks[t].visible_in_list)
-                visible_points += PER_TRACK;
-        CHECK_INT(collection.point_index.count, visible_points);
+        // A hidden track's points are in there like anyone else's.
+        int hidden_found = 0;
+        for (int i = 0; i < collection.point_index.count; i++)
+            if (!tracks[collection.point_index.entries[i].point->track_id].visible_in_list)
+                hidden_found++;
+        CHECK_INT(hidden_found, 2 * PER_TRACK);
 
         // Sorted, which is what the binary search assumes.
         int unsorted = 0;
@@ -135,16 +139,16 @@ void run_point_index_tests(void) {
         // Guard against the comparison passing because every tile was empty.
         CHECK(tiles_with_points > 20);
 
-        // Every visible point is reachable through the zoom-0 root tile.
+        // Every point is reachable through the zoom-0 root tile.
         MapTile root = {0, 0, 0};
         int from, to;
         point_index_tile_range(&collection.point_index, root, &from, &to);
-        CHECK_INT(to - from, visible_points);
+        CHECK_INT(to - from, TRACKS * PER_TRACK);
 
         point_index_free(&collection.point_index);
     }
 
-    SUITE("point_index: invalidate forces a rebuild against the new visible set");
+    SUITE("point_index: the filters do not change what is in it");
     {
         enum {
             PER_TRACK = 40
@@ -173,10 +177,16 @@ void run_point_index_tests(void) {
         CHECK(point_index_ensure(&collection));
         CHECK_INT(collection.point_index.count, 2 * PER_TRACK);
 
+        // Hiding a track is not a reason to rebuild, and does not change the
+        // result when something else forces one. This is what lets the filters
+        // be applied as they are typed: the sort behind them never reruns.
         tracks[1].visible_in_list = false;
+        CHECK(point_index_ensure(&collection));
+        CHECK_INT(collection.point_index.count, 2 * PER_TRACK);
+
         point_index_invalidate(&collection.point_index);
         CHECK(point_index_ensure(&collection));
-        CHECK_INT(collection.point_index.count, PER_TRACK);
+        CHECK_INT(collection.point_index.count, 2 * PER_TRACK);
 
         point_index_free(&collection.point_index);
     }

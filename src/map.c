@@ -403,6 +403,18 @@ bool tile_cache_tick_fades(TileTextureCache *cache, float dt) {
     return moved;
 }
 
+// Throws the textures away but keeps the array they sat in. The heat cache is
+// emptied every time the filters change, and freeing the allocation only to
+// grow it back to the same size is work for nothing.
+void tile_cache_clear(TileTextureCache *cache) {
+    for (int i = 0; i < cache->size; i++) {
+        if (cache->entries[i].texture)
+            SDL_DestroyTexture(cache->entries[i].texture);
+    }
+    cache->size = 0;
+    cache->clock = 0;
+}
+
 void tile_cache_free(TileTextureCache *cache) {
     for (int i = 0; i < cache->size; i++) {
         if (cache->entries[i].texture)

@@ -151,12 +151,12 @@ void tracks_free_scratch(struct application *appl) {
     appl->overlay_points_capacity = 0;
 }
 
-// Drops everything derived from the visible set: the rendered tiles and the
-// index they are rendered from. Called when the filters change, when the heat
-// is recalculated, and at teardown.
-void tracks_invalidate_cache(GpxCollection *collection) {
-    tile_cache_free(&collection->track_tile_cache);
-    point_index_invalidate(&collection->point_index);
+// Drops the rendered tiles, which are what the visible set is baked into. The
+// index underneath them spans every point and does not care which of them are
+// shown, so it survives -- and that is what makes this cheap enough to run
+// while the filters are being typed.
+void tracks_invalidate_filtered_view(GpxCollection *collection) {
+    tile_cache_clear(&collection->track_tile_cache);
 }
 
 // Teardown counterpart: also gives back the index's allocation.
@@ -193,6 +193,11 @@ static SDL_Texture *render_track_tile(struct application *appl, GpxCollection *c
     const float heat_span = (float)collection->max_heat - min_heat;
     for (int j = from; j < to; j++) {
         const GpxPoint *point = collection->point_index.entries[j].point;
+
+        // The index spans the whole collection, so the filters are applied
+        // here rather than by rebuilding it. A hidden point costs one bool.
+        if (!collection->tracks[point->track_id].visible_in_list)
+            continue;
 
         int tile_x, tile_y, pixel_in_tile_x, pixel_in_tile_y;
         conv_pixel_to_tile_and_offset(point->world_x, point->world_y, MAX_ZOOM, key.zoom,
@@ -273,25 +278,65 @@ void tracks_draw_selected_overlay(struct application *appl) {
     SDL_RenderCopyF(appl->renderer, appl->selected_track_overlay, NULL, &dest);
 }
 
+// The zoom whose tiles are the tightest fit around a click radius: deep enough
+// that a tile is small, shallow enough that one still covers the radius, so the
+// ring of nine around the click is certain to hold every candidate.
+static int index_zoom_for_radius(int current_zoom, int max_pixel_distance) {
+    int zoom = current_zoom;
+    // A tile at `zoom` spans TILE_SIZE >> (zoom - current_zoom) screen pixels.
+    while (zoom < MAX_ZOOM &&
+           (TILE_SIZE >> (zoom + 1 - current_zoom)) >= max_pixel_distance)
+        zoom++;
+    return zoom;
+}
+
 int find_track_near_click(GpxCollection *collection, int click_world_x, int click_world_y, int current_zoom, int max_pixel_distance) {
+    // Asked of the index rather than of every point there is. This used to walk
+    // the whole library on each click -- over a million points, with the
+    // world-per-pixel divisor recomputed inside the loop -- while the index
+    // that answers exactly this question was already built for the tiles.
+    if (!point_index_ensure(collection))
+        return -1;
+
+    // The radius is in screen pixels, so the distance has to be too.
+    const double world_per_pixel = map_world_per_pixel_at(current_zoom);
     int closest_track_id = -1;
-    int64_t closest_distance_squared = max_pixel_distance * max_pixel_distance;
+    double closest_distance_squared = (double)max_pixel_distance * (double)max_pixel_distance;
 
-    for (int i = 0; i < collection->total_tracks; i++) {
-        if (collection->tracks[i].visible_in_list) {
-            GpxTrack *track = &collection->tracks[i];
+    int zoom = index_zoom_for_radius(current_zoom, max_pixel_distance);
+    int centre_x, centre_y, offset_x, offset_y;
+    conv_pixel_to_tile_and_offset(click_world_x, click_world_y, MAX_ZOOM, zoom,
+                                  &centre_x, &centre_y, &offset_x, &offset_y);
 
-            for (int j = 0; j < track->total_points; j++) {
-                GpxPoint *pt = &track->points[j];
+    // The click sits somewhere inside the middle tile, so the ring around it is
+    // what carries the rest of the radius however close to an edge it landed.
+    for (int tile_y = centre_y - 1; tile_y <= centre_y + 1; tile_y++) {
+        for (int tile_x = centre_x - 1; tile_x <= centre_x + 1; tile_x++) {
+            if (tile_x < 0 || tile_y < 0)
+                continue;
 
-                // The radius is in screen pixels, so the distance has to be too.
-                int64_t dx = (pt->world_x - click_world_x) / map_world_per_pixel_at(current_zoom);
-                int64_t dy = (pt->world_y - click_world_y) / map_world_per_pixel_at(current_zoom);
-                int64_t dist_squared = dx * dx + dy * dy;
+            int from, to;
+            point_index_tile_range(&collection->point_index,
+                                   (MapTile){.tile_x = tile_x, .tile_y = tile_y, .zoom = zoom},
+                                   &from, &to);
 
-                if (0 < dist_squared && dist_squared < closest_distance_squared) {
+            for (int i = from; i < to; i++) {
+                const GpxPoint *point = collection->point_index.entries[i].point;
+                // The index spans every point, so what is filtered out is
+                // skipped here rather than left out of it.
+                if (!collection->tracks[point->track_id].visible_in_list)
+                    continue;
+
+                double dist_x = (double)(point->world_x - click_world_x) / world_per_pixel;
+                double dist_y = (double)(point->world_y - click_world_y) / world_per_pixel;
+                double dist_squared = dist_x * dist_x + dist_y * dist_y;
+
+                // Inclusive, so a click landing exactly on a point selects its
+                // track. The old test excluded a distance of zero and so threw
+                // away the most direct hit there is.
+                if (dist_squared <= closest_distance_squared) {
                     closest_distance_squared = dist_squared;
-                    closest_track_id = track->track_id;
+                    closest_track_id = point->track_id;
                 }
             }
         }

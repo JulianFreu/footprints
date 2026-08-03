@@ -19,6 +19,10 @@ static void sleep_briefly(void) {
 // observe in flight, but small enough not to slow the suite down.
 static void build_collection(GpxCollection *collection, GpxTrack *tracks,
                              GpxPoint *storage, int track_count, int per_track) {
+    // A finished job leaves a point index behind it, and this is about to
+    // forget the collection that owns it.
+    point_index_free(&collection->point_index);
+
     *collection = (GpxCollection){0};
     collection->tracks = tracks;
     collection->total_tracks = track_count;
@@ -57,7 +61,7 @@ void run_background_tests(void) {
     };
     static GpxTrack tracks[TRACKS];
     static GpxPoint storage[TRACKS * PER_TRACK];
-    GpxCollection collection;
+    GpxCollection collection = {0};
 
     SUITE("background: an idle job is not busy and collects nothing");
     BackgroundJob job = {0};
@@ -126,4 +130,6 @@ void run_background_tests(void) {
     CHECK(background_stage_label(BG_STAGE_IDLE)[0] != '\0');
     CHECK(background_stage_label(BG_STAGE_PARSING)[0] != '\0');
     CHECK(background_stage_label(BG_STAGE_HEAT)[0] != '\0');
+
+    point_index_free(&collection.point_index);
 }

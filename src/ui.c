@@ -74,8 +74,7 @@ UIState ui = {
     .right_sidebar = {0},
     .panels = {{0}},
     .open_panel = PANEL_NONE,
-    .filters = {0},
-    .active_filter_id = NO_ACTIVE_FILTER};
+    .filters = {0}};
 
 static Clay_Arena clay_memory;
 
@@ -480,6 +479,7 @@ void ui_update(struct application *appl, GpxCollection *collection) {
     for (int panel = 0; panel < PANEL_COUNT; panel++)
         moved |= anim_tick(&ui.panels[panel], delta_time);
     moved |= ui_runlist_scroll_tick(delta_time);
+    moved |= ui_filters_update(appl, collection);
     moved |= ui_stats_update(appl, collection);
     moved |= ui_records_update(appl, collection);
     if (moved)

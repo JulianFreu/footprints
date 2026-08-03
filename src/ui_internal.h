@@ -41,6 +41,12 @@
 #define RUN_LIST_FOOTER_HEIGHT (LIST_ENTRY_HEIGHT + 2 * GAPS)
 #define FILTERS_WIDTH 300
 #define FILTERS_MINMAX_WIDTH 80
+// The activity toggles go two to a row rather than in one tall column: four
+// stacked buttons took most of the room the counter and the buttons under them
+// now sit in.
+#define FILTERS_TYPE_COLUMNS 2
+// The bar drawn after the text of the field being edited.
+#define FILTER_CARET_WIDTH 2
 
 // The scroll position indicator, in its own column to the right of the rows so
 // it never sits on top of one. Shared by the run list and the records panel,
@@ -149,6 +155,11 @@ Clay_Color ui_fade(Clay_Color color);
 
 // The panels, each drawn by its own translation unit.
 void ui_draw_filter_panel(struct application *appl, GpxCollection *collection);
+// Consumes the filter panel's pending presses, applies whatever the filters
+// now say, and re-rasterises the map once the field being typed in goes quiet.
+// Returns whether anything moved. Aggregating here rather than in the layout is
+// what keeps the layout a read of the model.
+bool ui_filters_update(struct application *appl, GpxCollection *collection);
 void ui_draw_run_list(struct application *appl, GpxCollection *collection);
 void ui_draw_statistics_panel(struct application *appl);
 void ui_draw_records_panel(struct application *appl);

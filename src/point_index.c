@@ -48,8 +48,7 @@ bool point_index_ensure(GpxCollection *collection) {
 
     int needed = 0;
     for (int t = 0; t < collection->total_tracks; t++)
-        if (collection->tracks[t].visible_in_list)
-            needed += collection->tracks[t].total_points;
+        needed += collection->tracks[t].total_points;
 
     if (needed > index->capacity) {
         IndexedPoint *grown = realloc(index->entries, (size_t)needed * sizeof(IndexedPoint));
@@ -63,8 +62,6 @@ bool point_index_ensure(GpxCollection *collection) {
 
     for (int t = 0; t < collection->total_tracks; t++) {
         const GpxTrack *track = &collection->tracks[t];
-        if (!track->visible_in_list)
-            continue;
         for (int i = 0; i < track->total_points; i++) {
             const GpxPoint *point = &track->points[i];
             index->entries[index->count++] = (IndexedPoint){

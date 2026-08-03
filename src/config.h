@@ -130,7 +130,15 @@
 #define HEAT_PROGRESS_BATCH 256
 
 // --- UI ---
-#define INPUT_BUFFER_SIZE 16
+// How long a filter field has to sit still before the heat tiles are
+// rasterised again. The run list, the counter and the derived panels follow
+// every keystroke -- they are a pass over eleven hundred tracks. The tiles are
+// a pass over more than a million points, so they wait for the digit after
+// this one not to arrive.
+#define FILTER_SETTLE_SECONDS 0.15f
+
+// The caret's full cycle, on for the first half and off for the second.
+#define FILTER_CARET_BLINK_SECONDS 1.06f
 
 // How long a side panel takes to slide all the way open or shut. The same
 // stretch of time is what it has to fade in over, so a panel is invisible when

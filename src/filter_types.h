@@ -27,15 +27,24 @@ typedef enum {
     BOUND_COUNT
 } FilterBoundEnd;
 
-// Every filter string is edited through the same fixed-size buffer.
+// Every filter string is shown through the same fixed-size buffer. The longest
+// is a date, "DD.MM.YYYY".
 #define FILTER_TEXT_SIZE 16
+// Digits a field accepts before it is full, which is again the date's eight.
+#define FILTER_DIGITS_MAX 8
 
-// One end of one range: the text the UI edits in place, and the number it was
-// parsed into. An empty string means "no bound", which parses to -/+DBL_MAX.
+// One end of one range.
+//
+// The digits are what was typed and the only thing that is written: the text a
+// field shows and the number the predicate compares are both derived from them,
+// together, so the two cannot drift apart. No digits means "no bound", which
+// reads as -/+DBL_MAX -- and so does a field whose digits do not add up to a
+// value yet, which for the date filter is anything short of all eight.
 //
 // The bound is a double rather than a float because the date filter stores a
 // UTC timestamp here, and a float cannot hold one without losing days.
 typedef struct FilterBound {
+    char digits[FILTER_DIGITS_MAX + 1];
     char text[FILTER_TEXT_SIZE];
     double value;
 } FilterBound;

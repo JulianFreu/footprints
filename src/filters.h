@@ -27,12 +27,28 @@ bool filter_field_unpack(uint16_t id, FilterAttribute *attribute, FilterBoundEnd
 const char *filter_display_name(FilterAttribute attribute);
 // How this attribute's fields are laid out as they are typed.
 FilterFormat filter_format(FilterAttribute attribute);
-// The editable text of one end of one range.
-char *filter_bound_text(FilterSettings *filters, FilterAttribute attribute,
+// What one end of one range shows, and the digits behind it. Both are reads:
+// a field is changed through the four calls below, which is what keeps the
+// text, the digits and the numeric bound in step.
+const char *filter_bound_text(const FilterSettings *filters,
+                              FilterAttribute attribute, FilterBoundEnd end);
+const char *filter_bound_digits(const FilterSettings *filters,
+                                FilterAttribute attribute, FilterBoundEnd end);
+
+// Editing one end of one range. Each rewrites the field's text and its numeric
+// bound from the digits, so neither can be left stale. A digit past what the
+// format holds is dropped, and a backspace on an empty field does nothing.
+void filter_bound_push_digit(FilterSettings *filters, FilterAttribute attribute,
+                             FilterBoundEnd end, char digit);
+void filter_bound_backspace(FilterSettings *filters, FilterAttribute attribute,
+                            FilterBoundEnd end);
+// Replaces the field with `digits`, ignoring anything in it that is not one.
+// How a field is restored after an edit is abandoned.
+void filter_bound_set_digits(FilterSettings *filters, FilterAttribute attribute,
+                             FilterBoundEnd end, const char *digits);
+void filter_bound_clear(FilterSettings *filters, FilterAttribute attribute,
                         FilterBoundEnd end);
 
-// Re-reads every field's text into its numeric bound.
-void save_filter_values(FilterSettings *filters);
 // Clears every field and shows every activity type.
 void reset_filters(FilterSettings *filters);
 // Recomputes visible_in_list for every track, and the "Shown: n of m" label.

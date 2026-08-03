@@ -6,6 +6,7 @@
 #include "gpx_parser.h"
 #include "heat.h"
 #include "log.h"
+#include "point_index.h"
 
 static Progress job_progress(BackgroundJob *job) {
     return (Progress){
@@ -28,6 +29,9 @@ static void *background_worker(void *arg) {
 
     if (job->parse_first) {
         begin_stage(job, BG_STAGE_PARSING);
+        // The parse grows the tracks array, so anything pointing into it is
+        // stale before the parse rather than after it.
+        point_index_invalidate(&job->collection->point_index);
         if (!gpx_parse_all_files(job->collection, &progress))
             fprintf(stderr, "No tracks were loaded from %s\n", GPX_INPUT_DIR);
 
@@ -42,6 +46,14 @@ static void *background_worker(void *arg) {
         if (!calculate_heatmap(job->collection, &progress))
             fprintf(stderr, "Heat calculation failed; the map will render unshaded\n");
     }
+
+    // Built here rather than on the first tile that needs it: it is a sort of
+    // every point in the library, and the main thread would otherwise spend a
+    // frame on it. It is pure arithmetic over memory this thread still owns,
+    // and it outlives every change to the filters, so this is the only place
+    // that pays for it.
+    if (!atomic_load(&job->cancel))
+        point_index_ensure(job->collection);
 
     atomic_store(&job->stage, BG_STAGE_IDLE);
     // Published last, and it is what the main thread waits on: everything the

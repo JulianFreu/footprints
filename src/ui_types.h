@@ -9,9 +9,6 @@
 
 #include "anim.h"
 #include "config.h"
-#include "filter_types.h"
-
-#define NO_ACTIVE_FILTER (-1)
 
 // The panels the menu bar toggles, in the order their buttons are stacked.
 // One button, one panel, one anim: the enum is what ties the three together,
@@ -36,12 +33,6 @@ typedef struct UIState {
     // open one.
     MenuPanel open_panel;
     Anim filters;
-    bool text_input_mode;
-    char text_input_buffer[INPUT_BUFFER_SIZE];
-    size_t text_input_length;
-    // Packed filter field being edited, or NO_ACTIVE_FILTER. Zero is a valid
-    // packed id, so "none" needs its own value.
-    int active_filter_id;
 } UIState;
 
 typedef struct

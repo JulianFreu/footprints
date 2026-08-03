@@ -77,8 +77,8 @@ typedef struct GpxCollection {
     int *list_order;
     FilterSettings filters;
     TileTextureCache track_tile_cache;
-    // Spatial index behind the rendered tiles. Both are dropped together, by
-    // tracks_invalidate_cache, whenever the visible set changes.
+    // Spatial index behind the rendered tiles. It spans every point, so the
+    // filters change the tiles without touching it; only a reparse rebuilds it.
     TrackPointIndex point_index;
 } GpxCollection;
 

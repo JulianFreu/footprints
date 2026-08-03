@@ -55,6 +55,13 @@ time_t european_date_to_utc(const char *date) {
     if (sscanf(date, "%d.%d.%d", &day, &month, &year) != 3)
         return (time_t)-1;
 
+    // Checked rather than left to roll over: utc_from_tm normalises whatever it
+    // is given, so "99.99.2025" would come back as a real instant in 2033. The
+    // filter field asks about every date on the way to the one being typed, and
+    // a nonsense one has to read as no date rather than as somewhere else.
+    if (day < 1 || day > 31 || month < 1 || month > 12 || year < 1 || year > 9999)
+        return (time_t)-1;
+
     tm.tm_year = year - 1900;
     tm.tm_mon = month - 1;
     tm.tm_mday = day;
