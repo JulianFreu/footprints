@@ -306,6 +306,9 @@ static void draw_menu_bar(struct application *appl) {
         draw_menu_button(appl->icons.menu_burger, "Runs", PANEL_RUN_LIST);
         draw_menu_button(appl->icons.statistics, "Stats", PANEL_STATISTICS);
         draw_menu_button(appl->icons.records, "Recs", PANEL_RECORDS);
+        // No icon of its own yet, so it draws as its label -- which is what
+        // every button here does until its artwork exists.
+        draw_menu_button(NULL, "Grmn", PANEL_GARMIN);
         draw_menu_button(appl->icons.settings, "Set", PANEL_SETTINGS);
     }
 }
@@ -483,6 +486,7 @@ void ui_update(struct application *appl, GpxCollection *collection) {
     moved |= ui_stats_update(appl, collection);
     moved |= ui_records_update(appl, collection);
     moved |= ui_settings_update(appl, collection);
+    moved |= ui_garmin_update(appl, collection);
     if (moved)
         app_request_redraw(appl);
 }
@@ -563,6 +567,9 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
 
         ui_fade_set(anim_value(&ui.panels[PANEL_RECORDS]));
         ui_draw_records_panel(appl);
+
+        ui_fade_set(anim_value(&ui.panels[PANEL_GARMIN]));
+        ui_draw_garmin_panel(appl);
 
         ui_fade_set(anim_value(&ui.panels[PANEL_SETTINGS]));
         ui_draw_settings_panel(appl);

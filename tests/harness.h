@@ -75,6 +75,7 @@ void run_track_splits_tests(void);
 void run_records_tests(void);
 void run_stats_tests(void);
 void run_background_tests(void);
+void run_garmin_tests(void);
 void run_anim_tests(void);
 void run_zoom_tests(void);
 

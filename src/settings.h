@@ -48,6 +48,11 @@ typedef struct Settings {
 
     char gpx_dir[SETTINGS_PATH_MAX];
 
+    // The account the Garmin panel imports from. The password that goes with it
+    // is deliberately not here: it is traded for a token once and then dropped,
+    // and this file is plain text.
+    char garmin_email[SETTINGS_KEY_MAX];
+
     // Feed the heat calculation and the tiles rasterised from it.
     float heat_radius_pixels;
     int track_point_size;

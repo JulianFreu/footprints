@@ -18,6 +18,7 @@ typedef enum MenuPanel {
     PANEL_RUN_LIST = 0,
     PANEL_STATISTICS,
     PANEL_RECORDS,
+    PANEL_GARMIN,
     PANEL_SETTINGS,
     PANEL_COUNT
 } MenuPanel;

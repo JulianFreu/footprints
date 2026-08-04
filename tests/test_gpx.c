@@ -3,6 +3,7 @@
 #include "harness.h"
 
 #include <stdlib.h>
+#include <unistd.h>
 
 // Runs gpx_extract_coords over a document held in memory, so the walk that
 // fills the points and their timestamps is testable without a file on disk.
@@ -35,6 +36,30 @@ static GpxTrack track_with_elevations(const float *elevations, int count) {
 static void free_track(GpxTrack *track) {
     free(track->points);
     track->points = NULL;
+}
+
+// A one-point GPX on disk, so the library scan has something to find without a
+// fixture checked into the repository.
+static void write_gpx_file(const char *path, const char *activity_type) {
+    FILE *file = fopen(path, "w");
+    CHECK(file != NULL);
+    if (!file)
+        return;
+
+    fprintf(file,
+            "<gpx><trk><type>%s</type><trkseg>"
+            "<trkpt lat='48.0' lon='11.0'><ele>500</ele>"
+            "<time>2025-05-01T06:00:00Z</time></trkpt>"
+            "</trkseg></trk></gpx>",
+            activity_type);
+    fclose(file);
+}
+
+static void release_collection(GpxCollection *collection) {
+    for (int i = 0; i < collection->total_tracks; i++)
+        free(collection->tracks[i].points);
+    free(collection->tracks);
+    free(collection->list_order);
 }
 
 void run_gpx_tests(void) {
@@ -287,5 +312,57 @@ void run_gpx_tests(void) {
 
         free(broken.points);
         free(times.at);
+    }
+
+    SUITE("gpx: the library scan descends into subfolders");
+    // The Garmin import writes into a folder under the library folder, so a
+    // scan of the top level alone would download files and then never read
+    // them. The count the progress bar is driven from has to descend too, or
+    // the bar stops short of the end.
+    {
+        char root[] = "/tmp/footprints-scan-XXXXXX";
+        CHECK(mkdtemp(root) != NULL);
+
+        char nested[GPX_PATH_MAX];
+        snprintf(nested, sizeof(nested), "%s/%s", root, GARMIN_IMPORT_SUBDIR);
+        CHECK_INT(mkdir(nested, 0700), 0);
+
+        char top_file[GPX_PATH_MAX], nested_file[GPX_PATH_MAX];
+        snprintf(top_file, sizeof(top_file), "%s/top.gpx", root);
+        snprintf(nested_file, sizeof(nested_file), "%s/imported.gpx", nested);
+        write_gpx_file(top_file, "running");
+        write_gpx_file(nested_file, "hiking");
+
+        // The scan reads the folder the settings name, so this is how it is
+        // pointed at the tree just built.
+        char saved_dir[SETTINGS_PATH_MAX];
+        snprintf(saved_dir, sizeof(saved_dir), "%s", settings.gpx_dir);
+        snprintf(settings.gpx_dir, sizeof(settings.gpx_dir), "%s", root);
+
+        _Atomic int completed = 0, total = 0;
+        _Atomic bool cancel = false;
+        Progress progress = {&completed, &total, &cancel};
+
+        GpxCollection collection = {0};
+        CHECK(gpx_parse_all_files(&collection, &progress));
+        CHECK_INT(collection.total_tracks, 2);
+        CHECK_INT(atomic_load(&total), 2);
+        CHECK_INT(atomic_load(&completed), 2);
+
+        // The one in the subfolder is the one that used to be invisible, and
+        // its type is what says which of the two was read.
+        bool found_nested = false;
+        for (int i = 0; i < collection.total_tracks; i++)
+            if (collection.tracks[i].act_type == Hike)
+                found_nested = true;
+        CHECK(found_nested);
+
+        release_collection(&collection);
+        snprintf(settings.gpx_dir, sizeof(settings.gpx_dir), "%s", saved_dir);
+
+        unlink(top_file);
+        unlink(nested_file);
+        rmdir(nested);
+        rmdir(root);
     }
 }

@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 
 #include <libxml/parser.h>
@@ -411,68 +412,114 @@ static bool gpx_parse_file(char *filename, GpxTrack *track, TrackTimes *times) {
     return true;
 }
 
-// Counts the .gpx files in the folder, so progress has a denominator. A count
-// that disagrees with what is actually parsed only makes the bar slightly
-// wrong; nothing is sized from it.
-static int count_gpx_files(const char *folder_path) {
+// Joins a directory and one of its entries. False when the result would not
+// fit, which is also what keeps -Wformat-truncation quiet about a path built
+// from a path.
+static bool join_path(char *out, size_t size, const char *folder_path, const char *name) {
+    int written = snprintf(out, size, "%s/%s", folder_path, name);
+    return written > 0 && (size_t)written < size;
+}
+
+// Whether an entry is itself a directory. d_type is the cheap answer and the
+// one nearly every filesystem gives; a few report DT_UNKNOWN for everything,
+// which is what the stat is for.
+static bool entry_is_dir(const char *full_path, const struct dirent *entry) {
+    if (entry->d_type != DT_UNKNOWN)
+        return entry->d_type == DT_DIR;
+
+    struct stat info;
+    return stat(full_path, &info) == 0 && S_ISDIR(info.st_mode);
+}
+
+// Every entry worth descending into or parsing. "." and ".." would walk the
+// scan back up the tree, so they are what makes the recursion terminate as much
+// as the depth limit is.
+static bool entry_is_self_or_parent(const struct dirent *entry) {
+    return strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0;
+}
+
+// Counts the .gpx files under the folder, so progress has a denominator. It
+// descends the same way the scan does, because a count taken over one level
+// while the scan reads several would leave the bar short by every file in a
+// subfolder. A count that disagrees only makes the bar wrong; nothing is sized
+// from it.
+static int count_gpx_files(const char *folder_path, int depth) {
     DIR *dir = opendir(folder_path);
     if (!dir)
         return 0;
 
     int count = 0;
     struct dirent *entry;
-    while ((entry = readdir(dir)) != NULL)
-        if (strstr(entry->d_name, ".gpx") != NULL)
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry_is_self_or_parent(entry))
+            continue;
+
+        char full_path[GPX_PATH_MAX];
+        if (!join_path(full_path, sizeof(full_path), folder_path, entry->d_name))
+            continue;
+
+        if (entry_is_dir(full_path, entry)) {
+            if (depth + 1 < GPX_SCAN_MAX_DEPTH)
+                count += count_gpx_files(full_path, depth + 1);
+        } else if (strstr(entry->d_name, ".gpx") != NULL) {
             count++;
+        }
+    }
 
     closedir(dir);
     return count;
 }
 
-bool gpx_parse_all_files(GpxCollection *collection, const Progress *progress) {
-    const char *folder_path = settings.gpx_dir;
-    DIR *dir;
-    struct dirent *entry;
-
-    dir = opendir(folder_path);
+// Parses every .gpx file under `folder_path` into the collection, descending
+// into subfolders so a library can be filed into them -- which is what the
+// Garmin import's own folder is. False means the scan could not be finished:
+// out of memory, or the library folder itself would not open.
+static bool scan_dir(const char *folder_path, GpxCollection *collection,
+                     TrackTimes *times, const Progress *progress, int depth) {
+    DIR *dir = opendir(folder_path);
     if (dir == NULL) {
         perror("opendir");
-        return false;
+        // A subfolder that cannot be read costs only its own files. The library
+        // folder not opening is the whole library missing, and the caller says
+        // so.
+        return depth > 0;
     }
 
-    collection->total_tracks = 0;
-    collection->tracks = NULL;
-
-    // One buffer for the whole scan, grown to whatever the longest file needs
-    // and released at the end. Nothing on the collection points into it.
-    TrackTimes times = {0};
-
-    progress_set_total(progress, count_gpx_files(folder_path));
-    progress_set_completed(progress, 0);
-
+    struct dirent *entry;
     while ((entry = readdir(dir)) != NULL) {
         if (progress_cancelled(progress))
             break;
 
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+        if (entry_is_self_or_parent(entry))
             continue;
+
+        char full_path[GPX_PATH_MAX];
+        if (!join_path(full_path, sizeof(full_path), folder_path, entry->d_name))
+            continue;
+
+        if (entry_is_dir(full_path, entry)) {
+            if (depth + 1 < GPX_SCAN_MAX_DEPTH &&
+                !scan_dir(full_path, collection, times, progress, depth + 1)) {
+                closedir(dir);
+                return false;
+            }
+            continue;
+        }
 
         if (strstr(entry->d_name, ".gpx") == NULL)
             continue;
 
-        collection->tracks = (GpxTrack *)realloc(
+        GpxTrack *grown = (GpxTrack *)realloc(
             collection->tracks,
             (collection->total_tracks + 1) * sizeof(GpxTrack));
 
-        if (!collection->tracks) {
+        if (!grown) {
             perror("realloc");
             closedir(dir);
-            free(times.at);
             return false;
         }
+        collection->tracks = grown;
 
-        char full_path[1024];
-        snprintf(full_path, sizeof(full_path), "%s/%s", folder_path, entry->d_name);
         GpxTrack *current = &collection->tracks[collection->total_tracks];
 
         // realloc hands back uninitialised memory, so every field starts from a
@@ -485,14 +532,33 @@ bool gpx_parse_all_files(GpxCollection *collection, const Progress *progress) {
         current->start_utc = (time_t)-1;
         current->end_utc = (time_t)-1;
 
-        gpx_parse_file(full_path, current, &times);
-        LOG_DEBUG("Tracks %d has %d data points\n", collection->total_tracks, collection->tracks[collection->total_tracks].total_points);
+        gpx_parse_file(full_path, current, times);
+        LOG_DEBUG("Tracks %d has %d data points\n", collection->total_tracks, current->total_points);
         collection->total_tracks++;
         progress_add(progress, 1);
     }
 
     closedir(dir);
+    return true;
+}
+
+bool gpx_parse_all_files(GpxCollection *collection, const Progress *progress) {
+    const char *folder_path = settings.gpx_dir;
+
+    collection->total_tracks = 0;
+    collection->tracks = NULL;
+
+    // One buffer for the whole scan, grown to whatever the longest file needs
+    // and released at the end. Nothing on the collection points into it.
+    TrackTimes times = {0};
+
+    progress_set_total(progress, count_gpx_files(folder_path, 0));
+    progress_set_completed(progress, 0);
+
+    bool scanned = scan_dir(folder_path, collection, &times, progress, 0);
     free(times.at);
+    if (!scanned)
+        return false;
 
     // Sized from the tracks actually parsed. A second scan of the directory
     // could disagree with the first, and the loop below would then write past

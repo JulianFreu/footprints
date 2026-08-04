@@ -63,6 +63,7 @@ void settings_defaults(Settings *s) {
     s->stadia_api_key[0] = '\0';
 
     snprintf(s->gpx_dir, sizeof(s->gpx_dir), "%s", GPX_INPUT_DIR);
+    s->garmin_email[0] = '\0';
 
     s->heat_radius_pixels = HEAT_RADIUS_PIXELS;
     s->track_point_size = TRACK_POINT_SIZE;
@@ -275,6 +276,8 @@ static void apply_pair(Settings *s, const char *key, const char *value) {
         snprintf(s->stadia_api_key, sizeof(s->stadia_api_key), "%s", value);
     } else if (strcmp(key, "gpx_dir") == 0) {
         snprintf(s->gpx_dir, sizeof(s->gpx_dir), "%s", value);
+    } else if (strcmp(key, "garmin_email") == 0) {
+        snprintf(s->garmin_email, sizeof(s->garmin_email), "%s", value);
     } else if (strcmp(key, "heat_radius") == 0) {
         parse_float(value, &s->heat_radius_pixels);
     } else if (strcmp(key, "point_size") == 0) {
@@ -337,6 +340,11 @@ bool settings_save(const Settings *s, const char *path) {
     fprintf(file, "map_provider   = %s\n", map_provider_id(s->provider));
     fprintf(file, "stadia_api_key = %s\n", s->stadia_api_key);
     fprintf(file, "gpx_dir        = %s\n\n", s->gpx_dir);
+
+    fprintf(file, "# The Garmin account the import panel signs in as. Its password is\n");
+    fprintf(file, "# never written here -- only the token minted from it, under %s/.\n",
+            GARMIN_SESSION_DIR);
+    fprintf(file, "garmin_email   = %s\n\n", s->garmin_email);
 
     fprintf(file, "heat_radius    = %g\n", (double)s->heat_radius_pixels);
     fprintf(file, "point_size     = %d\n\n", s->track_point_size);

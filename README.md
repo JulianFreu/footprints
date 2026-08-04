@@ -11,6 +11,7 @@ Visualize all your runs, hikes, and rides in one place, explore your most freque
 - **Click any track** for detailed stats and insights
 - **Chart your training** by day, week, month or year — up to two of total distance, longest run, total time and total ascent at once, and scroll the plot back through the years
 - **Track your personal records** — longest run and activity, highest peak, most elevation gain, and your fastest 5k, 10k, half marathon and marathon, found anywhere inside a longer run rather than only from its start
+- **Import straight from Garmin Connect** — log in once in the Garmin panel and pull down every activity you have not already got
 - Convert **Garmin `.fit` and `.tcx` files** to `.gpx` with the included Python tool
 
 ## Installation
@@ -83,6 +84,7 @@ back to the default rather than stopping the program.
 | Map | The tile provider, the Stadia API key, and a button to drop the cached tile textures |
 | Heat calculation | The overlap radius the heat is calculated with, and the size of the square drawn per track point |
 | Library | The folder scanned for `.gpx` files, and a button to read it again |
+| Garmin Connect | In a panel of its own: the account to import from, and the button that does it |
 | Startup view | Saves wherever the map is now as the view the window opens at |
 
 ### Heat colours
@@ -115,6 +117,41 @@ is read once and carried into the settings; the header is no longer needed.
 At startup, Footprints scans the `gpx_files/` directory and automatically loads all GPX files it finds there.
 So your first step should be to copy your GPX files into that folder.
 
+Subfolders are scanned too, so a library can be filed by year, by activity, or
+however else you like — and it is what lets the Garmin import keep to a folder
+of its own.
+
+### Importing from Garmin Connect
+
+The **Grmn** button in the menu bar opens the Garmin panel. Enter the email
+address and password of your Garmin Connect account and press **Log in**. If
+your account uses two-factor authentication, Garmin sends a code, a **Code**
+box appears, and pressing *Log in* again with it finishes the job.
+
+That happens once. The password is traded for an OAuth token, which is saved to
+`garmin_session/`, and every import after that runs off the token — the password
+is never written anywhere, and is dropped from memory as soon as it has been
+used.
+
+**Import new activities** then downloads every activity that is not already on
+disk, as GPX, into `gpx_files/garmin_import/`. The panel counts them down as
+they arrive, and the library is read again as soon as they have landed. Running
+it a second time fetches only what is new: each file is named after the activity
+it came from, so the import can see what it already has without keeping a record
+of its own.
+
+Activities are downloaded through Garmin's own GPX export. The activity type it
+reports is written into the `<type>` element described below, so a trail run
+imports as a run rather than as `Other`.
+
+This needs `garth-ng`, which is in `requirements.txt`:
+
+```bash
+pip install -r requirements.txt
+```
+
+### Converting a Garmin data export
+
 If you use a Garmin watch, you can request a full data export from Garmin.
 The export will contain your recorded activities as `.fit` files, usually bundled in one or more ZIP archives.
 
@@ -135,8 +172,13 @@ activity type simply reads as `Other`.
 
 ### Python script dependencies
 
-Only `.fit` files need a third-party package. `.tcx` and `.gpx` are handled with
-the standard library alone, so you only need this if you are converting `.fit`:
+Both Python tools are optional, and so are their packages — Footprints itself
+reads `.gpx` files with no Python at all.
+
+| Package | Needed for |
+|---------|------------|
+| `garth-ng` | The Garmin Connect import |
+| `fitparse` | Converting `.fit` files (`.tcx` and `.gpx` need only the standard library) |
 
 ```bash
 pip install -r requirements.txt
@@ -150,7 +192,7 @@ pip install -r requirements.txt
 - Add screenshots to README
 - Export the current heatmap view as a PNG for sharing
 - Interactive elevation profile on click instead of the current static image
-- Auto-sync with Garmin Connect and Strava
+- Auto-sync with Strava
 
 ## License
 This project is licensed under the MIT License – see the [LICENSE](LICENSE) file for details.

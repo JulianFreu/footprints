@@ -25,6 +25,7 @@ int main(void) {
     run_stats_tests();
     run_records_tests();
     run_background_tests();
+    run_garmin_tests();
     run_anim_tests();
     run_zoom_tests();
 

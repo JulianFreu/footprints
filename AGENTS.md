@@ -50,8 +50,13 @@ the calendar bucketing and the metrics reduced over it, the sliding window
 that finds a record distance inside a longer track, the records table and its
 exclusions, the k-d tree radius
 search (against brute force), the spatial index (against the full scan it
-replaced), the background job's concurrency contract, and the animation
-primitive's easing and timing.
+replaced), the background job's concurrency contract, the Garmin import job's
+contract, and the animation primitive's easing and timing.
+
+`tests/test_garmin.c` points the two macros naming the import helper at
+`tests/fake_garmin.sh`, so the fork, the pipes, the line protocol and the exit
+codes are covered without a Garmin account. It runs the binary from the project
+root, which is where `make test` runs it from.
 
 For threading changes, build the suite with ThreadSanitizer instead:
 
@@ -74,6 +79,7 @@ cc -O1 -g -fsanitize=thread -I$(xml2-config --cflags | sed 's/-I//') \
 | `track_splits.c` | The fastest 5k/10k/half/marathon found anywhere inside one track |
 | `gpx_activity.c` | The one place activity types are spelled for display |
 | `background.c` | Runs the library scan and the heat calculation off the main thread |
+| `garmin.c` | Runs `garmin_sync.py`, feeds it credentials and reads its progress back |
 | `heat.c` | The implicit k-d tree and the threaded heat calculation |
 | `point_index.c` | Tile-keyed spatial index over every point, shared by all zooms |
 | `tracks.c` | Track rendering: heat tiles, the selected-track overlay, elevation profiles |
@@ -88,6 +94,7 @@ cc -O1 -g -fsanitize=thread -I$(xml2-config --cflags | sed 's/-I//') \
 | `ui_stats.c` | The statistics panel: the bar plot, its axes, its buttons, and the pan |
 | `ui_records.c` | The records panel: a scrolling section per category, its rows clickable |
 | `ui_settings.c` | The settings panel, its fields and the text input that feeds them |
+| `ui_garmin.c` | The Garmin panel: the account, the import button, and what the import is doing |
 | `ui_internal.h` | Layout vocabulary shared by `ui*.c`; not part of the UI's interface |
 | `settings.c` | What is configurable, its defaults, and reading and writing `settings.conf` |
 | `progress.h` | How a long operation reports progress and is asked to stop |
