@@ -5,6 +5,11 @@ not part of the GPX standard -- it is how Footprints tells a run from a ride --
 so files converted here gain it and files from elsewhere are copied through
 unchanged and fall back to "Other".
 
+Heart rate, where the source recorded it, is written into each trackpoint as
+Garmin's <gpxtpx:hr>, which is what Footprints draws the heart rate graph from.
+A library converted before this existed carries no heart rate at all and has to
+be converted again for the graph to appear.
+
 Only .fit files need a third-party package (fitparse); .tcx and .gpx are
 handled with the standard library alone.
 """
@@ -17,6 +22,10 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 SKIP_TYPES = {"unknown", "training", "swimming"}
 
+# Where <gpxtpx:hr> comes from. GPX has no element of its own for a heart rate,
+# so every exporter reaches for this extension.
+TRACKPOINT_EXTENSION_NS = "http://www.garmin.com/xmlschemas/TrackPointExtension/v1"
+
 # Semicircles to degrees: the .fit format stores coordinates as a signed 32-bit
 # fraction of a half-turn.
 SEMICIRCLE_TO_DEGREES = 180.0 / 2**31
@@ -25,7 +34,12 @@ SEMICIRCLE_TO_DEGREES = 180.0 / 2**31
 # ----------------- Shared GPX construction -----------------
 def build_gpx(name, activity_type):
     """An empty GPX document, returned with the <trkseg> its points go into."""
-    gpx = ET.Element("gpx", version="1.1", creator="fit_tcx_to_gpx")
+    gpx = ET.Element(
+        "gpx",
+        version="1.1",
+        creator="fit_tcx_to_gpx",
+        **{"xmlns:gpxtpx": TRACKPOINT_EXTENSION_NS},
+    )
     metadata = ET.SubElement(gpx, "metadata")
     ET.SubElement(metadata, "time").text = utc_now_iso()
 
@@ -35,12 +49,16 @@ def build_gpx(name, activity_type):
     return gpx, ET.SubElement(trk, "trkseg")
 
 
-def add_trackpoint(trkseg, lat, lon, elevation=None, time_text=None):
+def add_trackpoint(trkseg, lat, lon, elevation=None, time_text=None, heart_rate=None):
     trkpt = ET.SubElement(trkseg, "trkpt", lat=f"{lat:.6f}", lon=f"{lon:.6f}")
     if elevation is not None:
         ET.SubElement(trkpt, "ele").text = f"{float(elevation):.1f}"
     if time_text:
         ET.SubElement(trkpt, "time").text = time_text
+    if heart_rate:
+        extensions = ET.SubElement(trkpt, "extensions")
+        wrapper = ET.SubElement(extensions, "gpxtpx:TrackPointExtension")
+        ET.SubElement(wrapper, "gpxtpx:hr").text = str(int(heart_rate))
     return trkpt
 
 
@@ -134,6 +152,7 @@ def fit_to_gpx(input_path, output_folder):
             lon * SEMICIRCLE_TO_DEGREES,
             elevation,
             time.isoformat() + "Z" if time else None,
+            record.get_value("heart_rate"),
         )
         if time and first_timestamp is None:
             first_timestamp = time
@@ -194,12 +213,22 @@ def tcx_to_gpx(input_path, output_folder):
         time_element = child(trackpoint, "Time")
         time_text = time_element.text if time_element is not None else None
 
+        # TCX wraps the reading in an element of its own rather than putting the
+        # number in the trackpoint directly.
+        heart_rate_element = child(trackpoint, "HeartRateBpm")
+        heart_rate = None
+        if heart_rate_element is not None:
+            value = child(heart_rate_element, "Value")
+            if value is not None and value.text:
+                heart_rate = value.text
+
         add_trackpoint(
             trkseg,
             float(lat.text),
             float(lon.text),
             elevation.text if elevation is not None and elevation.text else None,
             time_text,
+            heart_rate,
         )
         if first_timestamp is None:
             first_timestamp = parse_timestamp(time_text)

@@ -155,6 +155,39 @@ static bool gpx_extract_act_type(xmlNode *node, GpxTrack *track) {
     return true;
 }
 
+// The heart rate carried by a <trkpt>'s <extensions>, or 0.
+//
+// Matched on the local name, which is what libxml2 puts in node->name: the
+// element is spelled gpxtpx:hr inside a TrackPointExtension by Garmin and
+// gpxdata:hr by other exporters, and both are the same number. The search is
+// recursive because the wrapper element differs between them and is sometimes
+// absent altogether.
+static uint16_t extensions_heart_rate(xmlNode *node) {
+    for (xmlNode *child = node; child; child = child->next) {
+        if (child->type != XML_ELEMENT_NODE)
+            continue;
+
+        if (xmlStrcasecmp(child->name, (const xmlChar *)"hr") == 0) {
+            xmlChar *content = xmlNodeGetContent(child);
+            if (!content)
+                continue;
+
+            int bpm = atoi((const char *)content);
+            xmlFree(content);
+            // A reading outside this is a parse of something that is not a
+            // heart rate; 0 is how a point without one is spelled.
+            if (bpm > 0 && bpm <= UINT16_MAX)
+                return (uint16_t)bpm;
+            continue;
+        }
+
+        uint16_t nested = extensions_heart_rate(child->children);
+        if (nested)
+            return nested;
+    }
+    return 0;
+}
+
 // Walks the document for <trkpt> elements, appending a point for each and its
 // timestamp to `times`. The timestamps used to be read by a second walk of the
 // same nodes that kept only the first and the last; the split search needs all
@@ -180,6 +213,11 @@ static bool gpx_extract_coords(xmlNode *node, GpxTrack *track, TrackTimes *times
             }
             track->total_points = new_total;
 
+            // realloc hands back uninitialised memory, and a <trkpt> missing
+            // its coordinates skips the assignments further down, so the slot
+            // starts from a known value rather than from whatever the heap had.
+            track->points[new_total - 1] = (GpxPoint){.elapsed_secs = NAN};
+
             // Grown in lockstep with the points, so times->at[i] is always the
             // timestamp of track->points[i]. The slot is defaulted here rather
             // than after the lat/lon check below, so the two arrays cannot fall
@@ -193,12 +231,15 @@ static bool gpx_extract_coords(xmlNode *node, GpxTrack *track, TrackTimes *times
             xmlChar *s_lon = xmlGetProp(cur_node, (const xmlChar *)"lon");
 
             double elevation = 0.0;
+            uint16_t heart_rate = 0;
             bool elevation_found = false;
             bool time_found = false;
 
-            // One pass of the children for both. This loop used to break out as
-            // soon as it had the elevation, which would now leave the timestamp
-            // behind on every point of every file.
+            // One pass of the children for all three. This loop used to break
+            // out as soon as it had the elevation, which would now leave the
+            // timestamp behind on every point of every file. There is no
+            // early-out left: the heart rate lives in <extensions>, which a
+            // well-formed trkpt writes after both of the others.
             for (xmlNode *child = cur_node->children; child; child = child->next) {
                 if (child->type != XML_ELEMENT_NODE)
                     continue;
@@ -219,10 +260,9 @@ static bool gpx_extract_coords(xmlNode *node, GpxTrack *track, TrackTimes *times
                         time_found = true;
                         xmlFree(time_content);
                     }
+                } else if (heart_rate == 0 && xmlStrcmp(child->name, (const xmlChar *)"extensions") == 0) {
+                    heart_rate = extensions_heart_rate(child->children);
                 }
-
-                if (elevation_found && time_found)
-                    break;
             }
 
             if (s_lat && s_lon) {
@@ -238,6 +278,7 @@ static bool gpx_extract_coords(xmlNode *node, GpxTrack *track, TrackTimes *times
                 pt->world_y = world_y;
                 pt->track_id = track->track_id;
                 pt->heat = 1;
+                pt->heart_rate = heart_rate;
 
                 if (elevation_found)
                     pt->elevation = elevation;
@@ -389,6 +430,14 @@ static bool gpx_parse_file(char *filename, GpxTrack *track, TrackTimes *times) {
         if (start != (time_t)-1) {
             track->start_utc = start;
             track->end_utc = end;
+
+            // Now that the first timed point is known, every point can say how
+            // far into the run it is. A point that carried no time keeps the
+            // NAN it was initialised with, which is what the graphs read as a
+            // gap rather than as a moment at the start of the track.
+            for (int i = 0; i < times->count && i < track->total_points; i++)
+                if (times->at[i] != (time_t)-1)
+                    track->points[i].elapsed_secs = (float)difftime(times->at[i], start);
 
             if (end >= start) {
                 track->duration_secs = difftime(end, start);

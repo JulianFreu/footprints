@@ -9,6 +9,7 @@
 
 #include "anim.h"
 #include "config.h"
+#include "track_series.h"
 
 // The panels the menu bar toggles, in the order their buttons are stacked.
 // One button, one panel, one anim: the enum is what ties the three together,
@@ -61,8 +62,10 @@ typedef struct
     SDL_Surface *elev_up;
     SDL_Surface *elev_down;
     SDL_Surface *peak;
-    // Regenerated only when the selected track changes, not per frame.
-    SDL_Surface *elev_profile;
+    // One picture per graph in the sidebar, indexed by TrackSeriesKind and
+    // NULL where the selected track carries nothing of that kind. Regenerated
+    // only when the selection changes, not per frame.
+    SDL_Surface *graphs[TRACK_SERIES_COUNT];
 } UiIcons;
 
 #endif

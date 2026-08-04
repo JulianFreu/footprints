@@ -460,8 +460,21 @@ void update_selected_track_overlay(struct application *appl, GpxCollection *coll
     appl->overlay_key = key;
 }
 
-static SDL_Texture *generate_elevation_profile_texture(SDL_Renderer *renderer, const GpxTrack *track, int width, int height) {
-    if (!renderer || track->total_points < 2)
+// Where one sample sits in the graph's box, vertically. Pace is drawn upside
+// down relative to the others: the quickest kilometre belongs at the top, and
+// it is the smallest number.
+static int series_y(const TrackSeries *series, float value, float min, float max, int height) {
+    float fraction = (value - min) / (max - min);
+    if (series->invert)
+        fraction = 1.0f - fraction;
+    return height - (int)(fraction * height);
+}
+
+static SDL_Texture *generate_series_texture(SDL_Renderer *renderer, const GpxTrack *track,
+                                            const TrackSeries *series, int width, int height,
+                                            Clay_Color fill, Clay_Color line) {
+    if (!renderer || track->total_points < 2 || !series->present ||
+        series->count != track->total_points)
         return NULL;
 
     SDL_Texture *texture = SDL_CreateTexture(renderer,
@@ -473,25 +486,18 @@ static SDL_Texture *generate_elevation_profile_texture(SDL_Renderer *renderer, c
         return NULL;
     }
 
+    SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
     SDL_Texture *prev_target = SDL_GetRenderTarget(renderer);
     SDL_SetRenderTarget(renderer, texture);
 
     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 0);
     SDL_RenderClear(renderer);
 
-    float min_elev = track->points[0].elevation;
-    float max_elev = track->points[0].elevation;
-    for (int i = 1; i < track->total_points; i++) {
-        if (track->points[i].elevation < min_elev)
-            min_elev = track->points[i].elevation;
-        if (track->points[i].elevation > max_elev)
-            max_elev = track->points[i].elevation;
-    }
-    if (max_elev == min_elev)
-        max_elev += 1.0f;
-
-    min_elev -= (max_elev - min_elev) / 10;
-    max_elev += (max_elev - min_elev) / 10;
+    // Not the samples' own range: what a graph is drawn over is the series'
+    // business, and it has a floor so that a run held at one pace does not come
+    // out as the noise on a flat line stretched to the height of the box.
+    float min_value, max_value;
+    track_series_range(series, &min_value, &max_value);
 
     float total_distance_m = track->points[track->total_points - 1].partial_distance;
     if (total_distance_m <= 0.0f) {
@@ -500,35 +506,24 @@ static SDL_Texture *generate_elevation_profile_texture(SDL_Renderer *renderer, c
         return NULL;
     }
 
-    SDL_Point *polygon_points = malloc(sizeof(SDL_Point) * (track->total_points + 2));
-    if (!polygon_points) {
-        SDL_SetRenderTarget(renderer, prev_target);
-        SDL_DestroyTexture(texture);
-        return NULL;
-    }
+    SDL_Color fill_color = sdl_color(fill);
+    SDL_SetRenderDrawColor(renderer, fill_color.r, fill_color.g, fill_color.b, fill_color.a);
 
-    for (int i = 0; i < track->total_points; i++) {
-        int x = (int)((track->points[i].partial_distance / total_distance_m) * width);
-        int y = height - (int)(((track->points[i].elevation - min_elev) / (max_elev - min_elev)) * height);
-        polygon_points[i] = (SDL_Point){x, y};
-    }
-
-    // Bottom left and bottom right base points
-    polygon_points[track->total_points] = (SDL_Point){polygon_points[track->total_points - 1].x, height};
-    polygon_points[track->total_points + 1] = (SDL_Point){polygon_points[0].x, height};
-
-    SDL_Color profile_fill = sdl_color(blue);
-    SDL_SetRenderDrawColor(renderer, profile_fill.r, profile_fill.g, profile_fill.b, profile_fill.a);
-    SDL_RenderDrawLines(renderer, polygon_points, track->total_points + 2);
-
+    // The area under the curve, a column at a time. A sample the series has no
+    // value for leaves its columns empty rather than being interpolated across:
+    // a heart rate monitor that dropped out for a minute is a gap in the graph,
+    // not a straight line at whatever it last read.
     for (int i = 1; i < track->total_points; i++) {
-        int x1 = (int)((track->points[i - 1].partial_distance / total_distance_m) * width);
-        int y1 = height - (int)(((track->points[i - 1].elevation - min_elev) / (max_elev - min_elev)) * height);
-        int x2 = (int)((track->points[i].partial_distance / total_distance_m) * width);
-        int y2 = height - (int)(((track->points[i].elevation - min_elev) / (max_elev - min_elev)) * height);
+        if (isnan(series->values[i - 1]) || isnan(series->values[i]))
+            continue;
 
-        // Fill the area underneath the segment. When both samples land on the
-        // same column there is nothing to interpolate across.
+        int x1 = (int)((track->points[i - 1].partial_distance / total_distance_m) * width);
+        int y1 = series_y(series, series->values[i - 1], min_value, max_value, height);
+        int x2 = (int)((track->points[i].partial_distance / total_distance_m) * width);
+        int y2 = series_y(series, series->values[i], min_value, max_value, height);
+
+        // When both samples land on the same column there is nothing to
+        // interpolate across.
         if (x2 == x1) {
             SDL_RenderDrawLine(renderer, x1, y2, x1, height);
             continue;
@@ -540,19 +535,32 @@ static SDL_Texture *generate_elevation_profile_texture(SDL_Renderer *renderer, c
         }
     }
 
-    SDL_Color profile_line = sdl_color(dark_blue);
-    SDL_SetRenderDrawColor(renderer, profile_line.r, profile_line.g, profile_line.b, profile_line.a);
-    SDL_RenderDrawLines(renderer, polygon_points, track->total_points);
+    // The curve itself, over the top of its own fill. Drawn segment by segment
+    // for the same reason the fill is: SDL_RenderDrawLines would join the two
+    // sides of a gap.
+    SDL_Color line_color = sdl_color(line);
+    SDL_SetRenderDrawColor(renderer, line_color.r, line_color.g, line_color.b, line_color.a);
+    for (int i = 1; i < track->total_points; i++) {
+        if (isnan(series->values[i - 1]) || isnan(series->values[i]))
+            continue;
 
-    free(polygon_points);
+        SDL_RenderDrawLine(renderer,
+                           (int)((track->points[i - 1].partial_distance / total_distance_m) * width),
+                           series_y(series, series->values[i - 1], min_value, max_value, height),
+                           (int)((track->points[i].partial_distance / total_distance_m) * width),
+                           series_y(series, series->values[i], min_value, max_value, height));
+    }
+
     SDL_SetRenderTarget(renderer, prev_target);
     return texture;
 }
 
-// Clay draws images from an SDL_Surface, so the profile drawn on the GPU has to
+// Clay draws images from an SDL_Surface, so the graph drawn on the GPU has to
 // be read back into one.
-static SDL_Surface *render_elevation_profile_surface(SDL_Renderer *renderer, const GpxTrack *track, int width, int height) {
-    SDL_Texture *profile = generate_elevation_profile_texture(renderer, track, width, height);
+static SDL_Surface *render_series_surface(SDL_Renderer *renderer, const GpxTrack *track,
+                                          const TrackSeries *series, int width, int height,
+                                          Clay_Color fill, Clay_Color line) {
+    SDL_Texture *profile = generate_series_texture(renderer, track, series, width, height, fill, line);
     if (!profile)
         return NULL;
 
@@ -572,22 +580,83 @@ static SDL_Surface *render_elevation_profile_surface(SDL_Renderer *renderer, con
     return surface;
 }
 
-// Regenerates the elevation profile only when the selection actually changes;
-// each regeneration is two textures and a full pixel readback.
+// The two colours each graph is drawn in, indexed by TrackSeriesKind. Three
+// hues rather than one, so a glance at the sidebar tells the three apart before
+// their labels are read.
+static const struct {
+    Clay_Color fill;
+    Clay_Color line;
+} series_colors[TRACK_SERIES_COUNT] = {
+    [TRACK_SERIES_ELEVATION] = {blue, dark_blue},
+    [TRACK_SERIES_PACE] = {aqua, dark_aqua},
+    [TRACK_SERIES_HEART_RATE] = {red, dark_red},
+};
+
+// Releases the series and the pictures made from them.
+void tracks_free_graphs(struct application *appl) {
+    for (int kind = 0; kind < TRACK_SERIES_COUNT; kind++) {
+        track_series_free(&appl->track_series[kind]);
+        if (appl->icons.graphs[kind]) {
+            SDL_FreeSurface(appl->icons.graphs[kind]);
+            appl->icons.graphs[kind] = NULL;
+        }
+    }
+}
+
+// Regenerates the graphs only when the selection actually changes; each one is
+// two textures and a full pixel readback.
+//
+// The series are kept alongside the pictures rather than thrown away: the
+// readout under the graphs needs the numbers at the hovered point, and
+// rebuilding a pace window per frame to answer that would be a pass over the
+// whole track sixty times a second.
 void update_track_info_graphs(struct application *appl, const GpxCollection *collection) {
     if (appl->selected_track == appl->rendered_overlay_track)
         return;
     appl->rendered_overlay_track = appl->selected_track;
 
-    if (appl->icons.elev_profile) {
-        SDL_FreeSurface(appl->icons.elev_profile);
-        appl->icons.elev_profile = NULL;
-    }
+    tracks_free_graphs(appl);
 
     if (appl->selected_track < 0 || appl->selected_track >= collection->total_tracks)
         return;
 
-    appl->icons.elev_profile = render_elevation_profile_surface(
-        appl->renderer, &collection->tracks[appl->selected_track],
-        ELEVATION_PROFILE_WIDTH, ELEVATION_PROFILE_HEIGHT);
+    const GpxTrack *track = &collection->tracks[appl->selected_track];
+    for (int kind = 0; kind < TRACK_SERIES_COUNT; kind++) {
+        if (!track_series_build(track, (TrackSeriesKind)kind, &appl->track_series[kind]))
+            continue;
+
+        appl->icons.graphs[kind] = render_series_surface(
+            appl->renderer, track, &appl->track_series[kind],
+            TRACK_GRAPH_WIDTH, TRACK_GRAPH_HEIGHT,
+            series_colors[kind].fill, series_colors[kind].line);
+    }
+}
+
+// The dot on the route, at the point a graph is being hovered over.
+//
+// Carried by the same transform as the polyline underneath it: both are drawn
+// in screen space for the model's zoom, so a marker placed without it would
+// slide off the track for as long as a zoom was still easing.
+void tracks_draw_point_marker(struct application *appl, const GpxCollection *collection,
+                              int track_id, int point_index) {
+    if (track_id < 0 || track_id >= collection->total_tracks)
+        return;
+
+    const GpxTrack *track = &collection->tracks[track_id];
+    if (point_index < 0 || point_index >= track->total_points)
+        return;
+
+    float screen_x, screen_y;
+    map_world_to_screen(appl, track->points[point_index].world_x,
+                        track->points[point_index].world_y, &screen_x, &screen_y);
+
+    const float radius = SELECTED_TRACK_THICKNESS;
+    SDL_FRect dest = map_transform_rect(appl, screen_x - radius, screen_y - radius,
+                                        2.0f * radius, 2.0f * radius);
+
+    SDL_SetRenderDrawBlendMode(appl->renderer, SDL_BLENDMODE_BLEND);
+    draw_circle(appl->renderer, dest.x + dest.w / 2.0f, dest.y + dest.h / 2.0f,
+                dest.w / 2.0f, sdl_color(bg0));
+    draw_circle(appl->renderer, dest.x + dest.w / 2.0f, dest.y + dest.h / 2.0f,
+                dest.w / 2.0f - 2.0f, sdl_color(red));
 }

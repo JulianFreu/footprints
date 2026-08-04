@@ -16,7 +16,17 @@
 #define SCREEN_BORDER_PADDING 5
 #define CORNER_RADIUS 8
 #define GAPS 5
-#define SIDEBAR_WIDTH 250
+// Measured from the graphs it has to hold, so the pictures land on the screen
+// at their own scale rather than being stretched to fit a width chosen
+// separately from them.
+#define SIDEBAR_WIDTH (TRACK_GRAPH_WIDTH + 2 * GAPS)
+// The attribute rows used to be padded by 10 all round. Nine of them at 52px,
+// plus three graphs, is taller than the window they sit in; at 42px it fits.
+#define SIDEBAR_ROW_PADDING GAPS
+// The label over each graph, and the value at the cursor drawn beside it.
+#define SIDEBAR_GRAPH_HEADER_HEIGHT 18
+// Thickness of the line drawn through the graphs at the hovered distance.
+#define SIDEBAR_CURSOR_WIDTH 1
 #define MENU_ICON_SIZE (32 + 2 * GAPS)
 // The menu bar is a column of square buttons down the left edge, so it is one
 // button wide. It used to be a 250px row, most of it empty -- and that empty

@@ -9,6 +9,7 @@
 #include "background.h"
 #include "garmin.h"
 #include "map_types.h"
+#include "track_series.h"
 #include "ui_types.h"
 #include "zoom.h"
 
@@ -46,9 +47,13 @@ struct application {
     // per-zoom set of them was stale for every zoom but the current one.
     SDL_Texture *selected_track_overlay;
     OverlayKey overlay_key;
-    // Which track the elevation profile was last built for, so it is not
-    // redone on a frame where the selection has not moved.
+    // Which track the graphs were last built for, so they are not redone on a
+    // frame where the selection has not moved.
     int rendered_overlay_track;
+    // The numbers behind those graphs, indexed by TrackSeriesKind. Kept as
+    // well as the pictures, because the readout has to answer what the values
+    // are at the point being hovered over.
+    TrackSeries track_series[TRACK_SERIES_COUNT];
     // Screen-space scratch for the selected track's polyline, kept between
     // frames and grown only when a longer track is selected.
     SDL_Point *overlay_points;

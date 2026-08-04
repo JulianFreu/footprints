@@ -175,6 +175,14 @@ int main(int argc, char *argv[]) {
                 update_selected_track_overlay(&appl, &collection);
                 tracks_draw_heat_tiles(&appl, &collection, tiles, tile_count);
                 tracks_draw_selected_overlay(&appl);
+
+                // Where the sidebar's graphs are being hovered. Drawn in the
+                // map's layer rather than over the UI, so a panel sliding
+                // across it covers it the way it covers the track under it.
+                int hovered_point;
+                if (ui_graph_hover_point(&hovered_point))
+                    tracks_draw_point_marker(&appl, &collection, appl.selected_track,
+                                             hovered_point);
             }
 
             clay_draw_ui(&appl, &collection);
@@ -222,6 +230,7 @@ static void appl_cleanup(struct application *appl, GpxCollection *collection) {
     tracks_free_collection_cache(collection);
     SDL_DestroyTexture(appl->selected_track_overlay);
     tracks_free_scratch(appl);
+    tracks_free_graphs(appl);
     LOG_DEBUG("Clean tracks...\n");
     for (int i = 0; i < collection->total_tracks; i++)
         free(collection->tracks[i].points);

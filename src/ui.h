@@ -62,6 +62,11 @@ void ui_garmin_blur(void);
 // panel does not mean a fifth line at each of these sites.
 void ui_invalidate_derived(void);
 
+// Which point of the selected track the sidebar's graphs are being hovered
+// over, if any. The frame loop asks so it can put a dot there on the map; where
+// the pointer is belongs to the panel that was hit-tested, not to the map.
+bool ui_graph_hover_point(int *point_index);
+
 void ui_load_icons(struct application *appl);
 void ui_free_icons(struct application *appl);
 

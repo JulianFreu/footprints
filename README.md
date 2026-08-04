@@ -186,13 +186,10 @@ pip install -r requirements.txt
 
 ## ToDo
 
-- More statistics in activities (heart-rate, speed, ...)
 - Color overhaul
 - Add watermark of tile provider to bottom right
 - Add screenshots to README
 - Export the current heatmap view as a PNG for sharing
-- Interactive elevation profile on click instead of the current static image
-- Auto-sync with Strava
 
 ## License
 This project is licensed under the MIT License – see the [LICENSE](LICENSE) file for details.

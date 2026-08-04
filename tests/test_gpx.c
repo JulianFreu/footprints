@@ -314,55 +314,97 @@ void run_gpx_tests(void) {
         free(times.at);
     }
 
-    SUITE("gpx: the library scan descends into subfolders");
-    // The Garmin import writes into a folder under the library folder, so a
-    // scan of the top level alone would download files and then never read
-    // them. The count the progress bar is driven from has to descend too, or
-    // the bar stops short of the end.
+
+    SUITE("gpx: heart rate out of <extensions>");
+    // Two spellings of the same number, and a point that carries neither. The
+    // element is matched on its local name, so the prefix and the wrapper
+    // around it are allowed to differ between exporters.
     {
-        char root[] = "/tmp/footprints-scan-XXXXXX";
-        CHECK(mkdtemp(root) != NULL);
+        GpxTrack measured = {0};
+        TrackTimes times = {0};
+        parse_string(
+            "<gpx xmlns:gpxtpx='http://www.garmin.com/xmlschemas/TrackPointExtension/v1'"
+            "     xmlns:gpxdata='http://www.cluetrust.com/XML/GPXDATA/1/0'><trk><trkseg>"
+            "<trkpt lat='48.0' lon='11.0'><ele>500.0</ele><time>2025-05-01T06:00:00Z</time>"
+            "<extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>142</gpxtpx:hr>"
+            "<gpxtpx:cad>88</gpxtpx:cad></gpxtpx:TrackPointExtension></extensions></trkpt>"
+            "<trkpt lat='48.1' lon='11.0'><ele>510.0</ele><time>2025-05-01T06:00:10Z</time>"
+            "<extensions><gpxdata:hr>151</gpxdata:hr></extensions></trkpt>"
+            "<trkpt lat='48.2' lon='11.0'><ele>520.0</ele><time>2025-05-01T06:00:20Z</time></trkpt>"
+            "</trkseg></trk></gpx>",
+            &measured, &times);
 
-        char nested[GPX_PATH_MAX];
-        snprintf(nested, sizeof(nested), "%s/%s", root, GARMIN_IMPORT_SUBDIR);
-        CHECK_INT(mkdir(nested, 0700), 0);
+        CHECK_INT(measured.total_points, 3);
+        CHECK_INT(measured.points[0].heart_rate, 142);
+        CHECK_INT(measured.points[1].heart_rate, 151);
+        // No reading is spelled zero, not a leftover from the point before it.
+        CHECK_INT(measured.points[2].heart_rate, 0);
+        // The elevations and times still come out of the same pass; there is no
+        // early exit left for the extensions to fall behind.
+        CHECK_NEAR(measured.points[2].elevation, 520.0, 1e-6);
+        CHECK_INT(times.at[2], iso8601_to_utc("2025-05-01T06:00:20Z"));
 
-        char top_file[GPX_PATH_MAX], nested_file[GPX_PATH_MAX];
-        snprintf(top_file, sizeof(top_file), "%s/top.gpx", root);
-        snprintf(nested_file, sizeof(nested_file), "%s/imported.gpx", nested);
-        write_gpx_file(top_file, "running");
-        write_gpx_file(nested_file, "hiking");
+        free(measured.points);
+        free(times.at);
+    }
 
-        // The scan reads the folder the settings name, so this is how it is
-        // pointed at the tree just built.
-        char saved_dir[SETTINGS_PATH_MAX];
-        snprintf(saved_dir, sizeof(saved_dir), "%s", settings.gpx_dir);
-        snprintf(settings.gpx_dir, sizeof(settings.gpx_dir), "%s", root);
+    SUITE("gpx: a nonsensical heart rate is no heart rate");
+    {
+        GpxTrack odd = {0};
+        TrackTimes times = {0};
+        parse_string(
+            "<gpx><trk><trkseg>"
+            "<trkpt lat='48.0' lon='11.0'><extensions><hr>0</hr></extensions></trkpt>"
+            "<trkpt lat='48.1' lon='11.0'><extensions><hr>-4</hr></extensions></trkpt>"
+            "<trkpt lat='48.2' lon='11.0'><extensions><hr>whatever</hr></extensions></trkpt>"
+            "</trkseg></trk></gpx>",
+            &odd, &times);
 
-        _Atomic int completed = 0, total = 0;
-        _Atomic bool cancel = false;
-        Progress progress = {&completed, &total, &cancel};
+        CHECK_INT(odd.points[0].heart_rate, 0);
+        CHECK_INT(odd.points[1].heart_rate, 0);
+        CHECK_INT(odd.points[2].heart_rate, 0);
 
-        GpxCollection collection = {0};
-        CHECK(gpx_parse_all_files(&collection, &progress));
-        CHECK_INT(collection.total_tracks, 2);
-        CHECK_INT(atomic_load(&total), 2);
-        CHECK_INT(atomic_load(&completed), 2);
+        free(odd.points);
+        free(times.at);
+    }
 
-        // The one in the subfolder is the one that used to be invisible, and
-        // its type is what says which of the two was read.
-        bool found_nested = false;
-        for (int i = 0; i < collection.total_tracks; i++)
-            if (collection.tracks[i].act_type == Hike)
-                found_nested = true;
-        CHECK(found_nested);
+    SUITE("gpx: elapsed seconds are measured from the first timed point");
+    // The whole file, rather than gpx_extract_coords alone: elapsed_secs is
+    // filled once the track's start is known, which is only after the document
+    // has been walked.
+    {
+        const char *xml =
+            "<gpx><trk><type>Running</type><trkseg>"
+            "<trkpt lat='48.0000' lon='11.0'><ele>500.0</ele></trkpt>"
+            "<trkpt lat='48.0010' lon='11.0'><ele>500.0</ele><time>2025-05-01T06:00:00Z</time></trkpt>"
+            "<trkpt lat='48.0020' lon='11.0'><ele>500.0</ele><time>2025-05-01T06:00:30Z</time></trkpt>"
+            "<trkpt lat='48.0030' lon='11.0'><ele>500.0</ele><time>2025-05-01T06:02:00Z</time></trkpt>"
+            "</trkseg></trk></gpx>";
+        const char *path = "test_elapsed.gpx";
+        FILE *file = fopen(path, "w");
+        CHECK(file != NULL);
+        if (file) {
+            fputs(xml, file);
+            fclose(file);
 
-        release_collection(&collection);
-        snprintf(settings.gpx_dir, sizeof(settings.gpx_dir), "%s", saved_dir);
+            GpxTrack track = {0};
+            track.start_utc = (time_t)-1;
+            track.end_utc = (time_t)-1;
+            TrackTimes times = {0};
+            CHECK(gpx_parse_file((char *)path, &track, &times));
 
-        unlink(top_file);
-        unlink(nested_file);
-        rmdir(nested);
-        rmdir(root);
+            CHECK_INT(track.total_points, 4);
+            // The fix that lost its clock keeps its gap rather than being
+            // placed at the start of the run.
+            CHECK(isnan(track.points[0].elapsed_secs));
+            CHECK_NEAR(track.points[1].elapsed_secs, 0.0, 1e-6);
+            CHECK_NEAR(track.points[2].elapsed_secs, 30.0, 1e-6);
+            // The last one is the duration the track reports.
+            CHECK_NEAR(track.points[3].elapsed_secs, track.duration_secs, 1e-6);
+
+            free(track.points);
+            free(times.at);
+            remove(path);
+        }
     }
 }

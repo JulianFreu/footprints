@@ -132,9 +132,18 @@
 // Line thickness of the selected track's polyline overlay.
 #define SELECTED_TRACK_THICKNESS 10.0f
 
-// Pixel size of the elevation profile rendered for the selected track.
-#define ELEVATION_PROFILE_WIDTH 200
-#define ELEVATION_PROFILE_HEIGHT 100
+// Pixel size of the graphs rendered for the selected track. The sidebar's
+// width is measured from the first of these, so the surfaces land on the
+// screen at their own scale rather than being stretched to fit.
+#define TRACK_GRAPH_WIDTH 310
+#define TRACK_GRAPH_HEIGHT 72
+
+// How much ground the pace window spans, in metres. Pace between two
+// consecutive fixes is mostly GPS noise -- a metre of scatter on a one-second
+// sample is a minute per kilometre -- so it is measured across a fixed stretch
+// of the route instead, which also makes the result independent of how often
+// the watch recorded.
+#define PACE_WINDOW_METERS 100.0f
 
 // --- Heatmap ---
 // Default radius in projected pixels within which two tracks count as

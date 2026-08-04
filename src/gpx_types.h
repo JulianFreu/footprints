@@ -2,6 +2,7 @@
 #define GPX_TYPES_H
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <time.h>
 
 #include "config.h"
@@ -19,6 +20,12 @@ typedef struct GpxPoint {
     int track_id;
     float elevation;        // metres above sea level
     float partial_distance; // distance covered up to this point
+    // Seconds since the track's first timed point, and NAN where this point
+    // carried no usable <time>. The graphs are the reason this is kept: pace
+    // over the course of a run cannot be recovered from the two timestamps on
+    // the track.
+    float elapsed_secs;
+    uint16_t heart_rate; // bpm, or 0 where the point carried none
 } GpxPoint;
 
 typedef enum {
@@ -62,8 +69,8 @@ typedef struct GpxTrack {
 
     // The fastest time, in seconds, over each of the record distances found
     // anywhere in the track; zero where the track never covered it. Filled
-    // once at load by track_splits_compute, from per-point timestamps that are
-    // scratch for the parse and are not kept.
+    // once at load by track_splits_compute, from the timestamps the parse
+    // collects. What the points keep of those is the elapsed seconds above.
     float splits[SPLIT_COUNT];
 } GpxTrack;
 

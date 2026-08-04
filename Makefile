@@ -14,7 +14,7 @@ SOURCES  := $(SRC_DIR)/main.c $(SRC_DIR)/map.c $(SRC_DIR)/fifo.c \
             $(SRC_DIR)/tracks.c $(SRC_DIR)/filters.c \
             $(SRC_DIR)/heat.c $(SRC_DIR)/ui.c \
             $(SRC_DIR)/point_index.c $(SRC_DIR)/track_sort.c $(SRC_DIR)/track_format.c \
-            $(SRC_DIR)/track_splits.c \
+            $(SRC_DIR)/track_splits.c $(SRC_DIR)/track_series.c \
             $(SRC_DIR)/background.c $(SRC_DIR)/anim.c $(SRC_DIR)/zoom.c \
             $(SRC_DIR)/clay_sdl.c $(SRC_DIR)/ui_filters.c \
             $(SRC_DIR)/ui_runlist.c $(SRC_DIR)/ui_settings.c \

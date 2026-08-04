@@ -15,7 +15,15 @@ void tracks_invalidate_filtered_view(GpxCollection *collection);
 // Teardown counterpart: also releases the index's allocation.
 void tracks_free_collection_cache(GpxCollection *collection);
 void tracks_free_scratch(struct application *appl);
+// Builds the sidebar's graphs, and the series behind them, for whichever track
+// is selected. A no-op on a frame where the selection has not changed.
 void update_track_info_graphs(struct application *appl, const GpxCollection *collection);
+// Releases both. Teardown counterpart to the above.
+void tracks_free_graphs(struct application *appl);
+// A dot on one track's route, at one of its points. Drawn in the map's layer,
+// so a panel sliding over it covers it the way it covers the track itself.
+void tracks_draw_point_marker(struct application *appl, const GpxCollection *collection,
+                              int track_id, int point_index);
 // Draws the heat overlay over the tiles map_visible_tiles produced.
 void tracks_draw_heat_tiles(struct application *appl, GpxCollection *collection,
                             const VisibleTile *tiles, int count);

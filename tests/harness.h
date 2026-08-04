@@ -72,6 +72,7 @@ void run_heat_tests(void);
 void run_point_index_tests(void);
 void run_track_format_tests(void);
 void run_track_splits_tests(void);
+void run_track_series_tests(void);
 void run_records_tests(void);
 void run_stats_tests(void);
 void run_background_tests(void);

@@ -220,16 +220,16 @@ void ui_load_icons(struct application *appl) {
     appl->icons.elev_up = load_icon("resources/up.png");
     appl->icons.elev_down = load_icon("resources/down.png");
     appl->icons.peak = load_icon("resources/peak.png");
-    appl->icons.elev_profile = NULL;
 }
 
+// The static artwork only. The graph surfaces are made by tracks.c whenever the
+// selection changes, and given back there.
 void ui_free_icons(struct application *appl) {
     SDL_Surface **surfaces[] = {
         &appl->icons.menu_burger, &appl->icons.statistics, &appl->icons.records,
         &appl->icons.settings, &appl->icons.date, &appl->icons.clock,
         &appl->icons.duration, &appl->icons.pace, &appl->icons.distance,
-        &appl->icons.elev_up, &appl->icons.elev_down, &appl->icons.peak,
-        &appl->icons.elev_profile};
+        &appl->icons.elev_up, &appl->icons.elev_down, &appl->icons.peak};
 
     for (size_t i = 0; i < sizeof(surfaces) / sizeof(surfaces[0]); i++) {
         if (*surfaces[i]) {
@@ -387,7 +387,7 @@ static void draw_sidebar_track_info(SDL_Surface *icon, const char *value, const 
     CLAY(CLAY_IDI_LOCAL("SidebarAttribute", id),
          {
              .layout = {
-                 .padding = CLAY_PADDING_ALL(10),
+                 .padding = CLAY_PADDING_ALL(SIDEBAR_ROW_PADDING),
                  .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
                  .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT()},
                  .layoutDirection = CLAY_LEFT_TO_RIGHT},
@@ -426,6 +426,161 @@ static void draw_sidebar_track_info(SDL_Surface *icon, const char *value, const 
                      .padding = {.left = GAPS}},
              }) {
             ui_draw_text(unit, 12, fg_l, CLAY_TEXT_ALIGN_CENTER);
+        }
+    }
+}
+
+// Where the pointer is over the sidebar's graphs, and which point of the
+// selected track that works out to.
+//
+// Panel-local, and consumed both by the layout below -- for the readout -- and
+// by the frame loop, which draws the dot on the map from it. Kept as a fraction
+// as well as a point so that the line lands exactly under the cursor rather
+// than on the nearest sample to it.
+static bool graph_hover_active;
+static float graph_hover_fraction; // 0..1 along the track's distance
+static int graph_hover_point = -1;
+
+bool ui_graph_hover_point(int *point_index) {
+    if (!graph_hover_active)
+        return false;
+    *point_index = graph_hover_point;
+    return true;
+}
+
+// Resolved against last frame's boxes, which is the same thing Clay resolves
+// hover against -- the pointer was over whatever was drawn last. On the first
+// frame a graph is drawn there is no box yet and nothing is hovered; nothing
+// else follows from that.
+static void update_graph_hover(struct application *appl, GpxCollection *collection) {
+    const bool was_active = graph_hover_active;
+    const int was_point = graph_hover_point;
+
+    graph_hover_active = false;
+    graph_hover_point = -1;
+
+    if (appl->selected_track >= 0 && appl->selected_track < collection->total_tracks &&
+        !background_busy(&appl->background)) {
+        for (int kind = 0; kind < TRACK_SERIES_COUNT; kind++) {
+            Clay_ElementData graph = Clay_GetElementData(CLAY_IDI("TrackGraph", kind));
+            if (!graph.found)
+                continue;
+
+            Clay_BoundingBox box = graph.boundingBox;
+            if (box.width <= 0.0f ||
+                appl->mouse_x < box.x || appl->mouse_x >= box.x + box.width ||
+                appl->mouse_y < box.y || appl->mouse_y >= box.y + box.height)
+                continue;
+
+            graph_hover_fraction = ((float)appl->mouse_x - box.x) / box.width;
+            graph_hover_point = track_series_index_at_fraction(
+                &collection->tracks[appl->selected_track], graph_hover_fraction);
+            graph_hover_active = graph_hover_point >= 0;
+            break; // the three sit side by side vertically; one can be hovered
+        }
+    }
+
+    // The dot on the map moves with the point, so a frame is owed whenever it
+    // changes.
+    if (graph_hover_active != was_active || graph_hover_point != was_point)
+        app_request_redraw(appl);
+}
+
+// The line through every graph at the hovered distance. Drawn after Clay's own
+// render pass rather than as part of the layout: it belongs on top of the
+// pictures that pass has just put down, and Clay has no primitive for a line.
+static void draw_graph_cursor(struct application *appl) {
+    if (!graph_hover_active)
+        return;
+
+    Clay_Color color = ui_fade(fg_l);
+    SDL_SetRenderDrawBlendMode(appl->renderer, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(appl->renderer, (Uint8)color.r, (Uint8)color.g,
+                           (Uint8)color.b, (Uint8)color.a);
+
+    for (int kind = 0; kind < TRACK_SERIES_COUNT; kind++) {
+        Clay_ElementData graph = Clay_GetElementData(CLAY_IDI("TrackGraph", kind));
+        if (!graph.found)
+            continue;
+
+        Clay_BoundingBox box = graph.boundingBox;
+        SDL_Rect line = {(int)(box.x + graph_hover_fraction * box.width), (int)box.y,
+                         SIDEBAR_CURSOR_WIDTH, (int)box.height};
+        SDL_RenderFillRect(appl->renderer, &line);
+    }
+}
+
+// The graphs under the attribute rows, and the readout that follows the cursor
+// across them. A graph the track carries nothing for is left out entirely, so a
+// run recorded without a heart rate monitor shows two rather than an empty box.
+static void draw_sidebar_graphs(struct application *appl, const GpxTrack *track) {
+    const bool hovering = graph_hover_active && graph_hover_point < track->total_points;
+
+    // A space rather than an empty string when nothing is hovered: the rows
+    // keep their height, so the graphs do not jump as the pointer crosses them.
+    const char *distance_text = " ";
+    const char *time_text = " ";
+    if (hovering) {
+        const GpxPoint *point = &track->points[graph_hover_point];
+        distance_text = ui_frame_printf("%.2f km", point->partial_distance / 1000.0f);
+        if (!isnan(point->elapsed_secs)) {
+            int seconds = (int)point->elapsed_secs;
+            time_text = ui_frame_printf("%02d:%02d:%02d", seconds / 3600,
+                                        (seconds % 3600) / 60, seconds % 60);
+        }
+    }
+
+    CLAY(CLAY_ID("SidebarCursorRow"),
+         {.layout = {.padding = {.left = SIDEBAR_ROW_PADDING, .right = SIDEBAR_ROW_PADDING},
+                     .sizing = {.width = CLAY_SIZING_GROW(0),
+                                .height = CLAY_SIZING_FIXED(SIDEBAR_GRAPH_HEADER_HEIGHT)},
+                     .childAlignment = {.y = CLAY_ALIGN_Y_CENTER},
+                     .layoutDirection = CLAY_LEFT_TO_RIGHT}}) {
+        ui_draw_text(distance_text, FILTER_TEXT_FONT_SIZE, fg_l, CLAY_TEXT_ALIGN_LEFT);
+        CLAY(CLAY_ID("SidebarCursorSpacer"),
+             {.layout = {.sizing = {.width = CLAY_SIZING_GROW(0)}}}) {}
+        ui_draw_text(time_text, FILTER_TEXT_FONT_SIZE, fg_l, CLAY_TEXT_ALIGN_RIGHT);
+    }
+
+    for (int kind = 0; kind < TRACK_SERIES_COUNT; kind++) {
+        if (!appl->icons.graphs[kind])
+            continue;
+
+        const TrackSeries *series = &appl->track_series[kind];
+        const char *value_text = " ";
+        if (hovering && graph_hover_point < series->count) {
+            char value[TRACK_SERIES_TEXT_MAX];
+            value_text = ui_frame_printf(
+                "%s %s",
+                track_series_format((TrackSeriesKind)kind, series->values[graph_hover_point],
+                                    value, sizeof(value)),
+                track_series_unit((TrackSeriesKind)kind));
+        }
+
+        CLAY(CLAY_IDI("TrackGraphSection", kind),
+             {.layout = {.sizing = {.width = CLAY_SIZING_GROW(0),
+                                    .height = CLAY_SIZING_GROW(0, SIDEBAR_GRAPH_HEADER_HEIGHT + TRACK_GRAPH_HEIGHT)},
+                         .layoutDirection = CLAY_TOP_TO_BOTTOM}}) {
+            CLAY(CLAY_IDI("TrackGraphHeader", kind),
+                 {.layout = {.padding = {.left = SIDEBAR_ROW_PADDING, .right = SIDEBAR_ROW_PADDING},
+                             .sizing = {.width = CLAY_SIZING_GROW(0),
+                                        .height = CLAY_SIZING_FIXED(SIDEBAR_GRAPH_HEADER_HEIGHT)},
+                             .childAlignment = {.y = CLAY_ALIGN_Y_CENTER},
+                             .layoutDirection = CLAY_LEFT_TO_RIGHT}}) {
+                ui_draw_text(track_series_label((TrackSeriesKind)kind),
+                             FILTER_TEXT_FONT_SIZE, fg_d, CLAY_TEXT_ALIGN_LEFT);
+                CLAY(CLAY_IDI("TrackGraphHeaderSpacer", kind),
+                     {.layout = {.sizing = {.width = CLAY_SIZING_GROW(0)}}}) {}
+                ui_draw_text(value_text, FILTER_TEXT_FONT_SIZE, fg_l, CLAY_TEXT_ALIGN_RIGHT);
+            }
+            // Grows into whatever height is left over, up to the size the
+            // picture was drawn at. A window too short for three graphs squashes
+            // them rather than spilling them out of the panel, and the cursor is
+            // placed by fraction of the box, so a squashed graph still lines up.
+            CLAY(CLAY_IDI("TrackGraph", kind),
+                 {.layout = {.sizing = {.width = CLAY_SIZING_GROW(0),
+                                        .height = CLAY_SIZING_GROW(0, TRACK_GRAPH_HEIGHT)}},
+                  .image = {.imageData = appl->icons.graphs[kind]}}) {}
         }
     }
 }
@@ -530,6 +685,8 @@ void ui_update(struct application *appl, GpxCollection *collection) {
     // written as a per-frame condition.
     ui_panel_move(&ui.right_sidebar, appl->selected_track > -1 ? 1.0f : 0.0f);
 
+    update_graph_hover(appl, collection);
+
     // Icons fade with the panel they sit in, and an icon's alpha lives on its
     // surface: the renderer builds a texture from the surface every frame, and
     // SDL_CreateTextureFromSurface carries the surface's alpha and colour mod
@@ -538,11 +695,19 @@ void ui_update(struct application *appl, GpxCollection *collection) {
     SDL_Surface *sidebar_icons[] = {
         appl->icons.date, appl->icons.clock, appl->icons.duration,
         appl->icons.pace, appl->icons.distance, appl->icons.elev_up,
-        appl->icons.elev_down, appl->icons.peak, appl->icons.elev_profile};
+        appl->icons.elev_down, appl->icons.peak};
 
     for (size_t i = 0; i < sizeof(sidebar_icons) / sizeof(sidebar_icons[0]); i++) {
         if (sidebar_icons[i])
             SDL_SetSurfaceAlphaMod(sidebar_icons[i], sidebar_alpha);
+    }
+
+    // The graphs are surfaces handed to Clay the same way, so they fade with
+    // the panel for the same reason. They come and go with the selection, which
+    // is why they are not part of the array above.
+    for (int kind = 0; kind < TRACK_SERIES_COUNT; kind++) {
+        if (appl->icons.graphs[kind])
+            SDL_SetSurfaceAlphaMod(appl->icons.graphs[kind], sidebar_alpha);
     }
 
     // Each panel that moved is a reason to draw another frame. This is the
@@ -611,13 +776,8 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
 
             draw_sidebar_track_info(appl->icons.peak, activity_type_label(track->act_type), " ", 8);
 
-            // Reloaded by update_track_info_graphs when the selection changes.
-            if (appl->icons.elev_profile) {
-                CLAY(CLAY_ID("ElevationProfile"),
-                     {.layout = {.sizing = {.width = CLAY_SIZING_GROW(200), .height = CLAY_SIZING_FIXED(100)}},
-                      .image = {.imageData = appl->icons.elev_profile}}) {
-                }
-            }
+            // Rebuilt by update_track_info_graphs when the selection changes.
+            draw_sidebar_graphs(appl, track);
         }
     }
 
@@ -654,4 +814,10 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
     // mode of its own. Set from out here so that file stays untouched.
     SDL_SetRenderDrawBlendMode(appl->renderer, SDL_BLENDMODE_BLEND);
     clay_sdl_render(appl->renderer, render_commands, appl->fonts);
+
+    // On top of what Clay has just drawn, and faded with the sidebar the way
+    // everything inside it is.
+    ui_fade_set(anim_value(&ui.right_sidebar));
+    draw_graph_cursor(appl);
+    ui_fade_set(1.0f);
 }
