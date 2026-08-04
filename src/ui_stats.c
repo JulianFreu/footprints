@@ -75,14 +75,12 @@ static StatsLayout stats_layout(const struct application *appl) {
     StatsLayout l = {0};
     l.metrics = metric_count();
 
-    l.panel_w = STATS_PANEL_WIDTH(appl->window_width);
-    if (l.panel_w < STATS_PANEL_MIN_WIDTH)
-        l.panel_w = STATS_PANEL_MIN_WIDTH;
+    l.panel_w = ui_panel_width(appl, PANEL_STATISTICS);
     l.panel_h = PANEL_HEIGHT(appl->window_height);
 
     l.plot_w = l.panel_w - 2 * GAPS - STATS_AXIS_WIDTH * l.metrics;
     l.plot_h = l.panel_h - HEADER_HEIGHT - STATS_XLABEL_HEIGHT -
-               2 * STATS_BUTTON_ROW_HEIGHT - 2 * GAPS;
+               2 * STATS_BUTTON_ROW_HEIGHT - PANEL_FOOTER_HEIGHT - 2 * GAPS;
     if (l.plot_w < 1)
         l.plot_w = 1;
     if (l.plot_h < 1)
@@ -576,5 +574,7 @@ void ui_draw_statistics_panel(struct application *appl) {
             for (int metric = 0; metric < STATS_METRIC_COUNT; metric++)
                 draw_metric_button((StatsMetric)metric);
         }
+
+        ui_draw_panel_footer(PANEL_STATISTICS);
     }
 }

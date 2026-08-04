@@ -34,6 +34,9 @@ typedef struct UIState {
     // open one.
     MenuPanel open_panel;
     Anim filters;
+    // Which panel the filters are a wing of. Not derived from the anims: a
+    // panel on its way shut is still the one they are sliding away from.
+    MenuPanel filters_host;
 } UIState;
 
 typedef struct

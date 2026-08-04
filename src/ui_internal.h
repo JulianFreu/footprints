@@ -37,8 +37,10 @@
 #define LIST_ENTRY_HEIGHT 30
 #define HEADER_HEIGHT 50
 // Fixed rather than fitted to the button inside it, so the panel's height is
-// the sum of three known numbers rather than something to be measured.
-#define RUN_LIST_FOOTER_HEIGHT (LIST_ENTRY_HEIGHT + 2 * GAPS)
+// the sum of three known numbers rather than something to be measured. Shared
+// by the panels that carry the filter wing, which is why the name lost its
+// RUN_LIST_ prefix.
+#define PANEL_FOOTER_HEIGHT (LIST_ENTRY_HEIGHT + 2 * GAPS)
 #define FILTERS_WIDTH 300
 #define FILTERS_MINMAX_WIDTH 80
 // The activity toggles go two to a row rather than in one tall column: four
@@ -167,6 +169,14 @@ void ui_panel_toggle(Anim *panel);
 // Where a panel `width` wide sits this frame: off the left edge when shut, at
 // PANEL_ORIGIN_X when open, and proportionally between the two while it slides.
 float ui_panel_offset_x(MenuPanel panel, int width);
+
+// How wide a panel is drawn this frame. The one place that decides it, so a
+// panel and the filter wing measured off its edge cannot disagree.
+int ui_panel_width(const struct application *appl, MenuPanel panel);
+
+// The footer the panels that read the collection end in: the button that shows
+// and hides the filter wing beside them.
+void ui_draw_panel_footer(MenuPanel panel);
 
 // The opacity everything drawn from here on is scaled by, and the scaling
 // itself. Set it to a panel's anim value before drawing the panel and back to

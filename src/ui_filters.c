@@ -423,12 +423,15 @@ void ui_draw_filter_panel(struct application *appl, GpxCollection *collection) {
         return;
 
     const FilterSettings *filters = &collection->filters;
+    // Measured off the panel the filters are a wing of: shut, they hide behind
+    // its right end; open, they rest one gap clear of it.
+    int host_w = ui_panel_width(appl, ui.filters_host);
 
     CLAY(CLAY_ID("FilterOptions"),
          {.floating = {
               .attachTo = CLAY_ATTACH_TO_ROOT,
               .offset = {
-                  .x = ui_panel_offset_x(PANEL_RUN_LIST, RUN_LIST_WIDTH) + RUN_LIST_WIDTH - (FILTERS_WIDTH + GAPS) + anim_value(&ui.filters) * (FILTERS_WIDTH + 2 * GAPS),
+                  .x = ui_panel_offset_x(ui.filters_host, host_w) + host_w - (FILTERS_WIDTH + GAPS) + anim_value(&ui.filters) * (FILTERS_WIDTH + 2 * GAPS),
                   .y = PANEL_ORIGIN_Y},
           },
           .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS),

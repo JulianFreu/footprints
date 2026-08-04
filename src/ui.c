@@ -74,7 +74,8 @@ UIState ui = {
     .right_sidebar = {0},
     .panels = {{0}},
     .open_panel = PANEL_NONE,
-    .filters = {0}};
+    .filters = {0},
+    .filters_host = PANEL_RUN_LIST};
 
 static Clay_Arena clay_memory;
 
@@ -95,6 +96,27 @@ void ui_panel_toggle(Anim *panel) {
 // one is depends only on how far along its anim is and how wide it is.
 float ui_panel_offset_x(MenuPanel panel, int width) {
     return -width + anim_value(&ui.panels[panel]) * (PANEL_ORIGIN_X + width);
+}
+
+// Three of the four are a constant. The statistics panel is the exception: it
+// stretches to the window, so it is also the only one with no room beside it
+// for the filters -- and it gives that room back as they slide out, which is
+// what lets the plot reflow into it again as they slide back in.
+int ui_panel_width(const struct application *appl, MenuPanel panel) {
+    switch (panel) {
+    case PANEL_STATISTICS: {
+        float wing = (ui.filters_host == PANEL_STATISTICS) ? anim_value(&ui.filters) : 0.0f;
+        int width = STATS_PANEL_WIDTH(appl->window_width) -
+                    (int)(wing * (FILTERS_WIDTH + GAPS));
+        return width < STATS_PANEL_MIN_WIDTH ? STATS_PANEL_MIN_WIDTH : width;
+    }
+    case PANEL_RECORDS:
+        return RECORDS_WIDTH;
+    case PANEL_SETTINGS:
+        return SETTINGS_WIDTH;
+    default:
+        return RUN_LIST_WIDTH;
+    }
 }
 
 // How opaque what is being drawn right now should be. Clay has no notion of
@@ -230,6 +252,13 @@ void ui_invalidate_derived(void) {
     ui_records_invalidate();
 }
 
+// The panels the filters narrow. Settings configures the application rather
+// than reading the collection, so it is the one that gets no filter wing.
+static bool panel_takes_filters(MenuPanel panel) {
+    return panel == PANEL_RUN_LIST || panel == PANEL_STATISTICS ||
+           panel == PANEL_RECORDS;
+}
+
 void ui_toggle_panel(MenuPanel panel) {
     // A panel may have been left stale while it was shut, so whatever is about
     // to slide in gets a fresh look at the tracks.
@@ -240,9 +269,14 @@ void ui_toggle_panel(MenuPanel panel) {
     for (int i = 0; i < PANEL_COUNT; i++)
         ui_panel_move(&ui.panels[i], (opening && i == panel) ? 1.0f : 0.0f);
 
-    // The filter panel is a wing of the run list rather than a menu panel of
-    // its own, so it goes wherever the run list goes.
-    ui_panel_move(&ui.filters, anim_target(&ui.panels[PANEL_RUN_LIST]));
+    // The filter panel is a wing of whichever panel reads the collection rather
+    // than a menu panel of its own, so it goes wherever that one goes. The host
+    // is left alone while it shuts, so the filters slide away beside the panel
+    // they were flanking rather than jumping to another one on the way out.
+    bool wing = opening && panel_takes_filters(panel);
+    if (wing)
+        ui.filters_host = panel;
+    ui_panel_move(&ui.filters, wing ? 1.0f : 0.0f);
 
     ui.open_panel = opening ? panel : PANEL_NONE;
 }
@@ -250,6 +284,42 @@ void ui_toggle_panel(MenuPanel panel) {
 // What TAB has always done, now one of four.
 void ui_toggle_run_list(void) {
     ui_toggle_panel(PANEL_RUN_LIST);
+}
+
+static void clicked_toggle_filter_view(
+    Clay_ElementId elementId,
+    Clay_PointerData pointerData,
+    intptr_t userData) {
+    if (pointerData.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME)
+        ui_panel_toggle(&ui.filters);
+}
+
+// Indexed by the panel rather than given local ids: three panels draw this
+// footer, and while one slides out over another two of them are laid out in the
+// same frame -- ids they shared would be declared twice.
+void ui_draw_panel_footer(MenuPanel panel) {
+    CLAY(CLAY_IDI("PanelFooter", panel), {.layout = {
+                                              .padding = CLAY_PADDING_ALL(GAPS),
+                                              .sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(PANEL_FOOTER_HEIGHT)},
+                                              .childGap = GAPS,
+                                              .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                                              .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}},
+                                          .backgroundColor = ui_fade(bg6),
+                                          .cornerRadius = {.bottomLeft = CORNER_RADIUS, .bottomRight = CORNER_RADIUS}}) {
+        CLAY(CLAY_IDI("PanelFooterSpacer", panel), {.layout = {
+                                                        .sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW()}}}) {
+        }
+        CLAY(CLAY_IDI("FilterOptionsButton", panel), {.layout = {
+                                                          .padding = CLAY_PADDING_ALL(GAPS),
+                                                          .sizing = {.width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT()},
+                                                          .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                                                          .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}},
+                                                      .backgroundColor = ui_fade(Clay_Hovered() ? bg_l : bg_d),
+                                                      .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS)}) {
+            Clay_OnHover(clicked_toggle_filter_view, 0);
+            ui_draw_text("Toggle Filter View", LABEL_FONT_SIZE, dark_aqua, CLAY_TEXT_ALIGN_CENTER);
+        }
+    }
 }
 
 static void clicked_menu_button(

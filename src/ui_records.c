@@ -348,7 +348,7 @@ void ui_draw_records_panel(struct application *appl) {
         return;
 
     int panel_h = PANEL_HEIGHT(appl->window_height);
-    int body_height = panel_h - HEADER_HEIGHT;
+    int body_height = panel_h - HEADER_HEIGHT - PANEL_FOOTER_HEIGHT;
     if (body_height < RECORDS_ROW_PITCH)
         body_height = RECORDS_ROW_PITCH;
 
@@ -366,5 +366,6 @@ void ui_draw_records_panel(struct application *appl) {
 
         draw_records_header();
         draw_records_body(appl, body_height);
+        ui_draw_panel_footer(PANEL_RECORDS);
     }
 }

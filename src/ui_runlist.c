@@ -85,14 +85,6 @@ bool ui_runlist_scroll_tick(float dt) {
     return true;
 }
 
-static void clicked_toggle_filter_view(
-    Clay_ElementId elementId,
-    Clay_PointerData pointerData,
-    intptr_t userData) {
-    if (pointerData.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME)
-        ui_panel_toggle(&ui.filters);
-}
-
 static void clicked_run_entry(
     Clay_ElementId elementId,
     Clay_PointerData pointerData,
@@ -148,31 +140,6 @@ static void draw_run_list_header_attribute(GpxCollection *collection, int width,
             break;
         default:
             break;
-        }
-    }
-}
-
-static void draw_run_list_bottom(const char *total_visible_tracks, GpxCollection *collection) {
-    CLAY(CLAY_ID("RunListBottom"), {.layout = {
-                                        .padding = CLAY_PADDING_ALL(GAPS),
-                                        .sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(RUN_LIST_FOOTER_HEIGHT)},
-                                        .childGap = GAPS,
-                                        .layoutDirection = CLAY_LEFT_TO_RIGHT,
-                                        .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}},
-                                    .backgroundColor = ui_fade(bg6),
-                                    .cornerRadius = {.bottomLeft = CORNER_RADIUS, .bottomRight = CORNER_RADIUS}}) {
-        CLAY(CLAY_ID("RunListBottomSPACE"), {.layout = {
-                                                 .sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW()}}}) {
-        }
-        CLAY(CLAY_ID("FilterOptionsButton"), {.layout = {
-                                                  .padding = CLAY_PADDING_ALL(GAPS),
-                                                  .sizing = {.width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT()},
-                                                  .layoutDirection = CLAY_LEFT_TO_RIGHT,
-                                                  .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}},
-                                              .backgroundColor = ui_fade(Clay_Hovered() ? bg_l : bg_d),
-                                              .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS)}) {
-            Clay_OnHover(clicked_toggle_filter_view, 0);
-            ui_draw_text("Toggle Filter View", 16, dark_aqua, CLAY_TEXT_ALIGN_CENTER);
         }
     }
 }
@@ -384,7 +351,7 @@ void ui_draw_run_list(struct application *appl, GpxCollection *collection) {
     // screen, and the panel is the sum of the three -- rather than the panel and
     // the rows each working out a height of their own and disagreeing.
     int body_height = PANEL_HEIGHT(appl->window_height) - HEADER_HEIGHT -
-                      RUN_LIST_FOOTER_HEIGHT;
+                      PANEL_FOOTER_HEIGHT;
     if (body_height < ROW_PITCH)
         body_height = ROW_PITCH;
 
@@ -403,6 +370,6 @@ void ui_draw_run_list(struct application *appl, GpxCollection *collection) {
 
         draw_run_list_header(collection);
         draw_run_list_body(collection, body_height);
-        draw_run_list_bottom(collection->total_visible_tracks_str, collection);
+        ui_draw_panel_footer(PANEL_RUN_LIST);
     }
 }
