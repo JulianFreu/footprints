@@ -12,6 +12,7 @@
 
 #include "log.h"
 #include "progress.h"
+#include "settings.h"
 #include "time_util.h"
 #include "track_splits.h"
 
@@ -429,7 +430,7 @@ static int count_gpx_files(const char *folder_path) {
 }
 
 bool gpx_parse_all_files(GpxCollection *collection, const Progress *progress) {
-    const char *folder_path = GPX_INPUT_DIR;
+    const char *folder_path = settings.gpx_dir;
     DIR *dir;
     struct dirent *entry;
 

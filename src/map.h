@@ -9,10 +9,7 @@
 #include "app.h"
 #include "gpx_types.h"
 #include "map_types.h"
-
-// Set once from the command line before the download thread starts; read by it
-// from then on.
-extern bool use_osm_tiles;
+#include "settings.h"
 
 // Written by the tile download thread, read by the main loop each frame to
 // decide whether the map still needs redrawing.
@@ -27,9 +24,10 @@ extern _Atomic bool download_in_progress;
 
 // What a MapTransform is when nothing is easing. A zeroed one has a scale of
 // zero and draws nothing, so this is not something to leave to a {0}.
-#define MAP_TRANSFORM_IDENTITY \
-    (MapTransform){            \
-        .scale = 1.0f, .anchor_x = 0.0f, .anchor_y = 0.0f}
+#define MAP_TRANSFORM_IDENTITY                            \
+    (MapTransform) {                                      \
+        .scale = 1.0f, .anchor_x = 0.0f, .anchor_y = 0.0f \
+    }
 
 // Puts a rectangle given in unscaled screen pixels where the transform says it
 // should be drawn.
@@ -88,9 +86,30 @@ void map_world_to_screen(const struct application *appl, int world_x, int world_
                          float *screen_x, float *screen_y);
 void map_screen_to_world(const struct application *appl, float screen_x, float screen_y,
                          int *world_x, int *world_y);
-// Whether a Stadia Maps key was compiled in. -stadiamaps needs one; the
+// Which map the tiles are fetched from, and the key sent with them.
+//
+// Both are set on the main thread and read by the download worker, so they are
+// reached through these rather than being variables to assign -- see map.c.
+// Setting either takes effect on the next tile fetched; what is already on
+// screen is the caller's to clear.
+void map_set_provider(MapProvider provider);
+MapProvider map_current_provider(void);
+void map_set_api_key(const char *key);
+
+// What a provider is called in the settings panel, and whether selecting it is
+// any use without a key.
+const char *map_provider_label(MapProvider provider);
+bool map_provider_needs_key(MapProvider provider);
+
+// Whether a Stadia Maps key has been set. The Stadia providers need one; the
 // default OpenStreetMap tiles do not.
 bool map_has_api_key(void);
+
+// Drops every tile still queued, and forgets which tiles have already been
+// asked for. Both belong to the map that was showing, so both are cleared when
+// the provider changes.
+void map_flush_download_queue(struct fifo *download_queue);
+void map_reset_pending(void);
 
 bool tile_key_equal(MapTile a, MapTile b);
 
@@ -113,6 +132,8 @@ void tile_cache_clear(TileTextureCache *cache);
 void tile_cache_free(TileTextureCache *cache);
 
 // Formats the on-disk path of a tile. The single place that layout is spelled.
-void tile_cache_path(char *out, size_t size, MapTile tile);
+// Each provider caches under a directory of its own, so which one the tile came
+// from is part of where it lives.
+void tile_cache_path(char *out, size_t size, MapProvider provider, MapTile tile);
 
 #endif

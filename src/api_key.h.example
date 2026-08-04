@@ -1,13 +1,15 @@
 #ifndef API_KEY_H
 #define API_KEY_H
 
-// Copy this file to src/api_key.h and paste your key in.
-// Only needed when running with -stadiamaps; the default OpenStreetMap tiles
-// require no key.
+// Superseded by the settings panel: the Stadia Maps key now lives in
+// settings.conf, where it can be pasted in without rebuilding.
 //
-//   cp src/api_key.h.example src/api_key.h
+// This header is still read once at startup if it exists, so a checkout from
+// before the settings panel keeps working -- the key is carried over into the
+// settings the first time and the header can then be deleted.
 //
-// src/api_key.h is gitignored so your key is never committed.
+// For a new setup there is nothing to do here. Run footprints, open the
+// settings panel, and paste the key into the "Stadia API key" field.
 static const char *api_key = "your-stadiamaps-api-key-here";
 
 #endif

@@ -14,6 +14,7 @@
 #include "gpx_types.h"
 #include "heat.h"
 #include "map.h"
+#include "settings.h"
 #include "tracks.h"
 #include "ui.h"
 
@@ -37,17 +38,29 @@ static void app_update(struct application *appl, GpxCollection *collection) {
 }
 
 int main(int argc, char *argv[]) {
+    // Before anything reads a tunable. A missing file is the first run and
+    // leaves the compiled-in defaults standing, so this cannot fail in a way
+    // worth stopping for.
+    settings_load(&settings, SETTINGS_FILE);
+    settings_seed_legacy_api_key(&settings);
+
+    map_set_api_key(settings.stadia_api_key);
+    map_set_provider(settings.provider);
+
     if (argc > 1) {
+        // The provider lives in the settings now. This stays as a way to
+        // start on Stadia for one run without changing what is saved.
         if (argc == 2 && strcmp(argv[1], "-stadiamaps") == 0) {
             if (!map_has_api_key()) {
                 fprintf(stderr,
-                        "-stadiamaps needs an API key, and src/api_key.h is missing.\n"
-                        "  cp src/api_key.h.example src/api_key.h\n"
-                        "then paste your key into it and rebuild.\n");
+                        "-stadiamaps needs an API key, and none is set.\n"
+                        "Open the settings panel and paste one in, or put it in\n"
+                        "%s as  stadia_api_key = <your key>\n",
+                        SETTINGS_FILE);
                 return EXIT_FAILURE;
             }
             printf("using stadiamaps\n");
-            use_osm_tiles = false;
+            map_set_provider(MAP_PROVIDER_STADIA_TERRAIN);
         } else {
             fprintf(stderr, "The only supported argument is \"-stadiamaps\"\n");
             return EXIT_FAILURE;
@@ -58,9 +71,9 @@ int main(int argc, char *argv[]) {
         .renderer = NULL,
         .window_width = SCREEN_WIDTH,
         .window_height = SCREEN_HEIGHT,
-        .zoom = START_ZOOM,
-        .world_x = START_WORLD_X,
-        .world_y = START_WORLD_Y,
+        .zoom = settings.start_zoom,
+        .world_x = settings.start_world_x,
+        .world_y = settings.start_world_y,
         .running = 1,
         .dragging = 0,
         .left_mouse_button_pressed = false,
@@ -303,10 +316,29 @@ static void dispatch_event(struct application *appl, GpxCollection *collection,
         return;
     }
 
-    // A filter field takes the keys it has a use for and leaves the rest. Not a
-    // link in the chain below, because a click that leaves a field still has to
-    // reach whatever it landed on -- when this consumed the press outright, a
-    // field was focused by the second click on it rather than the first.
+    // A focused field takes the keys it has a use for and leaves the rest.
+    // Neither of these is a link in the chain below, because a click that
+    // leaves a field still has to reach whatever it landed on -- when this
+    // consumed the press outright, a field was focused by the second click on
+    // it rather than the first.
+    //
+    // The settings panel is offered first, and focusing a field in either one
+    // blurs the other, so only one caret is ever live.
+    if (ui_settings_input_active()) {
+        // Only the settings panel has fields that take whole words, so this is
+        // the only consumer of the characters SDL assembles for us.
+        if (event.type == SDL_TEXTINPUT) {
+            ui_settings_handle_text(event.text.text);
+            return;
+        }
+        if (event.type == SDL_KEYDOWN &&
+            ui_settings_handle_key(event.key.keysym.sym,
+                                   (event.key.keysym.mod & KMOD_SHIFT) != 0))
+            return;
+        if (event.type == SDL_MOUSEBUTTONDOWN)
+            ui_settings_blur();
+    }
+
     if (ui_filters_input_active()) {
         if (event.type == SDL_KEYDOWN &&
             ui_filters_handle_key(collection, event.key.keysym.sym,

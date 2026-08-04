@@ -1,6 +1,7 @@
 #include "map.h"
 
 #include <curl/curl.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,24 +12,112 @@
 
 #include "fifo.h"
 #include "log.h"
+#include "settings.h"
 
-// The Stadia Maps key is optional: it is only read when -stadiamaps is passed,
-// and the default OpenStreetMap tiles need no key at all. Including the header
-// unconditionally meant the build failed without it even for users who would
-// never use it.
-#if defined(__has_include)
-#if __has_include("api_key.h")
-#include "api_key.h"
-#define HAVE_API_KEY 1
-#endif
-#endif
-
-#ifndef HAVE_API_KEY
-static const char *api_key = NULL;
-#endif
-
-bool use_osm_tiles = true;
 _Atomic bool download_in_progress;
+
+// --- Providers ---
+//
+// One row per MapProvider. The url format takes zoom, x and y in that order.
+//
+// Each provider caches into a subdirectory of its own: the same z/x/y names a
+// different picture depending on who drew it, so one shared tree would hand
+// back OpenStreetMap tiles for a Stadia map and there would be no way to tell.
+typedef struct TileProvider {
+    const char *label;      // what the settings panel's button says
+    const char *url_format; // zoom, x, y
+    // An array rather than a pointer so the compiler can bound the paths built
+    // from it below; as a pointer it cannot, and the directory arithmetic warns
+    // about a truncation that cannot happen.
+    char cache_dir[32]; // under TILE_CACHE_DIR
+    bool needs_key;
+} TileProvider;
+
+// clang-format off
+// A table reads as a table. With ColumnLimit at 0 the formatter joins each row
+// into one 200-column line, which is the one place in this file where letting
+// it have its way costs more than it gives.
+static const TileProvider providers[MAP_PROVIDER_COUNT] = {
+    [MAP_PROVIDER_OSM] = {
+        .label       = "OpenStreetMap",
+        .url_format  = "https://tile.openstreetmap.org/%d/%d/%d.png",
+        .cache_dir   = "osm",
+        .needs_key   = false},
+    [MAP_PROVIDER_STADIA_TERRAIN] = {
+        .label       = "Stamen Terrain",
+        .url_format  = "https://tiles.stadiamaps.com/tiles/stamen_terrain/%d/%d/%d.png",
+        .cache_dir   = "stadia_stamen_terrain",
+        .needs_key   = true},
+    [MAP_PROVIDER_STADIA_TONER_LITE] = {
+        .label       = "Stamen Toner Lite",
+        .url_format  = "https://tiles.stadiamaps.com/tiles/stamen_toner_lite/%d/%d/%d.png",
+        .cache_dir   = "stadia_stamen_toner_lite",
+        .needs_key   = true},
+    [MAP_PROVIDER_STADIA_SMOOTH_DARK] = {
+        .label       = "Alidade Smooth Dark",
+        .url_format  = "https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/%d/%d/%d.png",
+        .cache_dir   = "stadia_alidade_smooth_dark",
+        .needs_key   = true},
+    [MAP_PROVIDER_STADIA_OUTDOORS] = {
+        .label       = "Outdoors",
+        .url_format  = "https://tiles.stadiamaps.com/tiles/outdoors/%d/%d/%d.png",
+        .cache_dir   = "stadia_outdoors",
+        .needs_key   = true},
+};
+// clang-format on
+
+static MapProvider clamp_provider(MapProvider provider) {
+    if (provider < 0 || provider >= MAP_PROVIDER_COUNT)
+        return MAP_PROVIDER_OSM;
+    return provider;
+}
+
+const char *map_provider_label(MapProvider provider) {
+    return providers[clamp_provider(provider)].label;
+}
+
+bool map_provider_needs_key(MapProvider provider) {
+    return providers[clamp_provider(provider)].needs_key;
+}
+
+// The provider and the key are set from the settings panel on the main thread
+// and read by the download worker, so neither can simply be a variable the way
+// the old use_osm_tiles was.
+//
+// The provider is atomic because the worker reads it whole. The key cannot be,
+// being a string, so it is copied under a lock -- once per tile, next to a
+// network round trip, which is not a cost worth designing around.
+static _Atomic int current_provider = MAP_PROVIDER_OSM;
+static pthread_mutex_t api_key_lock = PTHREAD_MUTEX_INITIALIZER;
+static char current_api_key[SETTINGS_KEY_MAX];
+
+void map_set_provider(MapProvider provider) {
+    atomic_store(&current_provider, (int)clamp_provider(provider));
+}
+
+MapProvider map_current_provider(void) {
+    return (MapProvider)atomic_load(&current_provider);
+}
+
+void map_set_api_key(const char *key) {
+    pthread_mutex_lock(&api_key_lock);
+    snprintf(current_api_key, sizeof(current_api_key), "%s", key ? key : "");
+    pthread_mutex_unlock(&api_key_lock);
+}
+
+// Copies the key out for the caller to use. Returns whether there was one:
+// a provider that needs a key and has not got one is not worth asking.
+static bool map_copy_api_key(char *out, size_t size) {
+    pthread_mutex_lock(&api_key_lock);
+    snprintf(out, size, "%s", current_api_key);
+    pthread_mutex_unlock(&api_key_lock);
+    return out[0] != '\0';
+}
+
+bool map_has_api_key(void) {
+    char key[SETTINGS_KEY_MAX];
+    return map_copy_api_key(key, sizeof(key));
+}
 
 // Tiles asked for and not yet in hand: queued, in flight, or lately failed and
 // cooling off.
@@ -83,6 +172,13 @@ static bool pending_blocks(MapTile tile, Uint32 now_ms) {
     return true;
 }
 
+// Forgets every tile that has been asked for or is cooling off. Called when the
+// map is switched: the set says "somebody is already getting this", which stops
+// being true of the new provider's tiles the moment the old one's are dropped.
+void map_reset_pending(void) {
+    pending_count = 0;
+}
+
 static void pending_add(MapTile tile, Uint32 now_ms) {
     if (pending_count >= TILE_PENDING_MAX) {
         // Full: drop whatever has been waiting longest rather than refuse to
@@ -120,10 +216,6 @@ static void publish_tile_ready(MapTile tile) {
     event.user.data1 = (void *)(intptr_t)tile.tile_x;
     event.user.data2 = (void *)(intptr_t)tile.tile_y;
     SDL_PushEvent(&event); // thread-safe
-}
-
-bool map_has_api_key(void) {
-    return api_key != NULL && api_key[0] != '\0';
 }
 
 void conv_pixel_to_tile_and_offset(int pixel_x, int pixel_y, int source_zoom, int target_zoom,
@@ -236,14 +328,29 @@ void *download_tiles(void *arg) {
 
         pthread_mutex_unlock(&download_queue->lock);
 
+        // Snapshotted once for this tile and used for both the URL and the
+        // path it is written to. Switching the map mid-download then leaves the
+        // tile in the cache of the provider it really came from, rather than
+        // labelling it with whichever provider the switch landed on.
+        const MapProvider provider = map_current_provider();
+        const TileProvider *source = &providers[clamp_provider(provider)];
+
         char tile_path[TILE_PATH_MAX];
-        tile_cache_path(tile_path, sizeof(tile_path), next_tile);
+        tile_cache_path(tile_path, sizeof(tile_path), provider, next_tile);
 
         LOG_DEBUG("Start download for: %s\n", tile_path);
-        char zoom_dir[TILE_PATH_MAX], x_dir[TILE_PATH_MAX];
-        snprintf(zoom_dir, sizeof(zoom_dir), "%s/%d", TILE_CACHE_DIR, next_tile.zoom);
-        snprintf(x_dir, sizeof(x_dir), "%s/%d/%d", TILE_CACHE_DIR, next_tile.zoom, next_tile.tile_x);
+        // Each spelled out from the constant parts rather than from the one
+        // above it: chaining them leaves the compiler unable to bound the
+        // result, and it warns about a truncation that cannot happen.
+        char provider_dir[TILE_PATH_MAX], zoom_dir[TILE_PATH_MAX], x_dir[TILE_PATH_MAX];
+        snprintf(provider_dir, sizeof(provider_dir), "%s/%s",
+                 TILE_CACHE_DIR, source->cache_dir);
+        snprintf(zoom_dir, sizeof(zoom_dir), "%s/%s/%d",
+                 TILE_CACHE_DIR, source->cache_dir, next_tile.zoom);
+        snprintf(x_dir, sizeof(x_dir), "%s/%s/%d/%d",
+                 TILE_CACHE_DIR, source->cache_dir, next_tile.zoom, next_tile.tile_x);
         ensure_directory(TILE_CACHE_DIR);
+        ensure_directory(provider_dir);
         ensure_directory(zoom_dir);
         ensure_directory(x_dir);
 
@@ -259,26 +366,24 @@ void *download_tiles(void *arg) {
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &image_data);
 
-        if (use_osm_tiles) {
-            snprintf(url, sizeof(url), "https://tile.openstreetmap.org/%d/%d/%d.png",
-                     next_tile.zoom, next_tile.tile_x, next_tile.tile_y);
-            curl_easy_setopt(curl, CURLOPT_URL, url);
-            curl_easy_setopt(curl, CURLOPT_USERAGENT, TILE_USER_AGENT);
-        } else // use stadiamaps; requires api key
-        {
-            snprintf(url, sizeof(url), "https://tiles.stadiamaps.com/tiles/stamen_terrain/%d/%d/%d.png",
-                     next_tile.zoom, next_tile.tile_x, next_tile.tile_y);
-            char auth[TILE_PATH_MAX];
-            // main() refuses -stadiamaps without a key, so this cannot be
-            // reached with a null one -- but the compiler cannot see that, and
-            // a null here would be a format-string crash rather than a
-            // failed download.
-            snprintf(auth, sizeof(auth), "Authorization: Stadia-Auth %s",
-                     map_has_api_key() ? api_key : "");
-            list = curl_slist_append(list, auth);
+        snprintf(url, sizeof(url), source->url_format,
+                 next_tile.zoom, next_tile.tile_x, next_tile.tile_y);
+        curl_easy_setopt(curl, CURLOPT_URL, url);
 
-            curl_easy_setopt(curl, CURLOPT_URL, url);
+        if (source->needs_key) {
+            char key[SETTINGS_KEY_MAX];
+            char auth[SETTINGS_KEY_MAX + 64];
+            // The panel will not select a keyed provider without a key, but a
+            // key can be cleared while one is selected. An empty one is sent
+            // rather than skipped, so the failure is the provider's 401 and
+            // says so, instead of a request that looks anonymous.
+            map_copy_api_key(key, sizeof(key));
+            snprintf(auth, sizeof(auth), "Authorization: Stadia-Auth %s", key);
+            list = curl_slist_append(list, auth);
             curl_easy_setopt(curl, CURLOPT_HTTPHEADER, list);
+        } else {
+            // OSM's usage policy asks for an identifying agent.
+            curl_easy_setopt(curl, CURLOPT_USERAGENT, TILE_USER_AGENT);
         }
 
         CURLcode res = curl_easy_perform(curl);
@@ -312,6 +417,17 @@ void *download_tiles(void *arg) {
         download_queue->tile_in_dl = (MapTile){.tile_x = -1, .tile_y = -1, .zoom = -1};
         pthread_mutex_unlock(&download_queue->lock);
     }
+}
+
+// Drops whatever is still queued. Called when the map is switched: those tiles
+// were asked for to draw a map that is no longer on screen, and fetching them
+// would only delay the ones that are. The tile already in flight is not
+// cancelled -- it is a request that has been made -- but it lands in its own
+// provider's cache and is simply never looked at.
+void map_flush_download_queue(struct fifo *download_queue) {
+    pthread_mutex_lock(&download_queue->lock);
+    download_queue->read_p = download_queue->write_p;
+    pthread_mutex_unlock(&download_queue->lock);
 }
 
 // Asks the download worker to return from its wait. The caller joins the
@@ -434,8 +550,14 @@ static int file_exists(const char *path) {
 // The one place the on-disk tile layout is spelled out. The download thread and
 // the render loop have to agree on it exactly, or tiles are fetched forever and
 // never found.
-void tile_cache_path(char *out, size_t size, MapTile tile) {
-    snprintf(out, size, "%s/%d/%d/%d.png", TILE_CACHE_DIR, tile.zoom, tile.tile_x, tile.tile_y);
+// The provider is passed in rather than read here so that a tile still in
+// flight when the map is switched is written under the provider it actually
+// came from: the worker passes what it snapshotted, the main thread passes
+// whatever is current now.
+void tile_cache_path(char *out, size_t size, MapProvider provider, MapTile tile) {
+    snprintf(out, size, "%s/%s/%d/%d/%d.png", TILE_CACHE_DIR,
+             providers[clamp_provider(provider)].cache_dir,
+             tile.zoom, tile.tile_x, tile.tile_y);
 }
 
 // Decodes a tile PNG off disk and hands it to the cache, which takes ownership.
@@ -660,7 +782,7 @@ void map_draw_tiles(struct application *appl, const VisibleTile *tiles, int coun
         TileTexture *entry = tile_cache_find(&appl->tile_cache, key);
         if (!entry && !pending_blocks(key, now_ms)) {
             char tile_path[TILE_PATH_MAX];
-            tile_cache_path(tile_path, sizeof(tile_path), key);
+            tile_cache_path(tile_path, sizeof(tile_path), map_current_provider(), key);
 
             if (file_exists(tile_path)) {
                 // The decode and upload are synchronous, so they are rationed:

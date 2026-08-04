@@ -2,6 +2,9 @@ gpx_files/*
 tilecache/*
 src/api_key.h
 
+# written by the settings panel; every install has its own
+settings.conf
+
 # build output
 build/
 build-debug/

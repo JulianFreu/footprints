@@ -10,6 +10,7 @@
 
 #include "heat_types.h"
 #include "progress.h"
+#include "settings.h"
 
 #include "log.h"
 
@@ -260,7 +261,11 @@ bool calculate_heatmap(GpxCollection *collection, const Progress *progress) {
     struct timespec start_time, end_time;
     clock_gettime(CLOCK_MONOTONIC, &start_time);
     LOG_DEBUG("Building kdtree\n");
-    float radius2 = HEAT_RADIUS_PIXELS * HEAT_RADIUS_PIXELS;
+    // Read once here rather than in the workers: they all want the same number,
+    // and a setting changed mid-calculation must not give one worker a
+    // different radius from the next.
+    float radius = settings.heat_radius_pixels;
+    float radius2 = radius * radius;
     build_kdtree(points, 0, total_points, 0);
 
     // One worker per core, but never more workers than points -- a fixed count

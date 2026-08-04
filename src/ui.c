@@ -482,6 +482,7 @@ void ui_update(struct application *appl, GpxCollection *collection) {
     moved |= ui_filters_update(appl, collection);
     moved |= ui_stats_update(appl, collection);
     moved |= ui_records_update(appl, collection);
+    moved |= ui_settings_update(appl, collection);
     if (moved)
         app_request_redraw(appl);
 }
@@ -564,7 +565,7 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
         ui_draw_records_panel(appl);
 
         ui_fade_set(anim_value(&ui.panels[PANEL_SETTINGS]));
-        ui_draw_simple_panel(appl, PANEL_SETTINGS, "Settings");
+        ui_draw_settings_panel(appl);
 
         ui_fade_set(1.0f);
     }

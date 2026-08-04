@@ -69,25 +69,63 @@ After building, run the executable directly:
 ./footprints
 ```
 
-Run it from the project root — `gpx_files/`, `tilecache/` and `resources/` are
-all resolved relative to the working directory.
+Run it from the project root — `gpx_files/`, `tilecache/`, `resources/` and
+`settings.conf` are all resolved relative to the working directory.
 
 ### Map tiles
 
 Footprints uses OpenStreetMap tiles by default, which need no API key and no
 extra setup.
 
-To use Stadia Maps terrain tiles instead, supply a key and pass the flag:
+Four Stadia Maps styles are available as well — Stamen Terrain, Stamen Toner
+Lite, Alidade Smooth Dark and Outdoors. They need a key: open the settings
+panel, paste it into **Stadia API key**, and the styles become selectable.
+Both the key and the choice of provider are saved, so this is a one-time step.
 
-```bash
-cp src/api_key.h.example src/api_key.h
-# paste your key into src/api_key.h, then
-make && ./footprints -stadiamaps
-```
+Each provider caches into a directory of its own under `tilecache/`, so
+switching between them does not mix one provider's tiles into another's.
 
-`src/api_key.h` is gitignored, so your key stays out of version control. It is
-optional: without it the build succeeds as normal and only `-stadiamaps` is
-unavailable, which the program tells you if you ask for it.
+`./footprints -stadiamaps` still works, and now means "start on Stamen Terrain
+this once" without changing what is saved. It needs a key to already be set.
+
+## Settings
+
+Everything in the settings panel is written to `settings.conf` in the working
+directory as soon as it changes, and read back at startup. The file is plain
+text and hand-editing it is fine — anything unreadable or out of range falls
+back to the default rather than stopping the program.
+
+| Setting | What it does |
+|---------|--------------|
+| Heat colours | Six setpoints shaping where a given amount of heat lands on the colour ramp |
+| Map | The tile provider, the Stadia API key, and a button to drop the cached tile textures |
+| Heat calculation | The overlap radius the heat is calculated with, and the size of the square drawn per track point |
+| Library | The folder scanned for `.gpx` files, and a button to read it again |
+| Startup view | Saves wherever the map is now as the view the window opens at |
+
+### Heat colours
+
+The heat colouring is a smooth 32-colour ramp from cold to hot, and stays one.
+What the six setpoints change is *where along that ramp* a given amount of heat
+lands. Each is a percentage of the maximum heat in your library; setpoint 1 is
+where the coldest colour sits and setpoint 6 where the hottest is reached, with
+the four between them spaced evenly along the ramp. The colours between two
+setpoints are still interpolated — the setpoints bend the curve, they do not
+band it.
+
+The default `0,20,40,60,80,100` is a straight line. Setting the last one to 60
+means everything at 60% of the maximum heat and above is drawn in the hottest
+colour, which spreads the range over your busier routes; setting it to 90
+reserves the hottest colour for the few places you go most. The gradient bar
+above the fields previews the result.
+
+A change here only re-draws the map. Changing the **overlap radius** is
+different — it feeds the calculation itself, so the *Recalculate heat* button
+lights up while the setting and the map disagree, and pressing it re-runs the
+calculation.
+
+If `src/api_key.h` is left over from before the settings panel existed, its key
+is read once and carried into the settings; the header is no longer needed.
 
 ## Usage
 
@@ -193,12 +231,13 @@ Keep the description a few kebab-case words, not a full sentence.
 | `ui_runlist.c` | The run list: sortable header, rows, virtualised scrolling |
 | `ui_stats.c` | The statistics panel: the bar plot, its axes, its buttons, and the pan |
 | `ui_records.c` | The records panel: a scrolling section per category, its rows clickable |
-| `ui_panels.c` | The settings panel, and the shape a panel takes before it has content |
+| `ui_settings.c` | The settings panel, its fields and the text input that feeds them |
 | `ui_internal.h` | Layout vocabulary shared by `ui*.c`; not part of the UI's interface |
+| `settings.c` | What is configurable, its defaults, and reading and writing `settings.conf` |
 | `progress.h` | How a long operation reports progress and is asked to stop |
 | `clay_sdl.c` | The one translation unit carrying Clay and its vendored SDL renderer |
 | `*_types.h` | Types only, so a module can include what it needs without the rest |
-| `config.h` | Compile-time tunables |
+| `config.h` | Compile-time tunables, and the defaults the settings start from |
 
 ### Conventions
 
@@ -283,8 +322,6 @@ thread, and whoever walks a range skips what is filtered out.
 - Add screenshots to README
 - Export the current heatmap view as a PNG for sharing
 - Interactive elevation profile on click instead of the current static image
-- A settings file for defaults (start location/zoom, tile cache path) instead of hardcoded values in `config.h`
-- A minimal config for map tile provider/API key setup instead of editing `api_key.h` by hand
 - Auto-sync with Garmin Connect
 
 ## License

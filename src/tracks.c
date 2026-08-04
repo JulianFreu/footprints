@@ -12,11 +12,16 @@
 #include "map.h" // the projection, the tile grid and the texture cache
 #include "colors.h"
 #include "point_index.h"
+#include "settings.h"
 
 // The heat ramp is a data-visualisation scale rather than UI chrome, so it is
 // its own thing rather than part of the palette in colors.h: it has to stay
 // perceptually ordered from cold to hot, which is a different constraint from
 // looking right next to a button.
+//
+// Where a given amount of heat lands on it is the settings' business, not this
+// file's: heat_normalized answers that, and the ramp is read at whatever
+// position it gives back.
 #define HEAT_COLOR_COUNT 32
 
 static const SDL_Color heat_colors[HEAT_COLOR_COUNT] = {
@@ -52,6 +57,14 @@ static const SDL_Color heat_colors[HEAT_COLOR_COUNT] = {
     {144, 255, 135, 255},
     {104, 255, 170, 255},
     {60, 255, 207, 255}};
+
+SDL_Color heat_ramp_color(float normalized) {
+    if (normalized < 0.0f)
+        normalized = 0.0f;
+    if (normalized > 1.0f)
+        normalized = 1.0f;
+    return heat_colors[(int)(normalized * (HEAT_COLOR_COUNT - 1))];
+}
 
 // A filled circle as a triangle fan, used to round the joints and caps of a
 // thick polyline.
@@ -184,13 +197,12 @@ static SDL_Texture *render_track_tile(struct application *appl, GpxCollection *c
     SDL_SetRenderDrawColor(appl->renderer, 0, 0, 0, 0);
     SDL_RenderClear(appl->renderer);
 
-    // Every point shares the same heat when the collection has no overlap at
-    // all -- a single track, or tracks that never come within HEAT_RADIUS_PIXELS
-    // of each other. The span is then zero, and dividing by it produced NaN,
-    // which compares false against both clamps and reached the cast as
-    // INT_MIN. Collapse that case onto the bottom of the ramp instead.
-    const float min_heat = 1.0f;
-    const float heat_span = (float)collection->max_heat - min_heat;
+    // Read once for the whole tile rather than per point: a tile is a million
+    // points on a busy map, and neither of these can change while it is being
+    // rasterised.
+    const int point_size = settings.track_point_size;
+    const int max_heat = collection->max_heat;
+
     for (int j = from; j < to; j++) {
         const GpxPoint *point = collection->point_index.entries[j].point;
 
@@ -203,11 +215,10 @@ static SDL_Texture *render_track_tile(struct application *appl, GpxCollection *c
         conv_pixel_to_tile_and_offset(point->world_x, point->world_y, MAX_ZOOM, key.zoom,
                                       &tile_x, &tile_y, &pixel_in_tile_x, &pixel_in_tile_y);
 
-        float normalized = (heat_span > 0.0f) ? ((float)point->heat - min_heat) / heat_span : 0.0f;
-        if (normalized < 0.0f)
-            normalized = 0.0f;
-        if (normalized > 1.0f)
-            normalized = 1.0f;
+        // Where along the ramp this much heat sits. The settings shape that
+        // curve; the result is always within 0..1, so it indexes the ramp
+        // without a clamp of its own.
+        float normalized = heat_normalized(&settings, point->heat, max_heat);
 
         int color_index = (int)(normalized * (HEAT_COLOR_COUNT - 1));
         SDL_Color color = heat_colors[color_index];
@@ -215,9 +226,9 @@ static SDL_Texture *render_track_tile(struct application *appl, GpxCollection *c
         SDL_SetRenderDrawColor(appl->renderer, color.r, color.g, color.b, color.a);
 
         SDL_Rect rct = {
-            pixel_in_tile_x - TRACK_POINT_SIZE / 2,
-            pixel_in_tile_y - TRACK_POINT_SIZE / 2,
-            TRACK_POINT_SIZE, TRACK_POINT_SIZE};
+            pixel_in_tile_x - point_size / 2,
+            pixel_in_tile_y - point_size / 2,
+            point_size, point_size};
         SDL_RenderFillRect(appl->renderer, &rct);
     }
 

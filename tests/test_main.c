@@ -1,3 +1,5 @@
+#include "../src/settings.h"
+
 #include "harness.h"
 
 int tests_run = 0;
@@ -5,7 +7,14 @@ int tests_failed = 0;
 const char *current_suite = "";
 
 int main(void) {
+    // The heat calculation and the parser read the settings global, which the
+    // application fills in from the settings file before anything else runs.
+    // Nothing here loads a file, so the defaults stand in for it -- without
+    // this the suites below would be measuring a zeroed radius.
+    settings_defaults(&settings);
+
     run_time_util_tests();
+    run_settings_tests();
     run_fifo_tests();
     run_filters_tests();
     run_gpx_tests();

@@ -7,6 +7,7 @@
 #include "heat.h"
 #include "log.h"
 #include "point_index.h"
+#include "settings.h"
 
 static Progress job_progress(BackgroundJob *job) {
     return (Progress){
@@ -33,7 +34,7 @@ static void *background_worker(void *arg) {
         // stale before the parse rather than after it.
         point_index_invalidate(&job->collection->point_index);
         if (!gpx_parse_all_files(job->collection, &progress))
-            fprintf(stderr, "No tracks were loaded from %s\n", GPX_INPUT_DIR);
+            fprintf(stderr, "No tracks were loaded from %s\n", settings.gpx_dir);
 
         // Freshly parsed tracks have not been through the filters, and the
         // heat is only calculated over the visible ones -- so this has to

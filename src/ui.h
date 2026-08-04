@@ -35,6 +35,18 @@ bool ui_filters_handle_key(GpxCollection *collection, SDL_Keycode key,
 // landed on, so moving between two fields is one click rather than two.
 void ui_filters_blur(void);
 
+// The same three for the settings panel, which is routed ahead of the filters
+// so that only one caret is ever live. Its fields take whole words as well as
+// digits -- the API key and the GPX folder are text -- so it needs the typed
+// characters SDL_TEXTINPUT carries rather than only the keycodes.
+bool ui_settings_input_active(void);
+bool ui_settings_handle_key(SDL_Keycode key, bool shift_held);
+void ui_settings_handle_text(const char *text);
+// Commits whatever is in the focused field and leaves it. Committing rather
+// than discarding is what makes clicking away from a field the same as
+// pressing return on it.
+void ui_settings_blur(void);
+
 // Marks everything derived from the tracks stale -- the statistics series and
 // the records table. Each panel rebuilds on its next update rather than in the
 // middle of whatever changed the tracks, which may well be a layout pass or a

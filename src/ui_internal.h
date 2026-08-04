@@ -105,6 +105,22 @@
 // A section header is shorter than the panel header: it is a label over its
 // rows, not the top of the panel.
 #define RECORDS_SECTION_HEADER_HEIGHT 26
+
+// The settings panel is as wide as the placeholder it replaced. Its rows are a
+// label on the left and a field or a button on the right, except the setpoints,
+// which are six small fields sharing one row.
+#define SETTINGS_WIDTH PANEL_WIDTH
+#define SETTINGS_SECTION_HEADER_HEIGHT RECORDS_SECTION_HEADER_HEIGHT
+#define SETTINGS_ROW_HEIGHT LIST_ENTRY_HEIGHT
+#define SETTINGS_LABEL_WIDTH 130
+// Between one section and the next, so they read as separate groups rather
+// than as one long list of rows.
+#define SETTINGS_SECTION_GAP (2 * GAPS)
+// The ramp preview above the setpoint fields, and how many slices it is drawn
+// in. Enough that the steps are not visible at this width; it is a picture of a
+// continuous gradient, and a coarse one would suggest the colouring is banded.
+#define SETTINGS_GRADIENT_HEIGHT 22
+#define SETTINGS_GRADIENT_STEPS 64
 #define RECORDS_ROW_HEIGHT LIST_ENTRY_HEIGHT
 #define RECORDS_ROW_PITCH (RECORDS_ROW_HEIGHT + GAPS)
 // Between one category and the next, so the sections read as separate lists
@@ -163,10 +179,11 @@ bool ui_filters_update(struct application *appl, GpxCollection *collection);
 void ui_draw_run_list(struct application *appl, GpxCollection *collection);
 void ui_draw_statistics_panel(struct application *appl);
 void ui_draw_records_panel(struct application *appl);
-// An empty panel with a titled header: what a panel is until it has something
-// to show, which now means the settings.
-void ui_draw_simple_panel(struct application *appl, MenuPanel panel,
-                          const char *title);
+void ui_draw_settings_panel(struct application *appl);
+// Consumes the settings panel's pending presses, applies whatever they changed
+// and writes the settings file. Returns whether anything moved, the same way
+// the other panels' update functions do.
+bool ui_settings_update(struct application *appl, GpxCollection *collection);
 // Releases the run list's between-frames row buffer.
 void ui_runlist_free_scratch(void);
 // A row click, consumed once by the next layout pass.

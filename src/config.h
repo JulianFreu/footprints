@@ -36,11 +36,14 @@
 #define FIFO_DEPTH 16
 
 // Where downloaded tiles are kept, and enough room to format a path or a tile
-// URL into.
+// URL into. Each provider gets a subdirectory of its own under here: the same
+// z/x/y names a different picture depending on who drew it, so one shared tree
+// would hand OpenStreetMap tiles back for a Stadia map.
 #define TILE_CACHE_DIR "tilecache"
 
-// Scanned at startup for .gpx files. Both this and the tile cache are relative
-// to the working directory, so the binary is run from the project root.
+// The default scanned at startup for .gpx files, overridable in the settings.
+// Both this and the tile cache are relative to the working directory, so the
+// binary is run from the project root.
 #define GPX_INPUT_DIR "./gpx_files"
 #define TILE_PATH_MAX 256
 
@@ -110,9 +113,11 @@
 // still hold a record while the drive cannot.
 #define SPLIT_MAX_SPEED_MPS 7.0f
 
-// Side length, in pixels, of the square stamped down for each track point on
-// the heat tiles.
+// Default side length, in pixels, of the square stamped down for each track
+// point on the heat tiles, and what the settings will accept for it.
 #define TRACK_POINT_SIZE 4
+#define TRACK_POINT_SIZE_MIN 1
+#define TRACK_POINT_SIZE_MAX 32
 
 // Line thickness of the selected track's polyline overlay.
 #define SELECTED_TRACK_THICKNESS 10.0f
@@ -122,12 +127,34 @@
 #define ELEVATION_PROFILE_HEIGHT 100
 
 // --- Heatmap ---
-// Radius in projected pixels within which two tracks count as overlapping.
+// Default radius in projected pixels within which two tracks count as
+// overlapping, overridable in the settings.
 #define HEAT_RADIUS_PIXELS 200.0f
+// What the settings will accept for it. The lower bound is not zero: a radius
+// of nothing gives every point the same heat and a flat map, which reads as a
+// bug rather than as a setting.
+#define HEAT_RADIUS_MIN 10.0f
+#define HEAT_RADIUS_MAX 2000.0f
 
 // How many points a heat worker finishes before publishing progress and
 // checking whether it has been asked to stop.
 #define HEAT_PROGRESS_BATCH 256
+
+// Knots of the curve taking a point's share of the maximum heat to a position
+// along the colour ramp. Six is what the settings panel draws a field for.
+#define HEAT_SETPOINT_COUNT 6
+
+// --- Settings ---
+// Written beside the tile cache and the GPX folder, and read at startup. Plain
+// text, so it can be hand-edited.
+#define SETTINGS_FILE "settings.conf"
+// The longest a settings value can be. The key is the longer of the two in
+// practice; the path has to hold an absolute one.
+#define SETTINGS_KEY_MAX 128
+#define SETTINGS_PATH_MAX 512
+// One line of the file, and the buffer a field is edited in.
+#define SETTINGS_LINE_MAX (SETTINGS_PATH_MAX + 64)
+#define SETTINGS_EDIT_MAX SETTINGS_PATH_MAX
 
 // --- UI ---
 // How long a filter field has to sit still before the heat tiles are

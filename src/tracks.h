@@ -24,4 +24,10 @@ void tracks_draw_selected_overlay(struct application *appl);
 int find_track_near_click(GpxCollection *collection, int click_x, int click_y, int current_zoom, int max_pixel_distance);
 void update_selected_track_overlay(struct application *appl, GpxCollection *collection);
 
+// The colour at `normalized` (0 cold, 1 hot) along the heat ramp. The ramp
+// itself stays private to tracks.c; this is here so the settings panel can
+// preview the same colours the map is drawn with rather than keep a second
+// copy that would drift.
+SDL_Color heat_ramp_color(float normalized);
+
 #endif

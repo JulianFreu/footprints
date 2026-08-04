@@ -64,6 +64,7 @@ extern const char *current_suite;
     printf("- %s\n", name)
 
 void run_time_util_tests(void);
+void run_settings_tests(void);
 void run_filters_tests(void);
 void run_gpx_tests(void);
 void run_fifo_tests(void);
