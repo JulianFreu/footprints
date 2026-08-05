@@ -20,9 +20,16 @@
 // at their own scale rather than being stretched to fit a width chosen
 // separately from them.
 #define SIDEBAR_WIDTH (TRACK_GRAPH_WIDTH + 2 * GAPS)
-// The attribute rows used to be padded by 10 all round. Nine of them at 52px,
-// plus three graphs, is taller than the window they sit in; at 42px it fits.
+// The attribute rows used to be padded by 10 all round, which made each of them
+// 52px; nine of those left the graphs under them almost nothing.
 #define SIDEBAR_ROW_PADDING GAPS
+#define SIDEBAR_ICON_SIZE 32
+// A row is laid out to fit its contents and the icon is the tallest thing in
+// one, so this is what that fit comes to. Written down rather than left to Clay
+// to work out, because what the graphs below are given is measured from what
+// nine of these rows leave over -- arithmetic done before the layout runs.
+#define SIDEBAR_ROW_HEIGHT (SIDEBAR_ICON_SIZE + 2 * SIDEBAR_ROW_PADDING)
+#define SIDEBAR_ROW_COUNT 9
 // The label over each graph, and the value at the cursor drawn beside it.
 #define SIDEBAR_GRAPH_HEADER_HEIGHT 18
 // Thickness of the line drawn through the graphs at the hovered distance.
@@ -41,6 +48,25 @@
 // The panels that are still empty. The run list has a width of its own, being
 // the sum of its columns.
 #define PANEL_WIDTH 400
+
+// The sidebar's children, top to bottom: the attribute rows, the row the
+// cursor readout sits in, and one section per graph.
+#define SIDEBAR_CHILD_COUNT (SIDEBAR_ROW_COUNT + 1 + TRACK_SERIES_COUNT)
+// What the rows above the graphs leave for them: the panel's height less its
+// own padding, the gaps between every child, the rows themselves and the
+// cursor row. The graphs used to be a fixed 72px tall and this much was left
+// empty under the last of them.
+#define SIDEBAR_GRAPH_AREA_HEIGHT(window_height) \
+    (PANEL_HEIGHT(window_height) - 2 * GAPS -    \
+     (SIDEBAR_CHILD_COUNT - 1) * GAPS -          \
+     SIDEBAR_ROW_COUNT * SIDEBAR_ROW_HEIGHT -    \
+     SIDEBAR_GRAPH_HEADER_HEIGHT)
+// Split three ways whether or not the track carries three graphs: a run
+// recorded without a heart rate monitor draws the two it has at the height they
+// would have had beside a third, rather than one of them swallowing the room
+// the missing one would have taken.
+#define SIDEBAR_GRAPH_SECTION_HEIGHT(window_height) \
+    (SIDEBAR_GRAPH_AREA_HEIGHT(window_height) / TRACK_SERIES_COUNT)
 
 #define ELEMENTS_HEIGHT 30
 #define ELEMENTS_WIDTH 180

@@ -132,11 +132,20 @@
 // Line thickness of the selected track's polyline overlay.
 #define SELECTED_TRACK_THICKNESS 10.0f
 
-// Pixel size of the graphs rendered for the selected track. The sidebar's
-// width is measured from the first of these, so the surfaces land on the
-// screen at their own scale rather than being stretched to fit.
-#define TRACK_GRAPH_WIDTH 310
-#define TRACK_GRAPH_HEIGHT 72
+// Pixel width of the graphs rendered for the selected track, and so of the
+// sidebar holding them: the panel is this plus its padding. It is the one
+// number to change to make that sidebar wider or narrower, and the surfaces
+// still land on the screen at their own scale rather than being stretched to
+// fit a width chosen separately from them.
+#define TRACK_GRAPH_WIDTH 320
+// Their height is not a number set here: the graphs divide whatever the
+// attribute rows above them leave, three ways, so that they reach the bottom of
+// the panel however tall the window is. This is only the floor under that
+// division, so that a window with nothing left to divide cannot ask SDL for a
+// surface of no height. Keep it small: a window this short is already squashing
+// the graphs to fit, and anything larger here would have them rasterised bigger
+// than the box they are drawn into.
+#define TRACK_GRAPH_MIN_HEIGHT 8
 
 // How much ground the pace window spans, in metres. Pace between two
 // consecutive fixes is mostly GPS noise -- a metre of scatter on a one-second

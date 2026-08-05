@@ -67,6 +67,15 @@ void ui_invalidate_derived(void);
 // the pointer is belongs to the panel that was hit-tested, not to the map.
 bool ui_graph_hover_point(int *point_index);
 
+// The pixel size the sidebar draws each of its graphs at, for the window as it
+// is now. The height depends on how much room the attribute rows leave, so it
+// moves with the window; the pictures are rasterised at exactly this so they
+// land on the screen at their own scale rather than being scaled into their
+// box. The arithmetic behind it is the layout's, which is why the code that
+// draws the graphs asks rather than working it out a second time. Either
+// pointer may be null, for a caller that only wants the other.
+void ui_sidebar_graph_size(const struct application *appl, int *width, int *height);
+
 void ui_load_icons(struct application *appl);
 void ui_free_icons(struct application *appl);
 

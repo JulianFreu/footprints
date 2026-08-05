@@ -13,6 +13,7 @@
 #include "colors.h"
 #include "point_index.h"
 #include "settings.h"
+#include "ui.h" // the size the sidebar draws the graphs at
 
 // The heat ramp is a data-visualisation scale rather than UI chrome, so it is
 // its own thing rather than part of the palette in colors.h: it has to stay
@@ -603,17 +604,33 @@ void tracks_free_graphs(struct application *appl) {
     }
 }
 
-// Regenerates the graphs only when the selection actually changes; each one is
-// two textures and a full pixel readback.
+// Regenerates the graphs only when the picture they would produce has changed;
+// each one is two textures and a full pixel readback.
+//
+// That is the selection, and the size the sidebar will draw them at -- the
+// graphs fill the panel down to its bottom edge, so a window resized taller
+// wants taller pictures. Rasterising at the size they are drawn at is what
+// keeps them at their own scale instead of scaled into their box; the size
+// itself is the layout's to decide, which is why it is asked for rather than
+// worked out here. A resize already costs the selected track's whole overlay
+// texture, so three graphs alongside it is in keeping.
 //
 // The series are kept alongside the pictures rather than thrown away: the
 // readout under the graphs needs the numbers at the hovered point, and
 // rebuilding a pace window per frame to answer that would be a pass over the
 // whole track sixty times a second.
 void update_track_info_graphs(struct application *appl, const GpxCollection *collection) {
-    if (appl->selected_track == appl->rendered_overlay_track)
+    int graph_width, graph_height;
+    ui_sidebar_graph_size(appl, &graph_width, &graph_height);
+
+    if (appl->selected_track == appl->rendered_overlay_track &&
+        graph_width == appl->rendered_graph_width &&
+        graph_height == appl->rendered_graph_height)
         return;
+
     appl->rendered_overlay_track = appl->selected_track;
+    appl->rendered_graph_width = graph_width;
+    appl->rendered_graph_height = graph_height;
 
     tracks_free_graphs(appl);
 
@@ -627,7 +644,7 @@ void update_track_info_graphs(struct application *appl, const GpxCollection *col
 
         appl->icons.graphs[kind] = render_series_surface(
             appl->renderer, track, &appl->track_series[kind],
-            TRACK_GRAPH_WIDTH, TRACK_GRAPH_HEIGHT,
+            graph_width, graph_height,
             series_colors[kind].fill, series_colors[kind].line);
     }
 }

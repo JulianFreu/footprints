@@ -395,7 +395,8 @@ static void draw_sidebar_track_info(SDL_Surface *icon, const char *value, const 
         CLAY(CLAY_IDI_LOCAL("Icon", id),
              {
                  .layout = {
-                     .sizing = {.width = CLAY_SIZING_FIXED(32), .height = CLAY_SIZING_FIXED(32)},
+                     .sizing = {.width = CLAY_SIZING_FIXED(SIDEBAR_ICON_SIZE),
+                                .height = CLAY_SIZING_FIXED(SIDEBAR_ICON_SIZE)},
                      .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
                  },
                  .image = {.imageData = icon},
@@ -446,6 +447,23 @@ bool ui_graph_hover_point(int *point_index) {
         return false;
     *point_index = graph_hover_point;
     return true;
+}
+
+// The one place the graphs' size is decided. Both the boxes below and the
+// rasteriser in tracks.c read it from here, so the picture cannot be drawn at a
+// size the layout will not give it.
+void ui_sidebar_graph_size(const struct application *appl, int *width, int *height) {
+    if (width)
+        *width = TRACK_GRAPH_WIDTH;
+    if (!height)
+        return;
+
+    int graph_height = SIDEBAR_GRAPH_SECTION_HEIGHT(appl->window_height) -
+                       SIDEBAR_GRAPH_HEADER_HEIGHT;
+
+    // A window short enough to leave nothing over would otherwise ask for a
+    // surface of no height, which SDL declines to make.
+    *height = graph_height > TRACK_GRAPH_MIN_HEIGHT ? graph_height : TRACK_GRAPH_MIN_HEIGHT;
 }
 
 // Resolved against last frame's boxes, which is the same thing Clay resolves
@@ -516,6 +534,11 @@ static void draw_graph_cursor(struct application *appl) {
 static void draw_sidebar_graphs(struct application *appl, const GpxTrack *track) {
     const bool hovering = graph_hover_active && graph_hover_point < track->total_points;
 
+    // Only the height is wanted here: a graph is as wide as the panel it is in,
+    // which is what the sidebar's own width was measured to make true.
+    int graph_height;
+    ui_sidebar_graph_size(appl, NULL, &graph_height);
+
     // A space rather than an empty string when nothing is hovered: the rows
     // keep their height, so the graphs do not jump as the pointer crosses them.
     const char *distance_text = " ";
@@ -559,7 +582,7 @@ static void draw_sidebar_graphs(struct application *appl, const GpxTrack *track)
 
         CLAY(CLAY_IDI("TrackGraphSection", kind),
              {.layout = {.sizing = {.width = CLAY_SIZING_GROW(0),
-                                    .height = CLAY_SIZING_GROW(0, SIDEBAR_GRAPH_HEADER_HEIGHT + TRACK_GRAPH_HEIGHT)},
+                                    .height = CLAY_SIZING_GROW(0, SIDEBAR_GRAPH_HEADER_HEIGHT + graph_height)},
                          .layoutDirection = CLAY_TOP_TO_BOTTOM}}) {
             CLAY(CLAY_IDI("TrackGraphHeader", kind),
                  {.layout = {.padding = {.left = SIDEBAR_ROW_PADDING, .right = SIDEBAR_ROW_PADDING},
@@ -573,13 +596,15 @@ static void draw_sidebar_graphs(struct application *appl, const GpxTrack *track)
                      {.layout = {.sizing = {.width = CLAY_SIZING_GROW(0)}}}) {}
                 ui_draw_text(value_text, FILTER_TEXT_FONT_SIZE, fg_l, CLAY_TEXT_ALIGN_RIGHT);
             }
-            // Grows into whatever height is left over, up to the size the
-            // picture was drawn at. A window too short for three graphs squashes
-            // them rather than spilling them out of the panel, and the cursor is
-            // placed by fraction of the box, so a squashed graph still lines up.
+            // Grows into whatever height is left over, up to the share of the
+            // panel this graph is entitled to -- which is the size the picture
+            // was drawn at, both being read from ui_sidebar_graph_size. A window
+            // too short for three graphs squashes them rather than spilling them
+            // out of the panel, and the cursor is placed by fraction of the box,
+            // so a squashed graph still lines up.
             CLAY(CLAY_IDI("TrackGraph", kind),
                  {.layout = {.sizing = {.width = CLAY_SIZING_GROW(0),
-                                        .height = CLAY_SIZING_GROW(0, TRACK_GRAPH_HEIGHT)}},
+                                        .height = CLAY_SIZING_GROW(0, graph_height)}},
                   .image = {.imageData = appl->icons.graphs[kind]}}) {}
         }
     }

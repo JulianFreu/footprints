@@ -47,9 +47,13 @@ struct application {
     // per-zoom set of them was stale for every zoom but the current one.
     SDL_Texture *selected_track_overlay;
     OverlayKey overlay_key;
-    // Which track the graphs were last built for, so they are not redone on a
-    // frame where the selection has not moved.
+    // Which track the graphs were last built for, and the pixel size they were
+    // built at, so they are not redone on a frame where neither has moved. The
+    // size is part of it because the graphs fill the sidebar, and so change
+    // shape with the window rather than only with the selection.
     int rendered_overlay_track;
+    int rendered_graph_width;
+    int rendered_graph_height;
     // The numbers behind those graphs, indexed by TrackSeriesKind. Kept as
     // well as the pictures, because the readout has to answer what the values
     // are at the point being hovered over.
