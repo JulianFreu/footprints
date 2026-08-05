@@ -241,6 +241,115 @@ void run_track_series_tests(void) {
         CHECK_INT(track_series_index_at_fraction(NULL, 0.5f), -1);
     }
 
+    // The rules across a graph. What matters is that they land on round values
+    // the runner would recognise, that the step coarsens rather than the graph
+    // filling with lines, and that none of them is drawn on the border.
+    SUITE("track_series: rules land on the round values for the kind");
+    {
+        float grid[TRACK_SERIES_GRID_MAX];
+
+        // An ordinary run: a hundred metres of climb, drawn 90px tall. Every
+        // fifty metres, which is the step the ladder is built around.
+        int count = track_series_grid_lines(TRACK_SERIES_ELEVATION, 95.0f, 205.0f, 90,
+                                            grid, TRACK_SERIES_GRID_MAX);
+        CHECK_INT(count, 3);
+        CHECK_NEAR(grid[0], 100.0, 0.001);
+        CHECK_NEAR(grid[1], 150.0, 0.001);
+        CHECK_NEAR(grid[2], 200.0, 0.001);
+
+        // Pace every thirty seconds per kilometre, heart rate every twenty
+        // beats, over the spread an ordinary run has of each.
+        count = track_series_grid_lines(TRACK_SERIES_PACE, 290.0f, 380.0f, 90,
+                                        grid, TRACK_SERIES_GRID_MAX);
+        CHECK_INT(count, 3);
+        CHECK_NEAR(grid[0], 300.0, 0.001);
+        CHECK_NEAR(grid[1], 330.0, 0.001);
+        CHECK_NEAR(grid[2], 360.0, 0.001);
+
+        count = track_series_grid_lines(TRACK_SERIES_HEART_RATE, 118.0f, 182.0f, 90,
+                                        grid, TRACK_SERIES_GRID_MAX);
+        CHECK_INT(count, 4);
+        CHECK_NEAR(grid[0], 120.0, 0.001);
+        CHECK_NEAR(grid[1], 140.0, 0.001);
+        CHECK_NEAR(grid[2], 160.0, 0.001);
+        CHECK_NEAR(grid[3], 180.0, 0.001);
+    }
+
+    SUITE("track_series: the step follows the range and the height");
+    {
+        float grid[TRACK_SERIES_GRID_MAX];
+
+        // A day in the mountains. Fifty metres would be forty rules in 90px,
+        // so the step coarsens until they are far enough apart to read.
+        int count = track_series_grid_lines(TRACK_SERIES_ELEVATION, 200.0f, 2200.0f, 90,
+                                            grid, TRACK_SERIES_GRID_MAX);
+        CHECK(count > 1);
+        CHECK((float)90 * (grid[1] - grid[0]) / (2200.0f - 200.0f) >=
+              (float)TRACK_GRAPH_GRID_MIN_SPACING);
+        // Round at the coarser step too, not merely evenly spaced.
+        CHECK_NEAR(fmodf(grid[0], grid[1] - grid[0]), 0.0, 0.001);
+
+        // The same climb in a taller window has room for more of them.
+        int tall = track_series_grid_lines(TRACK_SERIES_ELEVATION, 200.0f, 2200.0f, 300,
+                                           grid, TRACK_SERIES_GRID_MAX);
+        CHECK(tall > count);
+
+        // But height alone is not a reason to pick a finer step. An ordinary
+        // run's rules stay fifty metres apart in a tall window, drawn further
+        // apart rather than joined by rules every ten metres.
+        count = track_series_grid_lines(TRACK_SERIES_ELEVATION, 95.0f, 205.0f, 300,
+                                        grid, TRACK_SERIES_GRID_MAX);
+        CHECK_INT(count, 3);
+        CHECK_NEAR(grid[0], 100.0, 0.001);
+        CHECK_NEAR(grid[1], 150.0, 0.001);
+
+        // A run that held one pace. track_series_range floors the span, and the
+        // ladder goes finer than thirty seconds so the graph is still measured.
+        GpxTrack steady = build_steady(50, 100.0f, 300.0f, 0);
+        CHECK(track_series_build(&steady, TRACK_SERIES_PACE, &series));
+        float min, max;
+        track_series_range(&series, &min, &max);
+        CHECK(track_series_grid_lines(TRACK_SERIES_PACE, min, max, 90, grid,
+                                      TRACK_SERIES_GRID_MAX) > 0);
+        track_series_free(&series);
+        destroy(&steady);
+    }
+
+    SUITE("track_series: rules stay inside the graph, ascending, and bounded");
+    {
+        float grid[TRACK_SERIES_GRID_MAX];
+        int count = track_series_grid_lines(TRACK_SERIES_ELEVATION, 95.0f, 205.0f, 90,
+                                            grid, TRACK_SERIES_GRID_MAX);
+        for (int i = 0; i < count; i++) {
+            CHECK(grid[i] > 95.0f && grid[i] < 205.0f); // never on the border
+            if (i > 0)
+                CHECK(grid[i] > grid[i - 1]);
+        }
+
+        // Below sea level is still round, and still counted off from zero.
+        count = track_series_grid_lines(TRACK_SERIES_ELEVATION, -60.0f, 60.0f, 200,
+                                        grid, TRACK_SERIES_GRID_MAX);
+        CHECK(count > 2);
+        CHECK_NEAR(fmodf(grid[0], grid[1] - grid[0]), 0.0, 0.001);
+        CHECK(grid[0] < 0.0f);
+
+        // The caller's array is never overrun, whatever it asks for.
+        CHECK_INT(track_series_grid_lines(TRACK_SERIES_ELEVATION, 0.0f, 100000.0f, 4000,
+                                          grid, 6),
+                  6);
+
+        // Nothing to draw rather than something wrong.
+        CHECK_INT(track_series_grid_lines(TRACK_SERIES_ELEVATION, 100.0f, 100.0f, 90,
+                                          grid, TRACK_SERIES_GRID_MAX),
+                  0);
+        CHECK_INT(track_series_grid_lines(TRACK_SERIES_ELEVATION, 95.0f, 205.0f, 0,
+                                          grid, TRACK_SERIES_GRID_MAX),
+                  0);
+        CHECK_INT(track_series_grid_lines(TRACK_SERIES_ELEVATION, 95.0f, 205.0f, 90,
+                                          grid, 0),
+                  0);
+    }
+
     SUITE("track_series: display forms");
     {
         char text[TRACK_SERIES_TEXT_MAX];

@@ -147,6 +147,24 @@
 // than the box they are drawn into.
 #define TRACK_GRAPH_MIN_HEIGHT 8
 
+// The two bounds on how dense the horizontal rules across a graph may be.
+//
+// Each kind has a step it is drawn at by choice -- fifty metres of climb,
+// thirty seconds per kilometre, twenty beats. It is coarsened, to 100m then
+// 200m and up, whenever those rules would land closer together than
+// TRACK_GRAPH_GRID_MIN_SPACING pixels, which is what keeps a mountain from
+// coming out hatched and what makes the same climb read the same way in a
+// short window and a tall one. The same idea as STATS_XLABEL_MIN_WIDTH, which
+// thins the statistics plot's labels for the same reason.
+//
+// It is refined the other way only when the chosen step would draw fewer than
+// TRACK_GRAPH_GRID_MIN_RULES rules -- a run that held one pace, where the range
+// is narrower than a step, would otherwise have nothing drawn across it at all.
+// Two is the point: one rule measures nothing, having nothing to be spaced
+// from.
+#define TRACK_GRAPH_GRID_MIN_SPACING 24
+#define TRACK_GRAPH_GRID_MIN_RULES 2
+
 // How much ground the pace window spans, in metres. Pace between two
 // consecutive fixes is mostly GPS noise -- a metre of scatter on a one-second
 // sample is a minute per kilometre -- so it is measured across a fixed stretch

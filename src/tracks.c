@@ -471,6 +471,11 @@ static int series_y(const TrackSeries *series, float value, float min, float max
     return height - (int)(fraction * height);
 }
 
+// The rules measuring the graphs, shared by all three kinds rather than tinted
+// per series: they are the ruler held against the curve, not a fourth thing
+// drawn beside it. Translucent so the fill they cross still reads as filled.
+static const Clay_Color series_grid_color = {0x92, 0x83, 0x74, 0x60};
+
 static SDL_Texture *generate_series_texture(SDL_Renderer *renderer, const GpxTrack *track,
                                             const TrackSeries *series, int width, int height,
                                             Clay_Color fill, Clay_Color line) {
@@ -550,6 +555,27 @@ static SDL_Texture *generate_series_texture(SDL_Renderer *renderer, const GpxTra
                            series_y(series, series->values[i - 1], min_value, max_value, height),
                            (int)((track->points[i].partial_distance / total_distance_m) * width),
                            series_y(series, series->values[i], min_value, max_value, height));
+    }
+
+    // The rules across the round values, over both the fill and the curve so
+    // that one reads the whole way across rather than only where the graph
+    // happens to be empty. Placed through series_y, the same mapping the curve
+    // is drawn through, so a rule at 150m meets the curve exactly where it
+    // crosses 150m -- and pace, drawn upside down, needs no second thought.
+    //
+    // The blend mode is set here rather than inherited: nothing else in this
+    // function needs one, its colours being opaque, and a translucent rule
+    // drawn without it would come out solid.
+    float grid[TRACK_SERIES_GRID_MAX];
+    int rules = track_series_grid_lines(series->kind, min_value, max_value, height,
+                                        grid, TRACK_SERIES_GRID_MAX);
+
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    SDL_Color grid_color = sdl_color(series_grid_color);
+    SDL_SetRenderDrawColor(renderer, grid_color.r, grid_color.g, grid_color.b, grid_color.a);
+    for (int i = 0; i < rules; i++) {
+        int y = series_y(series, grid[i], min_value, max_value, height);
+        SDL_RenderDrawLine(renderer, 0, y, width - 1, y);
     }
 
     SDL_SetRenderTarget(renderer, prev_target);

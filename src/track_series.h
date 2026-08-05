@@ -49,6 +49,23 @@ void track_series_free(TrackSeries *series);
 // run along the edge.
 void track_series_range(const TrackSeries *series, float *min, float *max);
 
+// The round values a graph's horizontal rules are drawn at, ascending, written
+// into `out` and returning how many there are. `min` and `max` are the range
+// track_series_range gave, and `height` the pixels the graph is drawn in.
+//
+// Which values are round is the kind's business: 50 metres of climb, thirty
+// seconds per kilometre, twenty beats. The step coarsens from there -- to 100m,
+// 200m and up -- until the rules are far enough apart to be read at the height
+// they are drawn at, so a run over a mountain does not come out hatched. It
+// goes the other way only for a run held steady enough that the chosen step
+// would draw almost nothing; a tall graph is room to space the chosen step out,
+// not a reason to pick a finer one.
+int track_series_grid_lines(TrackSeriesKind kind, float min, float max, int height,
+                            float *out, int max_lines);
+
+// Enough for any graph a window can be tall enough to show.
+#define TRACK_SERIES_GRID_MAX 32
+
 // The point nearest `fraction` of the way along the track's distance, clamped
 // to the track's ends. This is what turns a position in a graph into a
 // position on the map.

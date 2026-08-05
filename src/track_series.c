@@ -104,6 +104,80 @@ void track_series_range(const TrackSeries *series, float *min, float *max) {
     *max += headroom;
 }
 
+// The steps a graph's rules may be drawn at, per kind, finest first, and which
+// of them the kind is drawn at by choice: fifty metres of climb, thirty seconds
+// per kilometre, twenty beats. The entries above the chosen one are for a track
+// that covered enough ground to make it too dense to read; the ones below are
+// for a run that held steady, where the minimum span above leaves a range
+// narrower than a single step.
+static const float *grid_steps(TrackSeriesKind kind, int *count, int *preferred) {
+    static const float elevation[] = {10.0f, 20.0f, 50.0f, 100.0f,
+                                      200.0f, 500.0f, 1000.0f, 2000.0f};
+    static const float pace[] = {10.0f, 15.0f, 30.0f, 60.0f, 120.0f, 300.0f, 600.0f};
+    static const float heart_rate[] = {5.0f, 10.0f, 20.0f, 50.0f, 100.0f};
+
+    switch (kind) {
+    case TRACK_SERIES_PACE:
+        *count = (int)(sizeof(pace) / sizeof(*pace));
+        *preferred = 2; // 30 seconds per kilometre
+        return pace;
+    case TRACK_SERIES_HEART_RATE:
+        *count = (int)(sizeof(heart_rate) / sizeof(*heart_rate));
+        *preferred = 2; // 20 beats
+        return heart_rate;
+    case TRACK_SERIES_ELEVATION:
+    case TRACK_SERIES_COUNT:
+        break;
+    }
+    *count = (int)(sizeof(elevation) / sizeof(*elevation));
+    *preferred = 2; // 50 metres
+    return elevation;
+}
+
+int track_series_grid_lines(TrackSeriesKind kind, float min, float max, int height,
+                            float *out, int max_lines) {
+    if (!out || max_lines <= 0 || height <= 0 || !(max > min))
+        return 0;
+
+    int step_count, chosen;
+    const float *steps = grid_steps(kind, &step_count, &chosen);
+    float span = max - min;
+
+    // Coarsen while the rules would land too close together to be told apart.
+    // The top of the ladder is the fallback rather than the error case: a range
+    // wider than it reaches is better drawn with a few rules than with none.
+    while (chosen < step_count - 1 &&
+           (float)height * steps[chosen] / span < (float)TRACK_GRAPH_GRID_MIN_SPACING)
+        chosen++;
+
+    // And refine, but only far enough to put a couple of rules on the graph,
+    // and never past the spacing the loop above just satisfied. A tall window
+    // is room to draw the chosen step further apart, not a reason to pick a
+    // finer one.
+    while (chosen > 0 && span / steps[chosen] < (float)TRACK_GRAPH_GRID_MIN_RULES &&
+           (float)height * steps[chosen - 1] / span >= (float)TRACK_GRAPH_GRID_MIN_SPACING)
+        chosen--;
+
+    float step = steps[chosen];
+
+    // Counted off in whole multiples rather than accumulated, so the hundredth
+    // rule is at exactly a hundred steps and not at whatever adding the step to
+    // itself a hundred times comes to.
+    //
+    // Strictly inside the range: track_series_range leaves headroom at both
+    // ends, and a rule on the edge would be a line along the graph's border
+    // rather than something to measure the curve against.
+    int count = 0;
+    for (long i = (long)floorf(min / step) + 1; count < max_lines; i++) {
+        float value = (float)i * step;
+        if (value >= max)
+            break;
+        out[count++] = value;
+    }
+
+    return count;
+}
+
 bool track_series_build(const GpxTrack *track, TrackSeriesKind kind, TrackSeries *out) {
     *out = (TrackSeries){.kind = kind, .invert = kind == TRACK_SERIES_PACE};
 
