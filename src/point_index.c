@@ -71,8 +71,14 @@ bool point_index_ensure(GpxCollection *collection) {
         }
     }
 
-    qsort(index->entries, (size_t)index->count, sizeof(IndexedPoint),
-          compare_indexed_points);
+    // Guarded rather than sorted unconditionally: a collection with no points
+    // never allocated an array, and qsort is not allowed to be handed a null
+    // pointer even for a count of zero. Every implementation returns quietly,
+    // but it is undefined behaviour and the sanitiser says so.
+    if (index->count > 0)
+        qsort(index->entries, (size_t)index->count, sizeof(IndexedPoint),
+              compare_indexed_points);
+
     index->valid = true;
     return true;
 }
