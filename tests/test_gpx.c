@@ -314,7 +314,6 @@ void run_gpx_tests(void) {
         free(times.at);
     }
 
-
     SUITE("gpx: heart rate out of <extensions>");
     // Two spellings of the same number, and a point that carries neither. The
     // element is matched on its local name, so the prefix and the wrapper
