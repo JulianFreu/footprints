@@ -476,7 +476,40 @@ static int series_y(const TrackSeries *series, float value, float min, float max
 // drawn beside it. Translucent so the fill they cross still reads as filled.
 static const Clay_Color series_grid_color = {0x92, 0x83, 0x74, 0x60};
 
-static SDL_Texture *generate_series_texture(SDL_Renderer *renderer, const GpxTrack *track,
+// The value written against a rule, in the rule's own grey. Nearly opaque where
+// the rule is barely there: a line only has to be followed across the graph,
+// but a number has to be read off a saturated fill.
+static const Clay_Color series_label_color = {0x92, 0x83, 0x74, 0xd0};
+
+// One rule's value, at the left edge of the graph and sitting on its line.
+// Drawn into whatever render target is current, which is the graph's own
+// texture -- the caller is midway through drawing it.
+static void draw_grid_label(SDL_Renderer *renderer, TTF_Font *font, const char *text,
+                            int rule_y) {
+    SDL_Color color = sdl_color(series_label_color);
+    SDL_Surface *surface = TTF_RenderUTF8_Blended(font, text, color);
+    if (!surface)
+        return;
+
+    // Above the rule, or not at all. The range carries only a tenth of its span
+    // as headroom either side, so the topmost rule can sit within a line of text
+    // of the top edge -- and a label slid down to fit would come to rest against
+    // the rule below it, naming the wrong one.
+    int y = rule_y - surface->h - TRACK_GRAPH_LABEL_PADDING;
+    if (y >= 0) {
+        SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
+        if (texture) {
+            SDL_Rect where = {TRACK_GRAPH_LABEL_PADDING, y, surface->w, surface->h};
+            SDL_RenderCopy(renderer, texture, NULL, &where);
+            SDL_DestroyTexture(texture);
+        }
+    }
+
+    SDL_FreeSurface(surface);
+}
+
+static SDL_Texture *generate_series_texture(SDL_Renderer *renderer, TTF_Font *font,
+                                            const GpxTrack *track,
                                             const TrackSeries *series, int width, int height,
                                             Clay_Color fill, Clay_Color line) {
     if (!renderer || track->total_points < 2 || !series->present ||
@@ -573,9 +606,26 @@ static SDL_Texture *generate_series_texture(SDL_Renderer *renderer, const GpxTra
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
     SDL_Color grid_color = sdl_color(series_grid_color);
     SDL_SetRenderDrawColor(renderer, grid_color.r, grid_color.g, grid_color.b, grid_color.a);
+
+    // A graph with no room for a line of text is left as bare rules rather than
+    // being written over: the height has a floor of a few pixels under it, and
+    // labels stacked on top of each other say less than none at all.
+    bool label = font && height >= 3 * TRACK_GRAPH_LABEL_FONT_SIZE;
+    if (label)
+        TTF_SetFontSize(font, TRACK_GRAPH_LABEL_FONT_SIZE);
+
     for (int i = 0; i < rules; i++) {
         int y = series_y(series, grid[i], min_value, max_value, height);
         SDL_RenderDrawLine(renderer, 0, y, width - 1, y);
+
+        // Written from the same y the rule was drawn at, so the number and the
+        // line it names cannot come apart -- pace, drawn upside down, ends up
+        // counting downwards without anything here knowing that it does.
+        if (label) {
+            char text[TRACK_SERIES_TEXT_MAX];
+            draw_grid_label(renderer, font,
+                            track_series_format(series->kind, grid[i], text, sizeof(text)), y);
+        }
     }
 
     SDL_SetRenderTarget(renderer, prev_target);
@@ -584,10 +634,11 @@ static SDL_Texture *generate_series_texture(SDL_Renderer *renderer, const GpxTra
 
 // Clay draws images from an SDL_Surface, so the graph drawn on the GPU has to
 // be read back into one.
-static SDL_Surface *render_series_surface(SDL_Renderer *renderer, const GpxTrack *track,
+static SDL_Surface *render_series_surface(SDL_Renderer *renderer, TTF_Font *font,
+                                          const GpxTrack *track,
                                           const TrackSeries *series, int width, int height,
                                           Clay_Color fill, Clay_Color line) {
-    SDL_Texture *profile = generate_series_texture(renderer, track, series, width, height, fill, line);
+    SDL_Texture *profile = generate_series_texture(renderer, font, track, series, width, height, fill, line);
     if (!profile)
         return NULL;
 
@@ -669,7 +720,7 @@ void update_track_info_graphs(struct application *appl, const GpxCollection *col
             continue;
 
         appl->icons.graphs[kind] = render_series_surface(
-            appl->renderer, track, &appl->track_series[kind],
+            appl->renderer, appl->fonts[0].font, track, &appl->track_series[kind],
             graph_width, graph_height,
             series_colors[kind].fill, series_colors[kind].line);
     }
