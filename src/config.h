@@ -165,6 +165,15 @@
 #define TRACK_GRAPH_GRID_MIN_SPACING 24
 #define TRACK_GRAPH_GRID_MIN_RULES 2
 
+// The value printed against each of those rules, at the graph's left edge. A
+// point under the 12 the rest of the small text is set at -- that size lives in
+// ui_internal.h, which is the UI's own vocabulary and not for the rasteriser to
+// read -- because these numbers sit over a drawn curve rather than on a panel,
+// and want to be read without being what the eye lands on first. The padding is
+// both the gap from the left edge and the gap above the rule.
+#define TRACK_GRAPH_LABEL_FONT_SIZE 11
+#define TRACK_GRAPH_LABEL_PADDING 3
+
 // How much ground the pace window spans, in metres. Pace between two
 // consecutive fixes is mostly GPS noise -- a metre of scatter on a one-second
 // sample is a minute per kilometre -- so it is measured across a fixed stretch
