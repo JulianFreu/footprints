@@ -86,6 +86,10 @@ int main(int argc, char *argv[]) {
         .show_heat = true,
         .redraw_requested = true,
         .map_transform = MAP_TRANSFORM_IDENTITY,
+        // Which helper each import job runs. Set here rather than by an init
+        // call because it is the one thing about a job that never changes.
+        .garmin = {.provider = &import_garmin},
+        .strava = {.provider = &import_strava},
     };
     download_in_progress = false;
 
@@ -213,9 +217,10 @@ static void appl_cleanup(struct application *appl, GpxCollection *collection) {
     // Asks the worker to give up and waits for it, so nothing below frees
     // memory it is still reading.
     background_stop(&appl->background);
-    // And the import helper, which is a process rather than a thread: without
+    // And the import helpers, which are processes rather than threads: without
     // this, quitting mid-import would wait for the download it was on.
-    garmin_stop(&appl->garmin);
+    import_stop(&appl->garmin);
+    import_stop(&appl->strava);
     // Wake the download worker out of its wait and wait for it to return before
     // tearing down the mutex and condvar it is blocked on.
     if (appl->download_thread_started) {
@@ -351,20 +356,20 @@ static void dispatch_event(struct application *appl, GpxCollection *collection,
             ui_settings_blur();
     }
 
-    // The Garmin panel's boxes take whole words too, and are offered after the
+    // The import panel's boxes take whole words too, and are offered after the
     // settings panel's for the same reason: only one caret may be live, and
     // focusing a box in either one blurs the other.
-    if (ui_garmin_input_active()) {
+    if (ui_import_input_active()) {
         if (event.type == SDL_TEXTINPUT) {
-            ui_garmin_handle_text(event.text.text);
+            ui_import_handle_text(event.text.text);
             return;
         }
         if (event.type == SDL_KEYDOWN &&
-            ui_garmin_handle_key(event.key.keysym.sym,
+            ui_import_handle_key(event.key.keysym.sym,
                                  (event.key.keysym.mod & KMOD_SHIFT) != 0))
             return;
         if (event.type == SDL_MOUSEBUTTONDOWN)
-            ui_garmin_blur();
+            ui_import_blur();
     }
 
     if (ui_filters_input_active()) {

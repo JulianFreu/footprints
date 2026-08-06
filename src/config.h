@@ -51,8 +51,8 @@
 // itself up to SETTINGS_PATH_MAX. A name that will not fit is skipped rather
 // than truncated into a path to something else.
 #define GPX_PATH_MAX 1024
-// How far the scan descends below the library folder. The Garmin import writes
-// into a subfolder of it, so one level is the point; the rest is room to file a
+// How far the scan descends below the library folder. The imports write into
+// subfolders of it, so one level is the point; the rest is room to file a
 // library by year or by activity, and a limit at all is what keeps a symlink
 // loop finite.
 #define GPX_SCAN_MAX_DEPTH 8
@@ -211,26 +211,36 @@
 #define SETTINGS_LINE_MAX (SETTINGS_PATH_MAX + 64)
 #define SETTINGS_EDIT_MAX SETTINGS_PATH_MAX
 
-// --- Garmin import ---
-// The helper that talks to Garmin Connect, the folder it writes into under the
-// library folder, and where the OAuth token it mints is kept. All relative to
-// the working directory, like the tile cache and the library.
+// --- Activity import ---
+// One helper per provider, the folder each writes into under the library
+// folder, and where the token it mints is kept. All relative to the working
+// directory, like the tile cache and the library.
 #define GARMIN_SCRIPT "garmin_sync.py"
 #define GARMIN_IMPORT_SUBDIR "garmin_import"
 #define GARMIN_SESSION_DIR "garmin_session"
 // Written by garth, and what tells the panel a password is no longer needed.
 #define GARMIN_TOKEN_FILE "oauth2_token.json"
-// The interpreter the helper is run with. Spelled with the major version: on
-// several distributions "python" is either Python 2 or absent entirely.
-#define GARMIN_PYTHON "python3"
 
-// The longest line the helper is read a line at a time in, and the longest of
+#define STRAVA_SCRIPT "strava_sync.py"
+#define STRAVA_IMPORT_SUBDIR "strava_import"
+#define STRAVA_SESSION_DIR "strava_session"
+// Written by strava_sync.py, and what tells the panel the browser step is done.
+// It carries the client secret as well as the refresh token, which is why it is
+// this file rather than settings.conf that holds one.
+#define STRAVA_TOKEN_FILE "token.json"
+
+// The interpreter the helpers are run with. Spelled with the major version: on
+// several distributions "python" is either Python 2 or absent entirely.
+#define IMPORT_PYTHON "python3"
+
+// The longest line a helper is read a line at a time in, and the longest of
 // its messages the panel keeps to show.
-#define GARMIN_LINE_MAX 512
-#define GARMIN_MESSAGE_MAX 160
-// An email address and a password on their way to the helper. They live only
-// as long as it takes to write them to it.
-#define GARMIN_CREDENTIAL_MAX SETTINGS_KEY_MAX
+#define IMPORT_LINE_MAX 512
+#define IMPORT_MESSAGE_MAX 160
+// A credential on its way to a helper -- an email and a password, or a Strava
+// application's id and secret. They live only as long as it takes to write them
+// to it.
+#define IMPORT_CREDENTIAL_MAX SETTINGS_KEY_MAX
 
 // --- UI ---
 // How long a filter field has to sit still before the heat tiles are

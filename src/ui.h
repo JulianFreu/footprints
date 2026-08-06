@@ -47,13 +47,14 @@ void ui_settings_handle_text(const char *text);
 // pressing return on it.
 void ui_settings_blur(void);
 
-// And again for the Garmin panel, which is routed after the settings one.
-// Every box in it takes whole words -- an address, a password, a code -- so it
-// too works from the characters SDL_TEXTINPUT carries rather than the keycodes.
-bool ui_garmin_input_active(void);
-bool ui_garmin_handle_key(SDL_Keycode key, bool shift_held);
-void ui_garmin_handle_text(const char *text);
-void ui_garmin_blur(void);
+// And again for the import panel, which is routed after the settings one.
+// Every box in it takes whole words -- an address, a password, a code, an
+// application's id and secret -- so it too works from the characters
+// SDL_TEXTINPUT carries rather than the keycodes.
+bool ui_import_input_active(void);
+bool ui_import_handle_key(SDL_Keycode key, bool shift_held);
+void ui_import_handle_text(const char *text);
+void ui_import_blur(void);
 
 // Marks everything derived from the tracks stale -- the statistics series and
 // the records table. Each panel rebuilds on its next update rather than in the

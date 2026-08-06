@@ -160,11 +160,11 @@
 #define SETTINGS_GRADIENT_HEIGHT 22
 #define SETTINGS_GRADIENT_STEPS 64
 
-// The Garmin panel is the same width as the settings panel, and its rows read
+// The import panel is the same width as the settings panel, and its rows read
 // the same way: a label on the left and a field or a button on the right. Its
 // labels are one word each, so they need less room than the settings panel's.
-#define GARMIN_WIDTH PANEL_WIDTH
-#define GARMIN_LABEL_WIDTH 90
+#define IMPORT_WIDTH PANEL_WIDTH
+#define IMPORT_LABEL_WIDTH 90
 #define RECORDS_ROW_HEIGHT LIST_ENTRY_HEIGHT
 #define RECORDS_ROW_PITCH (RECORDS_ROW_HEIGHT + GAPS)
 // Between one category and the next, so the sections read as separate lists
@@ -236,12 +236,15 @@ void ui_draw_settings_panel(struct application *appl);
 // and writes the settings file. Returns whether anything moved, the same way
 // the other panels' update functions do.
 bool ui_settings_update(struct application *appl, GpxCollection *collection);
-void ui_draw_garmin_panel(struct application *appl);
-// Consumes the Garmin panel's pending presses, starts and collects the import
-// job, and reloads the library once an import has put files on disk. Returns
-// whether anything moved -- which it does for as long as the import runs, since
-// the bar it draws is fed by a worker rather than by an Anim.
-bool ui_garmin_update(struct application *appl, GpxCollection *collection);
+void ui_draw_import_panel(struct application *appl);
+// Consumes the import panel's pending presses, starts and collects both
+// providers' jobs, and reloads the library once an import has put files on
+// disk. Returns whether anything moved -- which it does for as long as an
+// import runs, since the bar it draws is fed by a worker rather than by an Anim.
+bool ui_import_update(struct application *appl, GpxCollection *collection);
+// Moves the import panel by whole mouse-wheel detents, if the pointer is over
+// it. Returns whether the wheel was the panel's to take.
+bool ui_import_scroll_by_wheel(int mouse_x, int mouse_y, int detents);
 // Releases the run list's between-frames row buffer.
 void ui_runlist_free_scratch(void);
 // A row click, consumed once by the next layout pass.

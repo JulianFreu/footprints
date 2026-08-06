@@ -7,7 +7,7 @@
 
 #include "config.h"
 #include "background.h"
-#include "garmin.h"
+#include "import_job.h"
 #include "map_types.h"
 #include "track_series.h"
 #include "ui_types.h"
@@ -76,10 +76,12 @@ struct application {
     bool redraw_requested;
     // The long-running work. While this is busy the collection belongs to it.
     BackgroundJob background;
-    // The Garmin import. It writes files rather than touching the collection,
-    // so it runs alongside the panels instead of replacing them, and the
-    // library load that reads what it fetched is an ordinary background job.
-    GarminJob garmin;
+    // The two activity imports, one per provider. They write files rather than
+    // touching the collection, so they run alongside the panels instead of
+    // replacing them, and the library load that reads what they fetched is an
+    // ordinary background job.
+    ImportJob garmin;
+    ImportJob strava;
     // The collection this application is showing. Clay's hover callbacks are
     // handed one pointer, so anything a button needs has to hang off it.
     GpxCollection *collection;

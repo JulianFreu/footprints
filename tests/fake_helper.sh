@@ -1,10 +1,12 @@
 #!/bin/sh
-# A stand-in for garmin_sync.py, so tests/test_garmin.c can exercise the
-# spawning, the line protocol and the exit codes without a Garmin account.
+# A stand-in for garmin_sync.py and strava_sync.py, so tests/test_import.c can
+# exercise the spawning, the line protocol and the exit codes without an account
+# anywhere.
 #
-# src/garmin.c builds the same argument list either way, so what arrives here is
-# $1 = login|sync, $2 = session directory, $3 = output directory. The test
-# chooses a behaviour through $3, which is the one argument it controls.
+# src/import_job.c builds the same argument list for every provider, so what
+# arrives here is $1 = login|sync, $2 = session directory, $3 = output
+# directory. The test chooses a behaviour through $3 for a sync and through the
+# password for a login, which are the arguments it controls.
 
 case "$1" in
 login)
@@ -20,6 +22,11 @@ login)
     if [ "$password" = "needs-mfa" ] && [ -z "$mfa" ]; then
         echo "mfa-required"
         exit 2
+    fi
+    # Stands in for the Strava login handing over to the browser: something to
+    # show on a job that has not failed and is not finished.
+    if [ "$password" = "needs-browser" ]; then
+        echo "message waiting for the browser"
     fi
     echo "signed in as $email"
     exit 0

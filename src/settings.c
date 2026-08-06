@@ -64,6 +64,7 @@ void settings_defaults(Settings *s) {
 
     snprintf(s->gpx_dir, sizeof(s->gpx_dir), "%s", GPX_INPUT_DIR);
     s->garmin_email[0] = '\0';
+    s->strava_client_id[0] = '\0';
 
     s->heat_radius_pixels = HEAT_RADIUS_PIXELS;
     s->track_point_size = TRACK_POINT_SIZE;
@@ -278,6 +279,8 @@ static void apply_pair(Settings *s, const char *key, const char *value) {
         snprintf(s->gpx_dir, sizeof(s->gpx_dir), "%s", value);
     } else if (strcmp(key, "garmin_email") == 0) {
         snprintf(s->garmin_email, sizeof(s->garmin_email), "%s", value);
+    } else if (strcmp(key, "strava_client_id") == 0) {
+        snprintf(s->strava_client_id, sizeof(s->strava_client_id), "%s", value);
     } else if (strcmp(key, "heat_radius") == 0) {
         parse_float(value, &s->heat_radius_pixels);
     } else if (strcmp(key, "point_size") == 0) {
@@ -332,27 +335,30 @@ bool settings_save(const Settings *s, const char *path) {
 
     fprintf(file, "# Percent of the maximum heat at each knot of the colour ramp,\n");
     fprintf(file, "# coldest first. Strictly increasing, 0..100.\n");
-    fprintf(file, "heat_setpoints = ");
+    fprintf(file, "heat_setpoints   = ");
     for (int i = 0; i < HEAT_SETPOINT_COUNT; i++)
         fprintf(file, "%s%d", i ? "," : "", s->heat_setpoint[i]);
     fprintf(file, "\n\n");
 
-    fprintf(file, "map_provider   = %s\n", map_provider_id(s->provider));
-    fprintf(file, "stadia_api_key = %s\n", s->stadia_api_key);
-    fprintf(file, "gpx_dir        = %s\n\n", s->gpx_dir);
+    fprintf(file, "map_provider     = %s\n", map_provider_id(s->provider));
+    fprintf(file, "stadia_api_key   = %s\n", s->stadia_api_key);
+    fprintf(file, "gpx_dir          = %s\n\n", s->gpx_dir);
 
-    fprintf(file, "# The Garmin account the import panel signs in as. Its password is\n");
-    fprintf(file, "# never written here -- only the token minted from it, under %s/.\n",
+    fprintf(file, "# The Garmin account the import panel signs in as, and the Strava API\n");
+    fprintf(file, "# application it authorises through. Neither the password nor the client\n");
+    fprintf(file, "# secret is written here -- only the tokens minted from them, under %s/\n",
             GARMIN_SESSION_DIR);
-    fprintf(file, "garmin_email   = %s\n\n", s->garmin_email);
+    fprintf(file, "# and %s/.\n", STRAVA_SESSION_DIR);
+    fprintf(file, "garmin_email     = %s\n", s->garmin_email);
+    fprintf(file, "strava_client_id = %s\n\n", s->strava_client_id);
 
-    fprintf(file, "heat_radius    = %g\n", (double)s->heat_radius_pixels);
-    fprintf(file, "point_size     = %d\n\n", s->track_point_size);
+    fprintf(file, "heat_radius      = %g\n", (double)s->heat_radius_pixels);
+    fprintf(file, "point_size       = %d\n\n", s->track_point_size);
 
     fprintf(file, "# The view the window opens at, in world pixels at the maximum zoom.\n");
-    fprintf(file, "start_zoom     = %d\n", s->start_zoom);
-    fprintf(file, "start_world_x  = %d\n", s->start_world_x);
-    fprintf(file, "start_world_y  = %d\n", s->start_world_y);
+    fprintf(file, "start_zoom       = %d\n", s->start_zoom);
+    fprintf(file, "start_world_x    = %d\n", s->start_world_x);
+    fprintf(file, "start_world_y    = %d\n", s->start_world_y);
 
     bool ok = ferror(file) == 0;
     if (fclose(file) != 0)

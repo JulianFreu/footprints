@@ -48,10 +48,12 @@ typedef struct Settings {
 
     char gpx_dir[SETTINGS_PATH_MAX];
 
-    // The account the Garmin panel imports from. The password that goes with it
-    // is deliberately not here: it is traded for a token once and then dropped,
-    // and this file is plain text.
+    // The account the import panel signs in to Garmin as, and the Strava API
+    // application it authorises through. The password and the client secret
+    // that go with them are deliberately not here: each is traded for a token
+    // once and then dropped, and this file is plain text.
     char garmin_email[SETTINGS_KEY_MAX];
+    char strava_client_id[SETTINGS_KEY_MAX];
 
     // Feed the heat calculation and the tiles rasterised from it.
     float heat_radius_pixels;

@@ -378,7 +378,7 @@ static void draw_menu_bar(struct application *appl) {
         draw_menu_button(appl->icons.records, "Recs", PANEL_RECORDS);
         // No icon of its own yet, so it draws as its label -- which is what
         // every button here does until its artwork exists.
-        draw_menu_button(NULL, "Grmn", PANEL_GARMIN);
+        draw_menu_button(NULL, "Sync", PANEL_IMPORT);
         draw_menu_button(appl->icons.settings, "Set", PANEL_SETTINGS);
     }
 }
@@ -700,7 +700,8 @@ void ui_update(struct application *appl, GpxCollection *collection) {
     // sliding out from under another.
     if (appl->wheel_y) {
         if (!ui_stats_pan_by_wheel(appl->mouse_x, appl->mouse_y, appl->wheel_y) &&
-            !ui_records_scroll_by_wheel(appl->mouse_x, appl->mouse_y, appl->wheel_y))
+            !ui_records_scroll_by_wheel(appl->mouse_x, appl->mouse_y, appl->wheel_y) &&
+            !ui_import_scroll_by_wheel(appl->mouse_x, appl->mouse_y, appl->wheel_y))
             ui_runlist_scroll_by_wheel(appl->mouse_x, appl->mouse_y, appl->wheel_y);
     }
 
@@ -746,7 +747,7 @@ void ui_update(struct application *appl, GpxCollection *collection) {
     moved |= ui_stats_update(appl, collection);
     moved |= ui_records_update(appl, collection);
     moved |= ui_settings_update(appl, collection);
-    moved |= ui_garmin_update(appl, collection);
+    moved |= ui_import_update(appl, collection);
     if (moved)
         app_request_redraw(appl);
 }
@@ -823,8 +824,8 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
         ui_fade_set(anim_value(&ui.panels[PANEL_RECORDS]));
         ui_draw_records_panel(appl);
 
-        ui_fade_set(anim_value(&ui.panels[PANEL_GARMIN]));
-        ui_draw_garmin_panel(appl);
+        ui_fade_set(anim_value(&ui.panels[PANEL_IMPORT]));
+        ui_draw_import_panel(appl);
 
         ui_fade_set(anim_value(&ui.panels[PANEL_SETTINGS]));
         ui_draw_settings_panel(appl);

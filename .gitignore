@@ -2,8 +2,9 @@ gpx_files/*
 tilecache/*
 src/api_key.h
 
-# the OAuth token the Garmin panel mints; every install signs in for itself
+# the tokens the import panel mints; every install signs in for itself
 garmin_session/
+strava_session/
 
 # written by the settings panel; every install has its own
 settings.conf

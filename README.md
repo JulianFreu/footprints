@@ -11,7 +11,7 @@ Visualize all your runs, hikes, and rides in one place, explore your most freque
 - **Click any track** for detailed stats and insights
 - **Chart your training** by day, week, month or year — up to two of total distance, longest run, total time and total ascent at once, and scroll the plot back through the years
 - **Track your personal records** — longest run and activity, highest peak, most elevation gain, and your fastest 5k, 10k, half marathon and marathon, found anywhere inside a longer run rather than only from its start
-- **Import straight from Garmin Connect** — log in once in the Garmin panel and pull down every activity you have not already got
+- **Import straight from Garmin Connect and Strava** — connect once in the import panel and pull down every activity you have not already got
 - Convert **Garmin `.fit` and `.tcx` files** to `.gpx` with the included Python tool
 
 ## Installation
@@ -84,7 +84,7 @@ back to the default rather than stopping the program.
 | Map | The tile provider, the Stadia API key, and a button to drop the cached tile textures |
 | Heat calculation | The overlap radius the heat is calculated with, and the size of the square drawn per track point |
 | Library | The folder scanned for `.gpx` files, and a button to read it again |
-| Garmin Connect | In a panel of its own: the account to import from, and the button that does it |
+| Garmin Connect and Strava | In a panel of their own: the accounts to import from, and the buttons that do it |
 | Startup view | Saves wherever the map is now as the view the window opens at |
 
 ### Heat colours
@@ -118,12 +118,15 @@ At startup, Footprints scans the `gpx_files/` directory and automatically loads 
 So your first step should be to copy your GPX files into that folder.
 
 Subfolders are scanned too, so a library can be filed by year, by activity, or
-however else you like — and it is what lets the Garmin import keep to a folder
-of its own.
+however else you like — and it is what lets each import keep to a folder of its
+own.
 
 ### Importing from Garmin Connect
 
-The **Grmn** button in the menu bar opens the Garmin panel. Enter the email
+The **Sync** button in the menu bar opens the import panel, where Garmin Connect
+and Strava each have an account section and an import button.
+
+In the Garmin section, enter the email
 address and password of your Garmin Connect account and press **Log in**. If
 your account uses two-factor authentication, Garmin sends a code, a **Code**
 box appears, and pressing *Log in* again with it finishes the job.
@@ -150,6 +153,41 @@ This needs `garth-ng`, which is in `requirements.txt`:
 pip install -r requirements.txt
 ```
 
+### Importing from Strava
+
+Strava has no password to give an application, so the first step is one you do
+on their site rather than here:
+
+1. Open <https://www.strava.com/settings/api> and create an application. The
+   name and the website do not matter; the **Authorization Callback Domain**
+   must be `localhost`.
+2. Copy its **Client ID** and **Client Secret** into the Strava section of the
+   import panel and press **Connect**.
+
+Your browser opens, Strava asks whether Footprints may read your activities, and
+pressing *Authorize* finishes the job — the page it returns to is served by
+Footprints itself, on a port it picked for the occasion. If the browser does not
+open, the panel shows a local address to paste into one.
+
+That happens once. What comes back is saved to `strava_session/`, together with
+the client secret it has to be refreshed with; neither is written into
+`settings.conf`, which is plain text.
+
+**Import new activities** then downloads everything not already in
+`gpx_files/strava_import/`, named the same way the Garmin import names its files
+and skipped the same way on the next run. Activities Strava has no GPS track for
+— a treadmill run, one entered by hand — are passed over.
+
+Strava has no GPX export in its API, so each file is built here from the
+activity's recorded position, elevation and time, with the activity type written
+into the `<type>` element described below. This needs no Python package at all:
+the standard library is enough.
+
+Strava allows a few hundred requests a quarter of an hour, and an import spends
+one per activity. A first import of a long history may run into that; it says so
+and stops, keeping what it has, and running it again a quarter of an hour later
+carries on from there.
+
 ### Converting a Garmin data export
 
 If you use a Garmin watch, you can request a full data export from Garmin.
@@ -172,13 +210,14 @@ activity type simply reads as `Other`.
 
 ### Python script dependencies
 
-Both Python tools are optional, and so are their packages — Footprints itself
-reads `.gpx` files with no Python at all.
+All three Python tools are optional, and so are their packages — Footprints
+itself reads `.gpx` files with no Python at all.
 
 | Package | Needed for |
 |---------|------------|
 | `garth-ng` | The Garmin Connect import |
 | `fitparse` | Converting `.fit` files (`.tcx` and `.gpx` need only the standard library) |
+| — | The Strava import, which needs only the standard library |
 
 ```bash
 pip install -r requirements.txt

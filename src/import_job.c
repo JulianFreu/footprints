@@ -1,4 +1,4 @@
-#include "garmin.h"
+#include "import_job.h"
 
 #include <signal.h>
 #include <stdio.h>
@@ -8,9 +8,27 @@
 
 #include "log.h"
 
+// The providers. Two tables of names rather than two modules: everything below
+// this point is the same work whichever of them a job was pointed at.
+const ImportProvider import_garmin = {
+    .name = "Garmin Connect",
+    .script = GARMIN_SCRIPT,
+    .session_dir = GARMIN_SESSION_DIR,
+    .token_file = GARMIN_TOKEN_FILE,
+    .import_subdir = GARMIN_IMPORT_SUBDIR,
+};
+
+const ImportProvider import_strava = {
+    .name = "Strava",
+    .script = STRAVA_SCRIPT,
+    .session_dir = STRAVA_SESSION_DIR,
+    .token_file = STRAVA_TOKEN_FILE,
+    .import_subdir = STRAVA_IMPORT_SUBDIR,
+};
+
 // Zeroes a buffer in a way the compiler is not allowed to drop. Wiping one that
-// is never read again is exactly the store an optimiser removes, and the one
-// buffer here worth wiping is the password.
+// is never read again is exactly the store an optimiser removes, and the
+// buffers here worth wiping are the password and the client secret.
 static void wipe(void *data, size_t size) {
     volatile unsigned char *byte = (volatile unsigned char *)data;
     while (size--)
@@ -19,10 +37,10 @@ static void wipe(void *data, size_t size) {
 
 // --- The helper process ---
 
-// Started with fork rather than popen: popen would carry the password either on
-// the command line, which ps shows to everyone, or through the environment,
+// Started with fork rather than popen: popen would carry the credentials either
+// on the command line, which ps shows to everyone, or through the environment,
 // which the whole process tree inherits. A pipe is read by the helper alone.
-static bool child_start(GarminJob *job, char *const argv[], const char *stdin_text,
+static bool child_start(ImportJob *job, char *const argv[], const char *stdin_text,
                         int *out_fd) {
     int to_child[2], from_child[2];
 
@@ -88,7 +106,7 @@ static bool child_start(GarminJob *job, char *const argv[], const char *stdin_te
 // One line of the helper's protocol. Anything unrecognised is left for the
 // terminal: a newer helper saying more than this one understands should not
 // stop the import.
-static void handle_line(GarminJob *job, const char *line) {
+static void handle_line(ImportJob *job, const char *line) {
     int value;
 
     if (sscanf(line, "total %d", &value) == 1)
@@ -103,12 +121,18 @@ static void handle_line(GarminJob *job, const char *line) {
         // and without it the compiler warns about exactly that.
         snprintf(job->message, sizeof(job->message), "%.*s",
                  (int)sizeof(job->message) - 1, line + 6);
+    else if (strncmp(line, "message ", 8) == 0)
+        // Something to show that is not a failure: the Strava login says here
+        // what it is waiting for the browser to do. It lands in the same field
+        // an error would, since the stage is what tells the two apart.
+        snprintf(job->message, sizeof(job->message), "%.*s",
+                 (int)sizeof(job->message) - 1, line + 8);
     else
-        LOG_DEBUG("garmin: %s\n", line);
+        LOG_DEBUG("import: %s\n", line);
 }
 
-static void read_output(GarminJob *job, FILE *out) {
-    char line[GARMIN_LINE_MAX];
+static void read_output(ImportJob *job, FILE *out) {
+    char line[IMPORT_LINE_MAX];
 
     while (fgets(line, sizeof(line), out)) {
         line[strcspn(line, "\r\n")] = '\0';
@@ -120,48 +144,50 @@ static void read_output(GarminJob *job, FILE *out) {
 // What the helper's exit code says happened. Its own message stands where it
 // left one; the fallbacks are for the ways it can fail without getting far
 // enough to say anything.
-static GarminStage stage_from_status(GarminJob *job, int status) {
+static ImportStage stage_from_status(ImportJob *job, int status) {
     if (!WIFEXITED(status)) {
         // Cancelling kills it, so a job asked to stop lands here and has
         // nothing to report.
         if (atomic_load(&job->cancel))
-            return GARMIN_IDLE;
+            return IMPORT_IDLE;
         snprintf(job->message, sizeof(job->message), "the import helper was killed");
-        return GARMIN_FAILED;
+        return IMPORT_FAILED;
     }
 
     int code = WEXITSTATUS(status);
     if (code == 0)
-        return GARMIN_DONE;
+        return IMPORT_DONE;
     if (code == 2)
-        return GARMIN_MFA_REQUIRED;
+        return IMPORT_MFA_REQUIRED;
 
     if (job->message[0] == '\0') {
         if (code == 127)
-            snprintf(job->message, sizeof(job->message),
-                     "could not run " GARMIN_PYTHON " " GARMIN_SCRIPT);
+            snprintf(job->message, sizeof(job->message), "could not run %s %s",
+                     IMPORT_PYTHON, job->provider->script);
         else
             snprintf(job->message, sizeof(job->message),
                      "the import helper failed (exit %d)", code);
     }
-    return GARMIN_FAILED;
+    return IMPORT_FAILED;
 }
 
 // --- The worker ---
 
-static void *garmin_worker(void *arg) {
-    GarminJob *job = (GarminJob *)arg;
+static void *import_worker(void *arg) {
+    ImportJob *job = (ImportJob *)arg;
 
     // Built before the fork so the child does nothing but exec, and wiped as
     // soon as the helper has it.
-    char credentials[3 * GARMIN_CREDENTIAL_MAX + 4];
+    char credentials[3 * IMPORT_CREDENTIAL_MAX + 4];
     snprintf(credentials, sizeof(credentials), "%s\n%s\n%s\n",
-             job->email, job->password, job->mfa_code);
+             job->user, job->secret, job->extra);
 
-    char *const login_argv[] = {(char *)GARMIN_PYTHON, (char *)GARMIN_SCRIPT,
-                                (char *)"login", (char *)GARMIN_SESSION_DIR, NULL};
-    char *const sync_argv[] = {(char *)GARMIN_PYTHON, (char *)GARMIN_SCRIPT,
-                               (char *)"sync", (char *)GARMIN_SESSION_DIR,
+    char *const script = (char *)job->provider->script;
+    char *const session_dir = (char *)job->provider->session_dir;
+    char *const login_argv[] = {(char *)IMPORT_PYTHON, script,
+                                (char *)"login", session_dir, NULL};
+    char *const sync_argv[] = {(char *)IMPORT_PYTHON, script,
+                               (char *)"sync", session_dir,
                                job->output_dir, NULL};
 
     // Only the login needs credentials; an import runs off the saved token.
@@ -171,12 +197,12 @@ static void *garmin_worker(void *arg) {
                        : child_start(job, sync_argv, NULL, &stdout_fd);
 
     wipe(credentials, sizeof(credentials));
-    wipe(job->password, sizeof(job->password));
-    wipe(job->mfa_code, sizeof(job->mfa_code));
+    wipe(job->secret, sizeof(job->secret));
+    wipe(job->extra, sizeof(job->extra));
 
     if (!started) {
         snprintf(job->message, sizeof(job->message), "could not start the import helper");
-        atomic_store(&job->stage, GARMIN_FAILED);
+        atomic_store(&job->stage, IMPORT_FAILED);
         atomic_store(&job->finished, true);
         return NULL;
     }
@@ -209,7 +235,7 @@ static void *garmin_worker(void *arg) {
 
 // --- Starting and collecting ---
 
-static bool start(GarminJob *job, bool logging_in) {
+static bool start(ImportJob *job, bool logging_in) {
     if (job->thread_started)
         return false; // one at a time; the caller's request is dropped
 
@@ -222,12 +248,12 @@ static bool start(GarminJob *job, bool logging_in) {
     atomic_store(&job->child_pid, 0);
     atomic_store(&job->completed, 0);
     atomic_store(&job->total, 0);
-    atomic_store(&job->stage, logging_in ? GARMIN_LOGGING_IN : GARMIN_IMPORTING);
+    atomic_store(&job->stage, logging_in ? IMPORT_LOGGING_IN : IMPORT_IMPORTING);
 
-    if (pthread_create(&job->thread, NULL, garmin_worker, job) != 0) {
+    if (pthread_create(&job->thread, NULL, import_worker, job) != 0) {
         perror("pthread_create failed");
         snprintf(job->message, sizeof(job->message), "could not start the import");
-        atomic_store(&job->stage, GARMIN_FAILED);
+        atomic_store(&job->stage, IMPORT_FAILED);
         return false;
     }
 
@@ -235,18 +261,18 @@ static bool start(GarminJob *job, bool logging_in) {
     return true;
 }
 
-bool garmin_start_login(GarminJob *job, const char *email, const char *password,
-                        const char *mfa_code) {
+bool import_start_login(ImportJob *job, const char *user, const char *secret,
+                        const char *extra) {
     if (job->thread_started)
         return false;
 
-    snprintf(job->email, sizeof(job->email), "%s", email ? email : "");
-    snprintf(job->password, sizeof(job->password), "%s", password ? password : "");
-    snprintf(job->mfa_code, sizeof(job->mfa_code), "%s", mfa_code ? mfa_code : "");
+    snprintf(job->user, sizeof(job->user), "%s", user ? user : "");
+    snprintf(job->secret, sizeof(job->secret), "%s", secret ? secret : "");
+    snprintf(job->extra, sizeof(job->extra), "%s", extra ? extra : "");
     return start(job, true);
 }
 
-bool garmin_start_sync(GarminJob *job, const char *output_dir) {
+bool import_start_sync(ImportJob *job, const char *output_dir) {
     if (job->thread_started)
         return false;
 
@@ -254,23 +280,23 @@ bool garmin_start_sync(GarminJob *job, const char *output_dir) {
     return start(job, false);
 }
 
-bool garmin_busy(const GarminJob *job) {
+bool import_busy(const ImportJob *job) {
     return job->thread_started;
 }
 
-GarminStage garmin_stage(const GarminJob *job) {
-    return (GarminStage)atomic_load(&job->stage);
+ImportStage import_stage(const ImportJob *job) {
+    return (ImportStage)atomic_load(&job->stage);
 }
 
-int garmin_completed(const GarminJob *job) {
+int import_completed(const ImportJob *job) {
     return atomic_load(&job->completed);
 }
 
-int garmin_total(const GarminJob *job) {
+int import_total(const ImportJob *job) {
     return atomic_load(&job->total);
 }
 
-float garmin_fraction(const GarminJob *job) {
+float import_fraction(const ImportJob *job) {
     int total = atomic_load(&job->total);
     if (total <= 0)
         return 0.0f;
@@ -281,19 +307,19 @@ float garmin_fraction(const GarminJob *job) {
     return (float)completed / (float)total;
 }
 
-int garmin_imported(const GarminJob *job) {
+int import_imported(const ImportJob *job) {
     return job->imported;
 }
 
-const char *garmin_message(const GarminJob *job) {
+const char *import_message(const ImportJob *job) {
     return job->message;
 }
 
-bool garmin_was_login(const GarminJob *job) {
+bool import_was_login(const ImportJob *job) {
     return job->logging_in;
 }
 
-bool garmin_collect(GarminJob *job) {
+bool import_collect(ImportJob *job) {
     if (!job->thread_started || !atomic_load(&job->finished))
         return false;
 
@@ -303,7 +329,7 @@ bool garmin_collect(GarminJob *job) {
     return true;
 }
 
-void garmin_stop(GarminJob *job) {
+void import_stop(ImportJob *job) {
     if (!job->thread_started)
         return;
 
@@ -318,11 +344,11 @@ void garmin_stop(GarminJob *job) {
 
     pthread_join(job->thread, NULL);
     job->thread_started = false;
-    atomic_store(&job->stage, GARMIN_IDLE);
+    atomic_store(&job->stage, IMPORT_IDLE);
 }
 
-bool garmin_have_session(void) {
+bool import_have_session(const ImportProvider *provider) {
     char path[GPX_PATH_MAX];
-    snprintf(path, sizeof(path), "%s/%s", GARMIN_SESSION_DIR, GARMIN_TOKEN_FILE);
+    snprintf(path, sizeof(path), "%s/%s", provider->session_dir, provider->token_file);
     return access(path, R_OK) == 0;
 }
