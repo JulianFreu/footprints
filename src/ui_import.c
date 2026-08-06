@@ -41,7 +41,8 @@ typedef enum ImportField {
 #define NO_ACTION (-1)
 
 typedef enum ImportAction {
-    ACTION_SHOW_SECRETS = 0,
+    ACTION_SHOW_GARMIN_PASSWORD = 0,
+    ACTION_SHOW_STRAVA_SECRET,
     ACTION_GARMIN_LOGIN,
     ACTION_GARMIN_IMPORT,
     ACTION_STRAVA_LOGIN,
@@ -62,7 +63,10 @@ static char focus_undo[SETTINGS_EDIT_MAX];
 static char garmin_password[IMPORT_CREDENTIAL_MAX];
 static char garmin_mfa[IMPORT_CREDENTIAL_MAX];
 static char strava_secret[IMPORT_CREDENTIAL_MAX];
-static bool show_secrets = false;
+// One per section, so uncovering one secret to check it does not put the other
+// on screen alongside it.
+static bool show_garmin_password = false;
+static bool show_strava_secret = false;
 
 // Set by a hover callback, consumed by the next update.
 static int pending_focus = NO_FIELD;
@@ -403,8 +407,11 @@ static bool apply_action(struct application *appl, int action) {
     char folder[GPX_PATH_MAX];
 
     switch (action) {
-    case ACTION_SHOW_SECRETS:
-        show_secrets = !show_secrets;
+    case ACTION_SHOW_GARMIN_PASSWORD:
+        show_garmin_password = !show_garmin_password;
+        return true;
+    case ACTION_SHOW_STRAVA_SECRET:
+        show_strava_secret = !show_strava_secret;
         return true;
     case ACTION_GARMIN_LOGIN:
         return import_start_login(&appl->garmin, settings.garmin_email,
@@ -530,11 +537,13 @@ static void draw_labelled_row(const char *label, int id) {
     }
 }
 
-// One editable box. A secret is drawn as its length in bullets, which is enough
-// to tell an empty box from a full one without putting it on screen for whoever
-// is behind you.
+// One editable box. A secret is drawn as its length in bullets unless its own
+// section's button says otherwise, which is enough to tell an empty box from a
+// full one without putting it on screen for whoever is behind you.
 static void draw_field(ImportField field, bool masked) {
     bool editing = (focused_field == (int)field);
+    bool shown = (field == FIELD_STRAVA_SECRET) ? show_strava_secret
+                                                : show_garmin_password;
 
     char value[SETTINGS_EDIT_MAX];
     if (editing)
@@ -542,7 +551,7 @@ static void draw_field(ImportField field, bool masked) {
     else
         field_text(field, value, sizeof(value));
 
-    if (masked && !show_secrets && value[0] != '\0') {
+    if (masked && !shown && value[0] != '\0') {
         size_t length = strlen(value);
         if (length > sizeof(value) - 1)
             length = sizeof(value) - 1;
@@ -667,7 +676,8 @@ static void draw_garmin_account(struct application *appl) {
     }
 
     IMPORT_ROW(3) {
-        draw_button(ACTION_SHOW_SECRETS, show_secrets ? "Hide secrets" : "Show secrets",
+        draw_button(ACTION_SHOW_GARMIN_PASSWORD,
+                    show_garmin_password ? "Hide password" : "Show password",
                     false, !busy);
         draw_button(ACTION_GARMIN_LOGIN, "Log in", false,
                     !busy && field_filled(FIELD_GARMIN_EMAIL, settings.garmin_email) &&
@@ -698,6 +708,9 @@ static void draw_strava_account(struct application *appl) {
     }
 
     IMPORT_ROW(6) {
+        draw_button(ACTION_SHOW_STRAVA_SECRET,
+                    show_strava_secret ? "Hide secret" : "Show secret",
+                    false, !busy);
         draw_button(ACTION_STRAVA_LOGIN, "Connect", false,
                     !busy &&
                         field_filled(FIELD_STRAVA_CLIENT_ID, settings.strava_client_id) &&
