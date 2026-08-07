@@ -9,6 +9,7 @@
 #include "background.h"
 #include "import_job.h"
 #include "map_types.h"
+#include "profiler.h"
 #include "track_series.h"
 #include "ui_types.h"
 #include "zoom.h"
@@ -68,6 +69,10 @@ struct application {
     // waiting for the display and for events.
     Uint64 last_counter;
     float delta_time;
+    // Where each of those iterations went, phase by phase. Sampled whether or
+    // not the overlay is being drawn, so the graph is already full the moment
+    // it is switched on -- including the frames spent switching it on.
+    Profiler profiler;
     bool mouse_over_ui;
     bool show_heat;
     // Raised by anything that changes what the window should show. The frame

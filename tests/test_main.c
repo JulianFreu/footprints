@@ -29,6 +29,7 @@ int main(void) {
     run_import_tests();
     run_anim_tests();
     run_zoom_tests();
+    run_profiler_tests();
 
     printf("\n%d checks, %d failed\n", tests_run, tests_failed);
     return tests_failed == 0 ? 0 : 1;

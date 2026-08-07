@@ -21,7 +21,8 @@ SOURCES  := $(SRC_DIR)/main.c $(SRC_DIR)/map.c $(SRC_DIR)/fifo.c \
             $(SRC_DIR)/import_job.c $(SRC_DIR)/ui_import.c \
             $(SRC_DIR)/ui_stats.c $(SRC_DIR)/stats.c \
             $(SRC_DIR)/ui_records.c $(SRC_DIR)/records.c \
-            $(SRC_DIR)/time_util.c $(SRC_DIR)/settings.c
+            $(SRC_DIR)/time_util.c $(SRC_DIR)/settings.c \
+            $(SRC_DIR)/profiler.c $(SRC_DIR)/ui_profiler.c
 OBJECTS  := $(SOURCES:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
 DEPS     := $(OBJECTS:.o=.d)
 

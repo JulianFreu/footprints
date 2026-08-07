@@ -1,6 +1,6 @@
 # AGENTS
 
-This is supposed to be a lean application with as little dependencies as possible. When making 
+This is supposed to be a lean application with as little dependencies as possible. When making
 changes try to modify lines only when necessary. Less lines changed is better.
 
 ## Build
@@ -52,7 +52,7 @@ exclusions, the k-d tree radius
 search (against brute force), the spatial index (against the full scan it
 replaced), the background job's concurrency contract, the import job's contract
 and the provider it is pointed at, and the animation primitive's easing and
-timing.
+timing, and the frame profiler's ring and reductions.
 
 `tests/test_import.c` points the macros naming the interpreter and each
 provider's script at `tests/fake_helper.sh`, so the fork, the pipes, the line
@@ -89,13 +89,14 @@ cc -O1 -g -fsanitize=thread -I$(xml2-config --cflags | sed 's/-I//') \
 | `time_util.c` | The single place timestamps are parsed — everything is UTC |
 | `stats.c` | Bucketing tracks into days, weeks, months and years, and the metrics reduced over them |
 | `records.c` | Which activities hold each personal record, ranked over the whole collection |
+| `profiler.c` | Where each frame's time went: the loop's phases, and the ring the overlay reads |
 | `ui.c` | Clay setup, icons, the left menu bar, sidebar, and the composition of the panels |
 | `ui_filters.c` | The filter panel and the text input that feeds it |
 | `ui_runlist.c` | The run list: sortable header, rows, virtualised scrolling |
 | `ui_stats.c` | The statistics panel: the bar plot, its axes, its buttons, and the pan |
 | `ui_records.c` | The records panel: a scrolling section per category, its rows clickable |
 | `ui_settings.c` | The settings panel, its fields and the text input that feeds them |
-| `ui_import.c` | The import panel: the Garmin and Strava accounts, the import buttons, and what each import is doing |
+| `ui_profiler.c` | The frame-time overlay: the stacked columns, the budget line and the legend |
 | `ui_internal.h` | Layout vocabulary shared by `ui*.c`; not part of the UI's interface |
 | `settings.c` | What is configurable, its defaults, and reading and writing `settings.conf` |
 | `progress.h` | How a long operation reports progress and is asked to stop |

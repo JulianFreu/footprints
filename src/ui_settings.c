@@ -56,6 +56,7 @@ static bool show_api_key = false;
 static int pending_focus = NO_FIELD;
 static int pending_provider = -1;
 static bool pending_show_key = false;
+static bool pending_show_profiler = false;
 static bool pending_clear_cache = false;
 static bool pending_reload_library = false;
 static bool pending_recalculate = false;
@@ -94,6 +95,11 @@ static void clicked_provider(Clay_ElementId id, Clay_PointerData pointer, intptr
 static void clicked_show_key(Clay_ElementId id, Clay_PointerData pointer, intptr_t user_data) {
     if (pointer.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME)
         pending_show_key = true;
+}
+
+static void clicked_show_profiler(Clay_ElementId id, Clay_PointerData pointer, intptr_t user_data) {
+    if (pointer.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME)
+        pending_show_profiler = true;
 }
 
 static void clicked_clear_cache(Clay_ElementId id, Clay_PointerData pointer, intptr_t user_data) {
@@ -398,6 +404,13 @@ bool ui_settings_update(struct application *appl, GpxCollection *collection) {
     if (pending_show_key) {
         pending_show_key = false;
         show_api_key = !show_api_key;
+        changed = true;
+    }
+
+    if (pending_show_profiler) {
+        pending_show_profiler = false;
+        settings.show_profiler = !settings.show_profiler;
+        pending_save = true;
         changed = true;
     }
 
@@ -767,6 +780,18 @@ static void draw_startup_view_section(void) {
     }
 }
 
+// Where the frame-time overlay is switched on. Its own section rather than a
+// row under one of the others: nothing here is about what the map shows.
+static void draw_diagnostics_section(void) {
+    draw_section_header("Diagnostics", 5);
+
+    SETTINGS_ROW(60) {
+        draw_button(6,
+                    settings.show_profiler ? "Hide frame times" : "Show frame times",
+                    settings.show_profiler, true, clicked_show_profiler);
+    }
+}
+
 static void draw_settings_header(void) {
     CLAY(CLAY_ID("SettingsHeader"),
          {.layout = {.padding = CLAY_PADDING_ALL(GAPS),
@@ -809,6 +834,7 @@ void ui_draw_settings_panel(struct application *appl) {
             draw_heat_calculation_section(appl);
             draw_library_section(appl);
             draw_startup_view_section();
+            draw_diagnostics_section();
         }
     }
 }

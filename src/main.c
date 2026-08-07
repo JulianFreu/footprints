@@ -14,6 +14,7 @@
 #include "gpx_types.h"
 #include "heat.h"
 #include "map.h"
+#include "profiler.h"
 #include "settings.h"
 #include "tracks.h"
 #include "ui.h"
@@ -31,6 +32,13 @@ static void app_update(struct application *appl, GpxCollection *collection) {
     // Neither is latched -- they are true for as long as the work lasts, so
     // they are asked rather than remembered.
     if (background_busy(&appl->background) || download_in_progress)
+        app_request_redraw(appl);
+
+    // The profiler is measuring a loop that draws only when asked. Left at zero
+    // it goes on doing that, and the graph advances on the frames the loop was
+    // drawing anyway; at one it asks for every frame, which scrolls
+    // continuously and is no longer the loop that ships.
+    if (settings.show_profiler && PROFILER_FORCES_REDRAW)
         app_request_redraw(appl);
 
     map_update(appl, appl->delta_time);
@@ -132,8 +140,14 @@ int main(int argc, char *argv[]) {
 
     // Main-Loop
     while (appl.running) {
+        // Each mark closes the phase before it, so the stamps below cut the
+        // whole iteration up rather than sampling parts of it. A phase inside
+        // the render block that this frame skips is simply never marked, and
+        // reads as zero.
+        profiler_mark(&appl.profiler, PROF_EVENTS);
         handle_events(&appl, &collection);
 
+        profiler_mark(&appl.profiler, PROF_ADOPT);
         Uint64 now = SDL_GetPerformanceCounter();
         appl.delta_time = (float)((double)(now - appl.last_counter) / counter_frequency);
         appl.last_counter = now;
@@ -155,6 +169,7 @@ int main(int argc, char *argv[]) {
             app_request_redraw(&appl);
         }
 
+        profiler_mark(&appl.profiler, PROF_UPDATE);
         app_update(&appl, &collection);
 
         bool busy = background_busy(&appl.background);
@@ -164,6 +179,7 @@ int main(int argc, char *argv[]) {
         // being thrown away here.
         if (appl.redraw_requested) {
             appl.redraw_requested = false;
+            profiler_mark(&appl.profiler, PROF_MAP);
             SDL_RenderClear(appl.renderer);
 
             // Layer order lives here, where the frame is composed, rather
@@ -175,9 +191,17 @@ int main(int argc, char *argv[]) {
             // The map is safe to draw at any time; anything derived from the
             // tracks is not, while the worker still has them.
             if (!busy) {
+                profiler_mark(&appl.profiler, PROF_TRACKS);
                 update_track_info_graphs(&appl, &collection);
                 update_selected_track_overlay(&appl, &collection);
+                // Budgeted per frame and a pass over the whole point index, so
+                // it is worth a phase of its own rather than being folded in
+                // with the overlays either side of it.
+                profiler_mark(&appl.profiler, PROF_HEAT);
                 tracks_draw_heat_tiles(&appl, &collection, tiles, tile_count);
+                // Back to the phase this block opened with: a phase marked
+                // twice in one frame adds to itself.
+                profiler_mark(&appl.profiler, PROF_TRACKS);
                 tracks_draw_selected_overlay(&appl);
 
                 // Where the sidebar's graphs are being hovered. Drawn in the
@@ -189,10 +213,17 @@ int main(int argc, char *argv[]) {
                                              hovered_point);
             }
 
+            profiler_mark(&appl.profiler, PROF_UI);
             clay_draw_ui(&appl, &collection);
+
+            // Over everything Clay has drawn, and inside the UI's own phase
+            // rather than a phase of its own: it is UI drawing, and measuring
+            // it separately would only be the profiler measuring itself.
+            ui_profiler_draw(&appl);
 
             // Paced by the display: with vsync on, this is what makes a frame
             // take a frame.
+            profiler_mark(&appl.profiler, PROF_PRESENT);
             SDL_RenderPresent(appl.renderer);
         }
 
@@ -201,10 +232,17 @@ int main(int argc, char *argv[]) {
         // for the display has already spent the frame and this does nothing --
         // the cap is the floor under the frame rate, not the mechanism for
         // hitting it.
+        profiler_mark(&appl.profiler, PROF_CAP);
         Uint32 spent = (Uint32)((double)(SDL_GetPerformanceCounter() - appl.last_counter) *
                                 1000.0 / counter_frequency);
         if (spent < FRAME_DELAY_MS)
             SDL_Delay(FRAME_DELAY_MS - spent);
+
+        // After the cap, so the frame this files is a whole one -- the wait for
+        // the display and the sleep included. The overlay reads only filed
+        // frames, which is what keeps it from drawing a column that is still
+        // being measured.
+        profiler_end_frame(&appl.profiler);
     }
 
     appl_cleanup(&appl, &collection);
@@ -243,6 +281,7 @@ static void appl_cleanup(struct application *appl, GpxCollection *collection) {
     free(collection->list_order);
     LOG_DEBUG("Clean UI...\n");
     ui_free_icons(appl);
+    ui_profiler_free(appl);
     clay_free_memory();
     LOG_DEBUG("Clean renderer...\n");
     SDL_DestroyRenderer(appl->renderer);

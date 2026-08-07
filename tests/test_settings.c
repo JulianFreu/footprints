@@ -43,6 +43,7 @@ static void test_defaults(void) {
     CHECK_STR(s.gpx_dir, GPX_INPUT_DIR);
     CHECK_NEAR(s.heat_radius_pixels, HEAT_RADIUS_PIXELS, 0.001);
     CHECK_INT(s.track_point_size, TRACK_POINT_SIZE);
+    CHECK(!s.show_profiler);
     CHECK_INT(s.start_zoom, START_ZOOM);
     CHECK_INT(s.start_world_x, START_WORLD_X);
     CHECK_INT(s.start_world_y, START_WORLD_Y);
@@ -64,6 +65,7 @@ static void test_round_trip(void) {
     snprintf(written.gpx_dir, sizeof(written.gpx_dir), "/home/someone/tracks");
     written.heat_radius_pixels = 275.0f;
     written.track_point_size = 7;
+    written.show_profiler = true;
     written.start_zoom = 14;
     written.start_world_x = 12345678;
     written.start_world_y = 87654321;
@@ -83,6 +85,7 @@ static void test_round_trip(void) {
     CHECK_STR(read.gpx_dir, written.gpx_dir);
     CHECK_NEAR(read.heat_radius_pixels, written.heat_radius_pixels, 0.001);
     CHECK_INT(read.track_point_size, written.track_point_size);
+    CHECK_INT(read.show_profiler, written.show_profiler);
     CHECK_INT(read.start_zoom, written.start_zoom);
     CHECK_INT(read.start_world_x, written.start_world_x);
     CHECK_INT(read.start_world_y, written.start_world_y);
@@ -144,6 +147,55 @@ static void test_unparseable_values(void) {
     CHECK_INT(s.track_point_size, TRACK_POINT_SIZE);
     CHECK_NEAR(s.heat_radius_pixels, HEAT_RADIUS_PIXELS, 0.001);
     CHECK_INT(s.start_zoom, START_ZOOM);
+
+    remove_file();
+}
+
+static void test_bool_values(void) {
+    SUITE("settings: a flag is spelled several ways and guessed at in none");
+
+    const char *const yes[] = {"true", "1", "on"};
+    const char *const no[] = {"false", "0", "off"};
+
+    for (size_t i = 0; i < sizeof(yes) / sizeof(yes[0]); i++) {
+        char line[64];
+        Settings s;
+
+        snprintf(line, sizeof(line), "show_profiler = %s\n", yes[i]);
+        write_file(line);
+        CHECK(settings_load(&s, TEST_PATH));
+        CHECK(s.show_profiler);
+
+        snprintf(line, sizeof(line), "show_profiler = %s\n", no[i]);
+        write_file(line);
+        CHECK(settings_load(&s, TEST_PATH));
+        CHECK(!s.show_profiler);
+    }
+
+    // Not an answer: the comparison is case-sensitive like the provider names,
+    // "yes" was never one of the spellings, and neither an empty value nor a
+    // number outside 0 and 1 says anything. Each leaves the default standing.
+    // Surrounding space is not in this list -- the loader trims a value before
+    // it is parsed, so "true " is the same word.
+    const char *const nonsense[] = {"TRUE", "yes", "", "2"};
+    for (size_t i = 0; i < sizeof(nonsense) / sizeof(nonsense[0]); i++) {
+        char line[64];
+        snprintf(line, sizeof(line), "show_profiler = %s\n", nonsense[i]);
+        write_file(line);
+
+        Settings s;
+        CHECK(settings_load(&s, TEST_PATH));
+        CHECK(!s.show_profiler);
+    }
+
+    // And because parse_bool writes only when it understood the value, an
+    // unreadable one cannot turn a flag off that the rest of the file turned on.
+    write_file("show_profiler = on\n"
+               "show_profiler = banana\n");
+
+    Settings s;
+    CHECK(settings_load(&s, TEST_PATH));
+    CHECK(s.show_profiler);
 
     remove_file();
 }
@@ -468,6 +520,7 @@ static void test_ramp_is_monotonic(void) {
 void run_settings_tests(void) {
     test_defaults();
     test_round_trip();
+    test_bool_values();
     test_missing_file();
     test_partial_and_unknown_keys();
     test_unparseable_values();

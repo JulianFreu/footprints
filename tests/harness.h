@@ -79,5 +79,6 @@ void run_background_tests(void);
 void run_garmin_tests(void);
 void run_anim_tests(void);
 void run_zoom_tests(void);
+void run_profiler_tests(void);
 
 #endif

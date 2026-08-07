@@ -298,4 +298,48 @@
 #define PROGRESS_PANEL_HEIGHT 80
 #define PROGRESS_BAR_HEIGHT 16
 
+// --- Frame profiler ---
+// How many frames the graph remembers, and how wide each of their columns is
+// drawn. Three seconds of a 60 Hz loop, at 360 pixels.
+#define PROFILER_HISTORY_FRAMES 180
+#define PROFILER_COLUMN_WIDTH 2
+#define PROFILER_GRAPH_HEIGHT 120
+
+// What a frame is asked to fit in, and how many of those the top of the graph
+// stands for. Two puts the budget line halfway up, so a frame that fits reads
+// as filling half the box and one that takes twice as long still fits in it.
+//
+// Spelled from TARGET_FPS rather than FRAME_DELAY_MS: that one is integer
+// milliseconds, and the 16 it truncates to is not the budget.
+#define PROFILER_BUDGET_SECONDS (1.0f / (float)TARGET_FPS)
+#define PROFILER_GRAPH_BUDGETS 2.0f
+
+// Frames the legend's averages are taken over -- about a second, so they say
+// what a frame costs now rather than since the window opened.
+#define PROFILER_AVERAGE_FRAMES 60
+
+// How often the legend is rasterised. A number that changes sixty times a
+// second cannot be read, and the text is the one part of the overlay that is
+// not nearly free: nine TTF renders and texture uploads would otherwise land
+// on every frame, inside the phase the overlay is drawn in.
+#define PROFILER_LEGEND_INTERVAL_SECONDS 0.25f
+#define PROFILER_LEGEND_FONT_SIZE 11
+#define PROFILER_LEGEND_LINE_HEIGHT 13
+#define PROFILER_LEGEND_WIDTH 210
+// Where the legend's numbers are set, measured from its left edge, so the
+// names and the values line up in two columns rather than being spaced by the
+// width of whatever was written before them.
+#define PROFILER_LEGEND_VALUE_X 120
+#define PROFILER_SWATCH_SIZE 8
+#define PROFILER_PADDING 6
+
+// Whether having the profiler on keeps the frames coming. This application
+// draws only when something asks it to, so with this at zero the graph
+// advances on the frames the loop was drawing anyway and stands still while
+// nothing is happening -- which is the honest reading, and leaves the loop
+// being measured the same loop that ships. At one it asks for every frame,
+// which scrolls continuously and is easier to watch, at the cost of measuring
+// a renderer that is not the one anybody runs.
+#define PROFILER_FORCES_REDRAW 0
+
 #endif

@@ -80,4 +80,11 @@ void ui_sidebar_graph_size(const struct application *appl, int *width, int *heig
 void ui_load_icons(struct application *appl);
 void ui_free_icons(struct application *appl);
 
+// The frame-time graph, drawn straight to the renderer after Clay's own pass:
+// it is an overlay rather than a panel, so it sits on top of whatever is open
+// instead of competing with it for room. Draws nothing when the setting is off.
+void ui_profiler_draw(struct application *appl);
+// Drops the legend texture the overlay caches. Safe to call having never drawn.
+void ui_profiler_free(struct application *appl);
+
 #endif

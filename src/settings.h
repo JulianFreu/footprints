@@ -59,6 +59,10 @@ typedef struct Settings {
     float heat_radius_pixels;
     int track_point_size;
 
+    // The frame-time overlay. Persisted rather than session-local so that an
+    // afternoon spent chasing a hitch survives restarting the window.
+    bool show_profiler;
+
     // The view the window opens at, in world pixels at MAX_ZOOM.
     int start_zoom;
     int start_world_x;
