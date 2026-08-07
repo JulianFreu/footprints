@@ -15,6 +15,7 @@
 #include "heat.h"
 #include "map.h"
 #include "profiler.h"
+#include "render_cache.h"
 #include "settings.h"
 #include "tracks.h"
 #include "ui.h"
@@ -280,6 +281,9 @@ static void appl_cleanup(struct application *appl, GpxCollection *collection) {
     free(collection->tracks);
     free(collection->list_order);
     LOG_DEBUG("Clean UI...\n");
+    // Before the icons: the cache holds a texture per icon surface, keyed by its
+    // address, and has to give those up while the surfaces are still there.
+    render_cache_free();
     ui_free_icons(appl);
     ui_profiler_free(appl);
     clay_free_memory();
@@ -291,7 +295,10 @@ static void appl_cleanup(struct application *appl, GpxCollection *collection) {
     gpx_parser_cleanup();
     LOG_DEBUG("Clean SDL...\n");
     for (size_t i = 0; i < sizeof(appl->fonts) / sizeof(appl->fonts[0]); i++) {
-        TTF_CloseFont(appl->fonts[i].font);
+        // Guarded: a font that failed to open comes through here as NULL, on the
+        // path that gave up because of exactly that.
+        if (appl->fonts[i].font)
+            TTF_CloseFont(appl->fonts[i].font);
         appl->fonts[i].font = NULL;
     }
     TTF_Quit();
@@ -309,16 +316,8 @@ static bool sdl_initialize(struct application *appl) {
         fprintf(stderr, "Error: could not initialize TTF: %s\n", TTF_GetError());
         return true;
     }
-    TTF_Font *font = TTF_OpenFont("resources/Roboto-Regular.ttf", 16);
-    if (!font) {
-        fprintf(stderr, "Error: could not load font: %s\n", TTF_GetError());
+    if (!ui_load_fonts(appl))
         return true;
-    }
-
-    appl->fonts[0] = (SDL2_Font){
-        .font_id = 0,
-        .font = font,
-    };
 
     // Sampled when a texture is created, not when one is drawn, so this has to
     // be set before the renderer and before anything is loaded. Without it the

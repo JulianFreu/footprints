@@ -64,10 +64,14 @@
 #define TILE_FALLBACK_COLOR_G 0
 #define TILE_FALLBACK_COLOR_B 0
 
-// Tiles decoded and uploaded per frame. The PNG decode is synchronous, so a
-// pan that reveals forty cached tiles at once would otherwise spend the whole
+// Tiles a frame will go to the filesystem for. The PNG decode is synchronous, so
+// a pan that reveals forty cached tiles at once would otherwise spend the whole
 // frame on them. The rest arrive over the next few frames, covered by the
 // fallback colour in the meantime.
+//
+// It bounds the look as well as the decode: finding out whether a tile is on
+// disk is an access(), and a tile left for later is remembered nowhere, so
+// without this the tiles a zoom cannot get to were re-asked after on every frame.
 #define TILE_DECODES_PER_FRAME 8
 
 // How long a tile takes to come up to full strength once its texture exists.
@@ -90,6 +94,16 @@
 // RGBA texture, so 256 of them is roughly 64 MB of video memory; past that the
 // least recently used is dropped.
 #define TILE_CACHE_MAX_ENTRIES 1024
+
+// Slots in the table that finds a cached tile by its coordinates. A power of two
+// so the hash is masked rather than divided, and twice the ceiling above so the
+// table never runs more than half full and a probe stays a step or two.
+//
+// Without it a lookup walked every entry, and every layer asks for every visible
+// tile on every frame: about a hundred and seventy of them at scale 1, and ten
+// times that while a zoom is still easing, against a thousand entries, twice
+// over -- on precisely the frames with the least room to spare.
+#define TILE_LOOKUP_SLOTS 2048
 
 // Upper bound on tiles drawn in one frame; past this the outermost tiles are
 // simply not drawn. A 4K window needs about 170 at scale 1. The rest is for a

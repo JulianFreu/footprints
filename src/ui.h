@@ -11,6 +11,10 @@
 // both reads and drives it.
 extern UIState ui;
 
+// Opens one font per size anything is drawn at, into appl->fonts. Needs TTF_Init
+// to have run, and is why main.c no longer opens a font of its own: the sizes
+// live beside the layout constants they come from.
+bool ui_load_fonts(struct application *appl);
 void clay_init(struct application *appl);
 // Input and animation for this frame. Runs before the layout, and asks for
 // another frame while anything is still moving.

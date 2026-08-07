@@ -23,6 +23,7 @@
 #include "clay.h"
 #include "clay_sdl.h"
 #include "colors.h"
+#include "render_cache.h"
 
 // Text drawn this frame.
 //
@@ -135,6 +136,39 @@ Clay_Color ui_fade(Clay_Color color) {
     return color;
 }
 
+// The size each font is opened at, indexed by UiFont. The one place the sizes
+// the application draws at are written down: adding one here is the whole of
+// what giving it a font of its own takes.
+static const int ui_font_size[UI_FONT_COUNT] = {
+    [UI_FONT_SMALL] = FILTER_TEXT_FONT_SIZE,
+    [UI_FONT_LABEL] = LABEL_FONT_SIZE,
+    [UI_FONT_HEADING] = HEADING_FONT_SIZE,
+    [UI_FONT_GRAPH_LABEL] = TRACK_GRAPH_LABEL_FONT_SIZE,
+};
+
+bool ui_load_fonts(struct application *appl) {
+    for (int id = 0; id < UI_FONT_COUNT; id++) {
+        TTF_Font *font = TTF_OpenFont("resources/Roboto-Regular.ttf", ui_font_size[id]);
+        if (!font) {
+            fprintf(stderr, "Error: could not load font at size %d: %s\n",
+                    ui_font_size[id], TTF_GetError());
+            return false;
+        }
+        appl->fonts[id] = (SDL2_Font){.font_id = (uint32_t)id, .font = font};
+    }
+    return true;
+}
+
+// Which font draws at `size`. A size with no font of its own still draws -- it
+// lands on the small one and is resized on the way past, which is what every
+// size used to cost -- so this cannot make text go missing.
+static uint16_t font_id_for_size(uint16_t size) {
+    for (int id = 0; id < UI_FONT_COUNT; id++)
+        if (ui_font_size[id] == (int)size)
+            return (uint16_t)id;
+    return UI_FONT_SMALL;
+}
+
 static void draw_text(const char *string, uint16_t font_size, Clay_Color color,
                       Clay_TextAlignment align, Clay_TextElementConfigWrapMode wrap) {
     Clay_String clay_string = {
@@ -142,8 +176,9 @@ static void draw_text(const char *string, uint16_t font_size, Clay_Color color,
         .length = strlen(string),
         .isStaticallyAllocated = false};
     // Every string in the UI comes through here, so text needs no fading of its
-    // own at the call sites.
-    CLAY_TEXT(clay_string, CLAY_TEXT_CONFIG({.fontSize = font_size, .textColor = ui_fade(color), .textAlignment = align, .wrapMode = wrap}));
+    // own at the call sites -- and neither does picking the font that is already
+    // at the size being asked for.
+    CLAY_TEXT(clay_string, CLAY_TEXT_CONFIG({.fontId = font_id_for_size(font_size), .fontSize = font_size, .textColor = ui_fade(color), .textAlignment = align, .wrapMode = wrap}));
 }
 
 void ui_draw_text(const char *string, uint16_t font_size, Clay_Color color, Clay_TextAlignment align) {
@@ -840,6 +875,10 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
     // mode of its own. Set from out here so that file stays untouched.
     SDL_SetRenderDrawBlendMode(appl->renderer, SDL_BLENDMODE_BLEND);
     clay_sdl_render(appl->renderer, render_commands, appl->fonts);
+
+    // After the render rather than before it, so everything this frame drew
+    // counts as recently used and survives the sweep.
+    render_cache_end_frame();
 
     // On top of what Clay has just drawn, and faded with the sidebar the way
     // everything inside it is.

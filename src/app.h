@@ -34,7 +34,9 @@ struct application {
     struct fifo download_queue;
     pthread_t download_thread;
     bool download_thread_started;
-    SDL2_Font fonts[1];
+    // Indexed by UiFont. Clay's fontId selects into this, which is how a text
+    // element asks for the font already at the size it wants.
+    SDL2_Font fonts[UI_FONT_COUNT];
     UiIcons icons;
     TileTextureCache tile_cache;
     // Where the picture is between two whole zoom levels, and that gap written

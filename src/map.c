@@ -443,16 +443,53 @@ bool tile_key_equal(MapTile a, MapTile b) {
     return a.tile_x == b.tile_x && a.tile_y == b.tile_y && a.zoom == b.zoom;
 }
 
+static uint32_t tile_hash(MapTile tile) {
+    uint32_t hash = (uint32_t)tile.tile_x * 0x9E3779B1u;
+    hash ^= (uint32_t)tile.tile_y * 0x85EBCA77u;
+    hash ^= (uint32_t)tile.zoom * 0xC2B2AE3Du;
+    hash ^= hash >> 15;
+    return hash;
+}
+
+// The slot holding `key`, or the first free slot along its probe path -- so one
+// walk answers both "is it here" and "where would it go". The table is kept at
+// most half full, so the walk is a step or two.
+static int lookup_slot(const TileTextureCache *cache, MapTile key) {
+    const uint32_t mask = TILE_LOOKUP_SLOTS - 1;
+    const uint32_t start = tile_hash(key) & mask;
+
+    for (uint32_t probe = 0; probe < TILE_LOOKUP_SLOTS; probe++) {
+        int slot = (int)((start + probe) & mask);
+        int32_t at = cache->lookup[slot];
+        if (at == 0 || tile_key_equal(cache->entries[at - 1].key, key))
+            return slot;
+    }
+    return -1; // full, which keeping the table half empty is there to prevent
+}
+
+// Puts every entry back in the table. Linear probing cannot have one taken out of
+// the middle of it -- the walk that found the entries after it went through the
+// hole -- and eviction both removes an entry and moves another into its place.
+static void lookup_rebuild(TileTextureCache *cache) {
+    memset(cache->lookup, 0, sizeof(cache->lookup));
+
+    for (int i = 0; i < cache->size; i++) {
+        int slot = lookup_slot(cache, cache->entries[i].key);
+        if (slot >= 0)
+            cache->lookup[slot] = i + 1;
+    }
+}
+
 // Hands back the entry for `key`, or NULL. Touching it marks it as the most
 // recently used, which is what keeps eviction honest.
 TileTexture *tile_cache_find(TileTextureCache *cache, MapTile key) {
-    for (int i = 0; i < cache->size; i++) {
-        if (tile_key_equal(cache->entries[i].key, key)) {
-            cache->entries[i].last_used = ++cache->clock;
-            return &cache->entries[i];
-        }
-    }
-    return NULL;
+    int slot = lookup_slot(cache, key);
+    if (slot < 0 || cache->lookup[slot] == 0)
+        return NULL;
+
+    TileTexture *entry = &cache->entries[cache->lookup[slot] - 1];
+    entry->last_used = ++cache->clock;
+    return entry;
 }
 
 // The same question asked by a caller that only wants to draw the tile as it
@@ -473,6 +510,9 @@ static void evict_least_recently_used(TileTextureCache *cache) {
     SDL_DestroyTexture(cache->entries[oldest].texture);
     cache->entries[oldest] = cache->entries[cache->size - 1];
     cache->size--;
+    // One entry gone and another moved, so every index the table holds past this
+    // point is wrong.
+    lookup_rebuild(cache);
 }
 
 // Takes ownership of `texture` on success and hands back the entry it went
@@ -501,8 +541,17 @@ TileTexture *tile_cache_insert(TileTextureCache *cache, MapTile key, SDL_Texture
         cache->capacity = grown_capacity;
     }
 
+    // Found before the entry is appended, so a table with no room says so while
+    // the cache is still consistent.
+    int slot = lookup_slot(cache, key);
+    if (slot < 0) {
+        fprintf(stderr, "Tile lookup table full\n");
+        return NULL;
+    }
+
     TileTexture *entry = &cache->entries[cache->size++];
     *entry = (TileTexture){.key = key, .texture = texture, .last_used = ++cache->clock};
+    cache->lookup[slot] = cache->size; // the entry's index, plus one
     // Fully shown unless the caller says otherwise. The designated initialiser
     // above zeroes the fade, and a zeroed Anim reads as an invisible tile.
     anim_set(&entry->fade, 1.0f);
@@ -529,6 +578,7 @@ void tile_cache_clear(TileTextureCache *cache) {
     }
     cache->size = 0;
     cache->clock = 0;
+    memset(cache->lookup, 0, sizeof(cache->lookup));
 }
 
 void tile_cache_free(TileTextureCache *cache) {
@@ -541,6 +591,7 @@ void tile_cache_free(TileTextureCache *cache) {
     cache->size = 0;
     cache->capacity = 0;
     cache->clock = 0;
+    memset(cache->lookup, 0, sizeof(cache->lookup));
 }
 
 static int file_exists(const char *path) {
@@ -772,7 +823,7 @@ static void draw_fallback_tile(struct application *appl, const VisibleTile *visi
 
 void map_draw_tiles(struct application *appl, const VisibleTile *tiles, int count) {
     const Uint32 now_ms = SDL_GetTicks();
-    int decodes_left = TILE_DECODES_PER_FRAME;
+    int probes_left = TILE_DECODES_PER_FRAME;
 
     for (int i = 0; i < count; i++) {
         MapTile key = tiles[i].tile;
@@ -781,22 +832,31 @@ void map_draw_tiles(struct application *appl, const VisibleTile *tiles, int coun
         // consulted at all.
         TileTexture *entry = tile_cache_find(&appl->tile_cache, key);
         if (!entry && !pending_blocks(key, now_ms)) {
-            char tile_path[TILE_PATH_MAX];
-            tile_cache_path(tile_path, sizeof(tile_path), map_current_provider(), key);
+            // Everything below this point costs a syscall at least: the decode
+            // and upload are synchronous, and finding out whether there is
+            // anything to decode is an access(). Both are rationed together, so
+            // a frame spends a fixed amount of time on tiles it has not got
+            // whether they turn out to be on disk or not.
+            //
+            // A tile past the ration is recorded nowhere, so it used to be asked
+            // after again on the very next frame, and on every frame until its
+            // turn came -- with a zoom putting thousands of tiles on screen
+            // against a budget of eight. The list runs outward from the centre of
+            // the window, so what is left for later is the outermost ground, and
+            // the next frame starts again from the middle.
+            if (probes_left <= 0) {
+                app_request_redraw(appl); // come back for the rest
+            } else {
+                probes_left--;
 
-            if (file_exists(tile_path)) {
-                // The decode and upload are synchronous, so they are rationed:
-                // a pan that uncovers forty cached tiles at once would spend
-                // the whole frame on them. The rest keep the flat colour for a
-                // frame or two, which is only tolerable because it is there.
-                if (decodes_left > 0) {
+                char tile_path[TILE_PATH_MAX];
+                tile_cache_path(tile_path, sizeof(tile_path), map_current_provider(), key);
+
+                if (file_exists(tile_path)) {
                     entry = load_tile_texture(appl, key, tile_path);
-                    decodes_left--;
-                } else {
-                    app_request_redraw(appl); // come back for the rest
+                } else if (queue_tile_download(appl, key)) {
+                    pending_add(key, now_ms);
                 }
-            } else if (queue_tile_download(appl, key)) {
-                pending_add(key, now_ms);
             }
         }
 

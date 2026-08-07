@@ -103,6 +103,13 @@ typedef struct
     int size;
     int capacity;
     uint64_t clock;
+    // Which entry sits in each hash slot, as its index in `entries` plus one so
+    // that zero reads as an empty slot -- which is what lets a zeroed cache be a
+    // valid empty one, the way both of these are created.
+    //
+    // An index rather than a pointer: growing the cache reallocs `entries`, and
+    // pointers into it would all have to be found and rewritten.
+    int32_t lookup[TILE_LOOKUP_SLOTS];
 } TileTextureCache;
 
 // Growable buffer for a curl response body.

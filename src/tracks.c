@@ -12,6 +12,7 @@
 #include "map.h" // the projection, the tile grid and the texture cache
 #include "colors.h"
 #include "point_index.h"
+#include "render_cache.h"
 #include "settings.h"
 #include "ui.h" // the size the sidebar draws the graphs at
 
@@ -67,73 +68,141 @@ SDL_Color heat_ramp_color(float normalized) {
     return heat_colors[(int)(normalized * (HEAT_COLOR_COUNT - 1))];
 }
 
-// A filled circle as a triangle fan, used to round the joints and caps of a
-// thick polyline.
-static void draw_circle(SDL_Renderer *renderer, float cx, float cy, float radius, SDL_Color color) {
-    const int segments = 24;
-    SDL_Vertex verts[segments + 2];
-    int indices[segments * 3];
+// Triangles on their way to the GPU, handed over in one call rather than one per
+// shape. A thick polyline used to be a draw call for every segment and another
+// for every joint, so a long track was ten thousand of them -- rebuilt on every
+// frame of a pan, because where the camera is decides what the picture looks
+// like.
+//
+// Flushed when it fills rather than sized to the longest track there could be:
+// the batch only has to be large enough that the per-call overhead stops
+// mattering. File-static because only the main thread draws, and because this is
+// far too much to put on the stack.
+#define BATCH_MAX_VERTICES 2048
+#define BATCH_MAX_INDICES 6144
 
-    verts[0].position.x = cx;
-    verts[0].position.y = cy;
-    verts[0].color = color;
-    verts[0].tex_coord.x = 0;
-    verts[0].tex_coord.y = 0;
+typedef struct GeometryBatch {
+    SDL_Vertex vertices[BATCH_MAX_VERTICES];
+    int indices[BATCH_MAX_INDICES];
+    int vertex_count;
+    int index_count;
+} GeometryBatch;
+
+static GeometryBatch batch;
+
+static void batch_flush(SDL_Renderer *renderer) {
+    if (batch.index_count == 0)
+        return;
+
+    SDL_RenderGeometry(renderer, NULL, batch.vertices, batch.vertex_count,
+                       batch.indices, batch.index_count);
+    batch.vertex_count = 0;
+    batch.index_count = 0;
+}
+
+// Room for one more shape, made by sending what is already queued if there is
+// not. Every caller reserves before it appends, so the appends themselves need
+// no bounds checks.
+static void batch_reserve(SDL_Renderer *renderer, int vertices, int indices) {
+    if (batch.vertex_count + vertices > BATCH_MAX_VERTICES ||
+        batch.index_count + indices > BATCH_MAX_INDICES)
+        batch_flush(renderer);
+}
+
+static void batch_vertex(float x, float y, SDL_Color color) {
+    SDL_Vertex *vertex = &batch.vertices[batch.vertex_count++];
+    vertex->position.x = x;
+    vertex->position.y = y;
+    vertex->color = color;
+    vertex->tex_coord.x = 0;
+    vertex->tex_coord.y = 0;
+}
+
+// How many segments a circle of this radius is worth drawing as. A joint on a
+// ten-pixel line was tessellated the same twenty-four ways as a marker twice its
+// size; past about two segments per pixel of radius the extra triangles land
+// inside each other.
+static int circle_segments(float radius) {
+    int segments = (int)(radius * 2.0f);
+    if (segments < 8)
+        segments = 8;
+    if (segments > 24)
+        segments = 24;
+    return segments;
+}
+
+// A filled circle as a triangle fan, used to round the joints and caps of a
+// thick polyline and to mark a point on the route.
+static void batch_circle(SDL_Renderer *renderer, float cx, float cy, float radius,
+                         SDL_Color color) {
+    const int segments = circle_segments(radius);
+    batch_reserve(renderer, segments + 2, segments * 3);
+
+    const int center = batch.vertex_count;
+    batch_vertex(cx, cy, color);
 
     for (int i = 0; i <= segments; i++) {
         float theta = (float)i / segments * 2.0f * (float)M_PI;
-        verts[i + 1].position.x = cx + cosf(theta) * radius;
-        verts[i + 1].position.y = cy + sinf(theta) * radius;
-        verts[i + 1].color = color;
-        verts[i + 1].tex_coord.x = 0;
-        verts[i + 1].tex_coord.y = 0;
+        batch_vertex(cx + cosf(theta) * radius, cy + sinf(theta) * radius, color);
 
         if (i > 0) {
-            int idx = (i - 1) * 3;
-            indices[idx + 0] = 0;
-            indices[idx + 1] = i;
-            indices[idx + 2] = i + 1;
+            batch.indices[batch.index_count++] = center;
+            batch.indices[batch.index_count++] = center + i;
+            batch.indices[batch.index_count++] = center + i + 1;
         }
     }
+}
 
-    SDL_RenderGeometry(renderer, NULL, verts, segments + 2, indices, segments * 3);
+// Two triangles over four corners, wound the same way for every quad below.
+static const int quad_indices[6] = {0, 1, 2, 0, 2, 3};
+
+static void batch_quad_indices(int first) {
+    for (int i = 0; i < 6; i++)
+        batch.indices[batch.index_count++] = first + quad_indices[i];
 }
 
 // One segment of a thick polyline, as a quad offset either side of the centre
-// line.
-static void draw_segment(SDL_Renderer *renderer,
-                         float x1, float y1, float x2, float y2,
-                         float thickness, SDL_Color color) {
-    float dx = x2 - x1;
-    float dy = y2 - y1;
-    float len = sqrtf(dx * dx + dy * dy);
-    if (len == 0)
-        return;
+// line. `dx, dy` is the segment's unit direction, which the caller has already
+// worked out to decide whether the joint after it is worth drawing.
+static void batch_segment(SDL_Renderer *renderer,
+                          float x1, float y1, float x2, float y2,
+                          float dx, float dy, float thickness, SDL_Color color) {
+    const float ox = -dy * (thickness / 2.0f);
+    const float oy = dx * (thickness / 2.0f);
 
-    dx /= len;
-    dy /= len;
+    batch_reserve(renderer, 4, 6);
+    const int first = batch.vertex_count;
 
-    float ox = -dy * (thickness / 2.0f);
-    float oy = dx * (thickness / 2.0f);
-
-    SDL_Vertex verts[4];
-    SDL_memset(verts, 0, sizeof(verts));
-
-    verts[0].position.x = x1 + ox;
-    verts[0].position.y = y1 + oy;
-    verts[1].position.x = x1 - ox;
-    verts[1].position.y = y1 - oy;
-    verts[2].position.x = x2 - ox;
-    verts[2].position.y = y2 - oy;
-    verts[3].position.x = x2 + ox;
-    verts[3].position.y = y2 + oy;
-
-    for (int i = 0; i < 4; i++)
-        verts[i].color = color;
-
-    int indices[] = {0, 1, 2, 0, 2, 3};
-    SDL_RenderGeometry(renderer, NULL, verts, 4, indices, 6);
+    batch_vertex(x1 + ox, y1 + oy, color);
+    batch_vertex(x1 - ox, y1 - oy, color);
+    batch_vertex(x2 - ox, y2 - oy, color);
+    batch_vertex(x2 + ox, y2 + oy, color);
+    batch_quad_indices(first);
 }
+
+// An axis-aligned rectangle. The colour rides on the vertices rather than on the
+// renderer, which is what lets a batch hold rectangles of many colours and still
+// go out as one call -- the heat tiles are nothing but rectangles, and used to
+// set a draw colour before every one of them.
+static void batch_rect(SDL_Renderer *renderer, float x, float y, float w, float h,
+                       SDL_Color color) {
+    batch_reserve(renderer, 4, 6);
+    const int first = batch.vertex_count;
+
+    batch_vertex(x, y, color);
+    batch_vertex(x + w, y, color);
+    batch_vertex(x + w, y + h, color);
+    batch_vertex(x, y + h, color);
+    batch_quad_indices(first);
+}
+
+// How straight a turn has to be for its joint to be left out. Two quads meeting
+// at an angle leave a wedge open on the outside of the turn, and that is what the
+// circle at the joint is there to fill -- but the wedge is about half-thickness
+// times the angle across, so below this it is a fraction of a pixel and the
+// circle is a fan of triangles drawn for nothing. A watch recording a fix a
+// second spends most of a track going this straight.
+#define POLYLINE_STRAIGHT_DOT 0.9995f
 
 static void draw_smooth_thick_polyline(SDL_Renderer *renderer,
                                        SDL_Point *points, int count,
@@ -143,19 +212,42 @@ static void draw_smooth_thick_polyline(SDL_Renderer *renderer,
 
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
-    for (int i = 0; i < count - 1; i++) {
-        draw_segment(renderer,
-                     points[i].x, points[i].y,
-                     points[i + 1].x, points[i + 1].y,
-                     thickness, color);
+    // The direction of the segment before this one, so a joint can be judged
+    // from the turn between the two without measuring either of them twice.
+    float previous_dx = 0.0f, previous_dy = 0.0f;
+    bool have_previous = false;
 
-        if (i > 0) {
-            draw_circle(renderer, points[i].x, points[i].y, thickness / 2.0f, color);
-        }
+    for (int i = 0; i < count - 1; i++) {
+        const float x1 = (float)points[i].x, y1 = (float)points[i].y;
+        const float x2 = (float)points[i + 1].x, y2 = (float)points[i + 1].y;
+
+        float dx = x2 - x1, dy = y2 - y1;
+        const float length = sqrtf(dx * dx + dy * dy);
+        if (length == 0.0f)
+            continue; // nothing to draw, and nothing to join to either
+        dx /= length;
+        dy /= length;
+
+        batch_segment(renderer, x1, y1, x2, y2, dx, dy, thickness, color);
+
+        // The joint belongs to the corner between this segment and the one
+        // before it, so it is drawn now that both directions are known.
+        if (have_previous &&
+            previous_dx * dx + previous_dy * dy < POLYLINE_STRAIGHT_DOT)
+            batch_circle(renderer, x1, y1, thickness / 2.0f, color);
+
+        previous_dx = dx;
+        previous_dy = dy;
+        have_previous = true;
     }
 
-    draw_circle(renderer, points[0].x, points[0].y, thickness / 2.0f, color);
-    draw_circle(renderer, points[count - 1].x, points[count - 1].y, thickness / 2.0f, color);
+    // The caps, which are round whatever the line does at the ends.
+    batch_circle(renderer, (float)points[0].x, (float)points[0].y,
+                 thickness / 2.0f, color);
+    batch_circle(renderer, (float)points[count - 1].x, (float)points[count - 1].y,
+                 thickness / 2.0f, color);
+
+    batch_flush(renderer);
 }
 
 // Releases the scratch buffer kept between frames.
@@ -179,6 +271,24 @@ void tracks_free_collection_cache(GpxCollection *collection) {
     point_index_free(&collection->point_index);
 }
 
+// The colour stamped on each pixel of the tile being rasterised, plus one so
+// that zero means nothing was stamped there. Collapsing the points onto this
+// first is what keeps a tile's cost to the pixels it has rather than the points
+// that fall on it -- a tile at a low zoom is a million of them, and there are
+// only sixty-five thousand places for them to land.
+//
+// Left zeroed between tiles by whoever wrote to it, so it needs no clearing on
+// the way in. File-static because only the main thread draws, and 64 KB is more
+// than belongs on the stack.
+static uint8_t tile_heat[TILE_SIZE * TILE_SIZE];
+
+// Amounts of heat with a ramp position remembered for them, and the entry that
+// means "not worked out yet". Heat is a count of tracks overlapping at a point,
+// so this covers any library whose busiest spot has fewer than this many; above
+// it the answer is worked out per point, as it always was.
+#define HEAT_LUT_MAX 1024
+#define HEAT_LUT_NONE 0xFF
+
 // Rasterises one heat tile and puts it in the cache. The cache is consulted by
 // the caller rather than here, because it is the caller that has to tell a hit
 // from a miss to keep to its budget for the frame.
@@ -197,12 +307,26 @@ static SDL_Texture *render_track_tile(struct application *appl, GpxCollection *c
     SDL_SetRenderTarget(appl->renderer, tex);
     SDL_SetRenderDrawColor(appl->renderer, 0, 0, 0, 0);
     SDL_RenderClear(appl->renderer);
+    SDL_SetRenderDrawBlendMode(appl->renderer, SDL_BLENDMODE_BLEND);
 
     // Read once for the whole tile rather than per point: a tile is a million
     // points on a busy map, and neither of these can change while it is being
     // rasterised.
     const int point_size = settings.track_point_size;
     const int max_heat = collection->max_heat;
+
+    // Where each amount of heat lands on the ramp, filled in as it is asked for.
+    // heat_normalized is a walk over the setpoints with a divide in it, and a
+    // tile has far more points than there are distinct amounts of heat among
+    // them. HEAT_LUT_NONE marks an answer not worked out yet.
+    uint8_t heat_color[HEAT_LUT_MAX];
+    memset(heat_color, HEAT_LUT_NONE, sizeof(heat_color));
+
+    // Which colours ended up on the tile, and the band of rows they landed in.
+    // Both are there so the emit below walks what was written rather than the
+    // whole tile.
+    uint32_t colors_present = 0;
+    int first_row = TILE_SIZE, last_row = -1;
 
     for (int j = from; j < to; j++) {
         const GpxPoint *point = collection->point_index.entries[j].point;
@@ -219,19 +343,59 @@ static SDL_Texture *render_track_tile(struct application *appl, GpxCollection *c
         // Where along the ramp this much heat sits. The settings shape that
         // curve; the result is always within 0..1, so it indexes the ramp
         // without a clamp of its own.
-        float normalized = heat_normalized(&settings, point->heat, max_heat);
+        int color_index;
+        if (point->heat >= 0 && point->heat < HEAT_LUT_MAX) {
+            if (heat_color[point->heat] == HEAT_LUT_NONE)
+                heat_color[point->heat] = (uint8_t)(heat_normalized(&settings, point->heat, max_heat) *
+                                                    (HEAT_COLOR_COUNT - 1));
+            color_index = heat_color[point->heat];
+        } else {
+            color_index = (int)(heat_normalized(&settings, point->heat, max_heat) *
+                                (HEAT_COLOR_COUNT - 1));
+        }
 
-        int color_index = (int)(normalized * (HEAT_COLOR_COUNT - 1));
-        SDL_Color color = heat_colors[color_index];
-
-        SDL_SetRenderDrawColor(appl->renderer, color.r, color.g, color.b, color.a);
-
-        SDL_Rect rct = {
-            pixel_in_tile_x - point_size / 2,
-            pixel_in_tile_y - point_size / 2,
-            point_size, point_size};
-        SDL_RenderFillRect(appl->renderer, &rct);
+        // Only the hottest point on a pixel can be seen. Every ramp colour is
+        // opaque and the square stamped down is the same size for all of them, so
+        // two points sharing a centre pixel draw the very same square and only
+        // the hotter one can matter. This is what bounds a tile at the number of
+        // pixels it has rather than the million points that may fall on it.
+        uint8_t *pixel = &tile_heat[pixel_in_tile_y * TILE_SIZE + pixel_in_tile_x];
+        if (*pixel < (uint8_t)(color_index + 1)) {
+            *pixel = (uint8_t)(color_index + 1);
+            colors_present |= 1u << color_index;
+            if (pixel_in_tile_y < first_row)
+                first_row = pixel_in_tile_y;
+            if (pixel_in_tile_y > last_row)
+                last_row = pixel_in_tile_y;
+        }
     }
+
+    // Coldest first, so a hot pixel is never buried under a cold neighbour's
+    // square. The order used to be whichever way the index happened to be
+    // sorted, which said nothing at all.
+    for (int index = 0; index < HEAT_COLOR_COUNT; index++) {
+        if (!(colors_present & (1u << index)))
+            continue;
+
+        const SDL_Color color = heat_colors[index];
+        const uint8_t stored = (uint8_t)(index + 1);
+        for (int y = first_row; y <= last_row; y++) {
+            const uint8_t *row = &tile_heat[y * TILE_SIZE];
+            for (int x = 0; x < TILE_SIZE; x++) {
+                if (row[x] == stored)
+                    batch_rect(appl->renderer,
+                               (float)(x - point_size / 2), (float)(y - point_size / 2),
+                               (float)point_size, (float)point_size, color);
+            }
+        }
+    }
+    batch_flush(appl->renderer);
+
+    // Handed back to the next tile as it was found: zeroed. Only the rows that
+    // were written have to be put back.
+    if (last_row >= first_row)
+        memset(&tile_heat[first_row * TILE_SIZE], 0,
+               (size_t)(last_row - first_row + 1) * TILE_SIZE);
 
     SDL_SetRenderTarget(appl->renderer, NULL);
 
@@ -444,15 +608,28 @@ void update_selected_track_overlay(struct application *appl, GpxCollection *coll
         appl->overlay_points_capacity = track->total_points;
     }
 
+    // Points landing on a screen pixel already taken by the one before them are
+    // dropped. A watch records a fix a second, and at anything but the deepest
+    // zoom that is repeatedly the same pixel: the segment between two of them has
+    // no length and draws nothing, while still costing a joint. What is left is
+    // the same picture from a fraction of the geometry.
+    int count = 0;
     for (int i = 0; i < track->total_points; i++) {
         float screen_x, screen_y;
         map_world_to_screen(appl, track->points[i].world_x, track->points[i].world_y,
                             &screen_x, &screen_y);
-        appl->overlay_points[i].x = (int)screen_x;
-        appl->overlay_points[i].y = (int)screen_y;
+
+        const int x = (int)screen_x, y = (int)screen_y;
+        if (count > 0 && x == appl->overlay_points[count - 1].x &&
+            y == appl->overlay_points[count - 1].y)
+            continue;
+
+        appl->overlay_points[count].x = x;
+        appl->overlay_points[count].y = y;
+        count++;
     }
     SDL_Color color = sdl_color(yellow);
-    draw_smooth_thick_polyline(appl->renderer, appl->overlay_points, track->total_points, SELECTED_TRACK_THICKNESS, color);
+    draw_smooth_thick_polyline(appl->renderer, appl->overlay_points, count, SELECTED_TRACK_THICKNESS, color);
 
     SDL_SetRenderTarget(appl->renderer, NULL);
 
@@ -675,6 +852,9 @@ void tracks_free_graphs(struct application *appl) {
     for (int kind = 0; kind < TRACK_SERIES_COUNT; kind++) {
         track_series_free(&appl->track_series[kind]);
         if (appl->icons.graphs[kind]) {
+            // The uploaded copy is keyed by this surface's address, and the next
+            // selection's graph may well be handed the same one back.
+            render_cache_forget_surface(appl->icons.graphs[kind]);
             SDL_FreeSurface(appl->icons.graphs[kind]);
             appl->icons.graphs[kind] = NULL;
         }
@@ -719,9 +899,12 @@ void update_track_info_graphs(struct application *appl, const GpxCollection *col
         if (!track_series_build(track, (TrackSeriesKind)kind, &appl->track_series[kind]))
             continue;
 
+        // A font of its own rather than one the UI is drawing with: this sets a
+        // size on it, and a UI font found at a size other than its own would be
+        // resized on every element again.
         appl->icons.graphs[kind] = render_series_surface(
-            appl->renderer, appl->fonts[0].font, track, &appl->track_series[kind],
-            graph_width, graph_height,
+            appl->renderer, appl->fonts[UI_FONT_GRAPH_LABEL].font, track,
+            &appl->track_series[kind], graph_width, graph_height,
             series_colors[kind].fill, series_colors[kind].line);
     }
 }
@@ -749,8 +932,9 @@ void tracks_draw_point_marker(struct application *appl, const GpxCollection *col
                                         2.0f * radius, 2.0f * radius);
 
     SDL_SetRenderDrawBlendMode(appl->renderer, SDL_BLENDMODE_BLEND);
-    draw_circle(appl->renderer, dest.x + dest.w / 2.0f, dest.y + dest.h / 2.0f,
-                dest.w / 2.0f, sdl_color(bg0));
-    draw_circle(appl->renderer, dest.x + dest.w / 2.0f, dest.y + dest.h / 2.0f,
-                dest.w / 2.0f - 2.0f, sdl_color(red));
+    batch_circle(appl->renderer, dest.x + dest.w / 2.0f, dest.y + dest.h / 2.0f,
+                 dest.w / 2.0f, sdl_color(bg0));
+    batch_circle(appl->renderer, dest.x + dest.w / 2.0f, dest.y + dest.h / 2.0f,
+                 dest.w / 2.0f - 2.0f, sdl_color(red));
+    batch_flush(appl->renderer);
 }

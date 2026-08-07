@@ -46,6 +46,25 @@ typedef struct
     TTF_Font *font;
 } SDL2_Font;
 
+// One font per size anything is drawn at. SDL2_ttf drops a font's whole glyph
+// cache whenever its size changes, and a single sidebar row draws a value at one
+// size next to its unit at another -- so one font resized per element rebuilt
+// every glyph from its outline on every draw. A font apiece means the size is
+// never changed and the glyphs are kept.
+//
+// The sizes themselves live in ui.c, next to the layout constants they come
+// from. This is only how many there are and what each is for -- which is what
+// sizes struct application's font array, and what lets tracks.c ask for the one
+// it rasterises the sidebar's graph labels with rather than borrowing a font the
+// UI is drawing text at.
+typedef enum UiFont {
+    UI_FONT_SMALL = 0,
+    UI_FONT_LABEL,
+    UI_FONT_HEADING,
+    UI_FONT_GRAPH_LABEL,
+    UI_FONT_COUNT
+} UiFont;
+
 // Icon surfaces are decoded once at startup and handed to Clay by pointer every
 // frame. Clay does not take ownership, so these are freed in appl_cleanup.
 typedef struct
