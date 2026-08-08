@@ -50,6 +50,12 @@ typedef struct GpxTrack {
     ActivityType act_type;
 
     bool visible_in_list;
+    // Whether any <trkpt> carried both coordinates. False for an activity
+    // recorded without GPS -- a treadmill run -- whose numbers come from the
+    // <summary> its import wrote instead of from a path. Everything that
+    // projects, indexes or draws a position asks this first: a point that never
+    // had coordinates would otherwise read as world pixel (0, 0).
+    bool has_path;
 
     // Parsed once at load, from the first and last <trkpt> that carried a
     // time. Everything downstream -- the date filter, the sort, the displayed

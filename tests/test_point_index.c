@@ -77,6 +77,7 @@ void run_point_index_tests(void) {
             tracks[t] = (GpxTrack){0};
             tracks[t].points = storage[t];
             tracks[t].total_points = PER_TRACK;
+            tracks[t].has_path = true; // built with coordinates, as the parser would
             tracks[t].track_id = t;
             // Two tracks are filtered out, to pin down that the index holds
             // their points anyway: it is what makes a change to the filters
@@ -162,6 +163,7 @@ void run_point_index_tests(void) {
             tracks[t] = (GpxTrack){0};
             tracks[t].points = storage[t];
             tracks[t].total_points = PER_TRACK;
+            tracks[t].has_path = true; // built with coordinates, as the parser would
             tracks[t].visible_in_list = true;
             for (int i = 0; i < PER_TRACK; i++) {
                 storage[t][i] = (GpxPoint){0};

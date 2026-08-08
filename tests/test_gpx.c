@@ -17,6 +17,27 @@ static void parse_string(const char *xml, GpxTrack *track, TrackTimes *times) {
     xmlFreeDoc(doc);
 }
 
+// The same, through gpx_parse_file rather than the walk alone: everything
+// derived once the whole document has been seen -- the elapsed seconds, the
+// summary an activity with no path is counted by -- only happens there. The
+// file is written and removed around the parse because a path on disk is the
+// only way in gpx_parse_file has.
+static void parse_file(const char *path, const char *xml, GpxTrack *track,
+                       TrackTimes *times) {
+    FILE *file = fopen(path, "w");
+    CHECK(file != NULL);
+    if (!file)
+        return;
+
+    fputs(xml, file);
+    fclose(file);
+
+    track->start_utc = (time_t)-1;
+    track->end_utc = (time_t)-1;
+    CHECK(gpx_parse_file((char *)path, track, times));
+    remove(path);
+}
+
 // Builds a track over a fixed set of elevations. Coordinates advance in a
 // straight line so partial_distance is monotonic; only elevation matters to the
 // suites below that use it.
@@ -25,6 +46,7 @@ static GpxTrack track_with_elevations(const float *elevations, int count) {
     track.points = calloc((size_t)count, sizeof(GpxPoint));
     track.total_points = count;
     track.points_capacity = count;
+    track.has_path = true; // coordinates below, as the parser would have set it
     for (int i = 0; i < count; i++) {
         track.points[i].lat = 48.0 + i * 0.0001;
         track.points[i].lon = 11.0;
@@ -405,5 +427,124 @@ void run_gpx_tests(void) {
             free(times.at);
             remove(path);
         }
+    }
+
+    SUITE("gpx: an activity with no path takes its numbers from <summary>");
+    // A treadmill run: the export has no trackpoints to measure, so the totals
+    // its import wrote are the only thing it can be counted by. The whole file
+    // rather than gpx_extract_coords alone, because the summary is applied
+    // after the walk has established there is no path.
+    {
+        GpxTrack track = {0};
+        TrackTimes times = {0};
+        parse_file("test_summary.gpx",
+                   "<gpx xmlns:fp='https://github.com/JulianFreu/footprints/summary/1'>"
+                   "<trk><type>Running</type><extensions>"
+                   "<fp:summary start='2026-01-15T18:30:00Z' distance='8046.72'"
+                   " duration='2700.00' ascent='12.50' descent='7.25'/>"
+                   "</extensions><trkseg/></trk></gpx>",
+                   &track, &times);
+
+        CHECK(!track.has_path);
+        CHECK_INT(track.total_points, 0);
+        CHECK_INT(track.act_type, Run);
+        // Metres in the file, kilometres in the track, the same conversion
+        // track_calculate_distance makes.
+        CHECK_NEAR(track.distance, 8.04672, 1e-5);
+        CHECK_NEAR(track.duration_secs, 2700.0, 1e-6);
+        CHECK_NEAR(track.elev_up, 12.5, 1e-6);
+        CHECK_NEAR(track.elev_down, 7.25, 1e-6);
+        CHECK_NEAR(track.secs_per_km, 2700.0 / 8.04672, 1e-3);
+        // Dated, which is the whole point: the statistics and records panels
+        // both count a track by whether it has a start.
+        CHECK_INT(track.start_utc, iso8601_to_utc("2026-01-15T18:30:00Z"));
+        CHECK_INT(track.end_utc, iso8601_to_utc("2026-01-15T18:30:00Z") + 2700);
+        // Shapes of a run, not totals; there is no series to take them from.
+        CHECK_NEAR(track.high_point, 0.0, 1e-6);
+        CHECK_NEAR(track.splits[SPLIT_5K], 0.0, 1e-6);
+        // Nothing for the map to centre on, index or draw.
+        CHECK_INT(track.mid_x, 0);
+        CHECK_INT(track.mid_y, 0);
+
+        free(track.points);
+        free(times.at);
+    }
+
+    SUITE("gpx: a path outranks a summary");
+    // Where the trackpoints can answer, they do. A summary that wandered into
+    // an outdoor file is not allowed to contradict what was recorded.
+    {
+        GpxTrack track = {0};
+        TrackTimes times = {0};
+        parse_file("test_summary_ignored.gpx",
+                   "<gpx><trk><trkseg>"
+                   "<trkpt lat='48.0000' lon='11.0'><ele>500.0</ele>"
+                   "<time>2025-05-01T06:00:00Z</time></trkpt>"
+                   "<trkpt lat='48.0100' lon='11.0'><ele>500.0</ele>"
+                   "<time>2025-05-01T06:10:00Z</time></trkpt>"
+                   "</trkseg><extensions>"
+                   "<summary start='2026-01-15T18:30:00Z' distance='8046.72'"
+                   " duration='2700.00' ascent='12.50'/>"
+                   "</extensions></trk></gpx>",
+                   &track, &times);
+
+        CHECK(track.has_path);
+        CHECK_NEAR(track.distance, 1.1119, 1e-3); // measured, not 8.05
+        CHECK_NEAR(track.duration_secs, 600.0, 1e-6);
+        CHECK_INT(track.start_utc, iso8601_to_utc("2025-05-01T06:00:00Z"));
+
+        free(track.points);
+        free(times.at);
+    }
+
+    SUITE("gpx: no times and no summary is still no date");
+    // The planned routes in a library of recordings. Nothing here changes what
+    // an undated file is: only an explicit summary dates one without times.
+    {
+        GpxTrack track = {0};
+        TrackTimes times = {0};
+        parse_file("test_planned.gpx",
+                   "<gpx><trk><trkseg>"
+                   "<trkpt lat='48.0000' lon='11.0'><ele>500.0</ele></trkpt>"
+                   "<trkpt lat='48.0100' lon='11.0'><ele>500.0</ele></trkpt>"
+                   "</trkseg></trk></gpx>",
+                   &track, &times);
+
+        CHECK(track.has_path);
+        CHECK_INT(track.start_utc, (time_t)-1);
+        CHECK_NEAR(track.duration_secs, 0.0, 1e-6);
+
+        free(track.points);
+        free(times.at);
+    }
+
+    SUITE("gpx: trackpoints without coordinates are not a path");
+    // Some exports keep a point per second for the heart rate and drop only the
+    // position. Those points are not somewhere the activity went, so the
+    // summary still applies and nothing claims a place on the map.
+    {
+        GpxTrack track = {0};
+        TrackTimes times = {0};
+        parse_file("test_summary_unplaced.gpx",
+                   "<gpx><trk><extensions>"
+                   "<summary start='2026-01-15T18:30:00Z' distance='5000.00'"
+                   " duration='1500.00'/>"
+                   "</extensions><trkseg>"
+                   "<trkpt><time>2026-01-15T18:30:00Z</time></trkpt>"
+                   "<trkpt><time>2026-01-15T18:40:00Z</time></trkpt>"
+                   "</trkseg></trk></gpx>",
+                   &track, &times);
+
+        CHECK(!track.has_path);
+        CHECK_INT(track.total_points, 2);
+        // The summary wins over the two timestamps: it describes the whole
+        // activity, and they only describe the points that kept a clock.
+        CHECK_NEAR(track.distance, 5.0, 1e-6);
+        CHECK_NEAR(track.duration_secs, 1500.0, 1e-6);
+        CHECK_INT(track.mid_x, 0);
+        CHECK_INT(track.mid_y, 0);
+
+        free(track.points);
+        free(times.at);
     }
 }

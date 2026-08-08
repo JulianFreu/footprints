@@ -246,6 +246,7 @@ void run_heat_tests(void) {
             tracks[t] = (GpxTrack){0};
             tracks[t].points = &storage[t * PER_TRACK];
             tracks[t].total_points = PER_TRACK;
+            tracks[t].has_path = true; // built with coordinates, as the parser would
             tracks[t].track_id = t;
             tracks[t].visible_in_list = true;
             for (int i = 0; i < PER_TRACK; i++) {

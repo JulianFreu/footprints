@@ -601,7 +601,9 @@ void update_selected_track_overlay(struct application *appl, GpxCollection *coll
             break;
         }
     }
-    if (!track) {
+    // A track with no path has nothing to trace: every point of it would
+    // project to the same place, drawing a dot on Null Island.
+    if (!track || !track->has_path) {
         SDL_SetRenderTarget(appl->renderer, NULL);
         overlay_discard(appl);
         return;
@@ -701,7 +703,10 @@ static SDL_Texture *generate_series_texture(SDL_Renderer *renderer, TTF_Font *fo
                                             const GpxTrack *track,
                                             const TrackSeries *series, int width, int height,
                                             Clay_Color fill, Clay_Color line) {
-    if (!renderer || track->total_points < 2 || !series->present ||
+    // The x axis of every one of these graphs is the distance covered, which a
+    // track with no path has none of: its total is a number its import was
+    // told, not a series measured along the way.
+    if (!renderer || !track->has_path || track->total_points < 2 || !series->present ||
         series->count != track->total_points)
         return NULL;
 
@@ -932,7 +937,10 @@ void tracks_draw_point_marker(struct application *appl, const GpxCollection *col
         return;
 
     const GpxTrack *track = &collection->tracks[track_id];
-    if (point_index < 0 || point_index >= track->total_points)
+    // has_path as well as the bounds: a point that never carried coordinates
+    // would put the marker on Null Island rather than on the track it belongs
+    // to, which is nowhere near where the pointer is.
+    if (!track->has_path || point_index < 0 || point_index >= track->total_points)
         return;
 
     float screen_x, screen_y;

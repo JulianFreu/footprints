@@ -735,11 +735,15 @@ static void select_clicked_track(struct application *appl,
         return;
 
     appl->selected_track = track_id;
-    // Offset by a quarter of the window so the track lands clear of the
-    // panels on the left rather than dead centre.
-    appl->world_x = collection->tracks[track_id].mid_x -
-                    (appl->window_width / 4) * map_world_per_pixel(appl);
-    appl->world_y = collection->tracks[track_id].mid_y;
+    // A track recorded without GPS is selected without moving the map: it has
+    // nowhere to move to, and its numbers are what the click was after anyway.
+    if (collection->tracks[track_id].has_path) {
+        // Offset by a quarter of the window so the track lands clear of the
+        // panels on the left rather than dead centre.
+        appl->world_x = collection->tracks[track_id].mid_x -
+                        (appl->window_width / 4) * map_world_per_pixel(appl);
+        appl->world_y = collection->tracks[track_id].mid_y;
+    }
     app_request_redraw(appl);
 }
 

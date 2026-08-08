@@ -25,6 +25,11 @@ from datetime import datetime
 
 GPX_NAMESPACE = "http://www.topografix.com/GPX/1/1"
 
+# The <summary> element written into an export that has no path to measure, and
+# read back by src/gpx_parser.c. Its own namespace because it is Footprints'
+# invention rather than anything a GPX reader is expected to know.
+SUMMARY_NAMESPACE = "https://github.com/JulianFreu/footprints/summary/1"
+
 LIST_PATH = "/activitylist-service/activities/search/activities"
 GPX_PATH = "/download-service/export/gpx/activity/{}"
 
@@ -122,15 +127,76 @@ def existing_ids(output_folder):
     return found
 
 
-def with_activity_type(gpx_bytes, type_name):
-    """The GPX with <trk><type> set to `type_name`, or unchanged bytes.
+def local_name(element):
+    """The tag without the namespace ElementTree brackets onto the front."""
+    return element.tag.split("}")[-1]
 
-    That element is not part of the GPX standard -- it is how Footprints tells a
-    run from a ride -- so Garmin's own value is replaced rather than merely
-    filled in. A document that will not parse is passed through untouched: this
-    is not the place to repair one.
+
+def child_named(parent, name):
+    """The first child of `parent` with that local name, or None."""
+    return next((c for c in parent if local_name(c) == name), None)
+
+
+def insert_before_segments(parent, element):
+    """`element` added to `parent`, but ahead of any track segments.
+
+    The parser finds it either way; only one of the two orders is a valid GPX
+    document.
     """
-    if type_name is None:
+    index = next(
+        (i for i, c in enumerate(parent) if local_name(c) == "trkseg"), len(parent)
+    )
+    parent.insert(index, element)
+    return element
+
+
+def has_path(root):
+    """Whether any trackpoint in the document carries both coordinates."""
+    return any(
+        local_name(e) == "trkpt" and e.get("lat") and e.get("lon") for e in root.iter()
+    )
+
+
+def summary_of(activity):
+    """The totals for an activity Footprints cannot measure for itself, or None.
+
+    Distance is something the parser derives from the path, and a GPX has
+    nowhere to state it outright -- so a treadmill run, whose export has no
+    path, would otherwise land as an undated row of zeroes that the statistics
+    and records panels both pass over. Garmin knows every one of the numbers and
+    the listing carrying them has already been fetched, so they are written into
+    the file rather than dropped on the floor.
+
+    Metres and seconds, which is what every other number in a GPX is spelled in.
+    """
+    start = parse_timestamp(activity.get("startTimeGMT"))
+    if start is None:
+        return None  # nothing to date it by, and a summary needs a date
+
+    def number(key):
+        value = activity.get(key)
+        return f"{float(value):.2f}" if isinstance(value, (int, float)) else "0"
+
+    return {
+        "start": start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "distance": number("distance"),
+        "duration": number("duration"),
+        "ascent": number("elevationGain"),
+        "descent": number("elevationLoss"),
+    }
+
+
+def annotated(gpx_bytes, type_name, summary):
+    """The GPX with <trk><type> set, and `summary` added where it has no path.
+
+    <type> is not part of the GPX standard -- it is how Footprints tells a run
+    from a ride -- so Garmin's own value is replaced rather than merely filled
+    in. The summary is written only into an export with no trackpoints to
+    measure, so an outdoor activity comes out exactly as Garmin sent it and
+    nothing in the file can contradict what its path says. A document that will
+    not parse is passed through untouched: this is not the place to repair one.
+    """
+    if type_name is None and summary is None:
         return gpx_bytes
 
     try:
@@ -139,28 +205,37 @@ def with_activity_type(gpx_bytes, type_name):
         return gpx_bytes
 
     namespace = root.tag.split("}")[0][1:] if root.tag.startswith("{") else ""
-    type_tag = f"{{{namespace}}}type" if namespace else "type"
+
+    def tag(name):
+        return f"{{{namespace}}}{name}" if namespace else name
+
+    if summary is not None and has_path(root):
+        summary = None
+
+    tracks = [e for e in root.iter() if local_name(e) == "trk"]
+    if not tracks and summary is not None:
+        # An export with nothing to plot sometimes carries no <trk> at all, and
+        # a summary with nowhere to hang is an activity that stays invisible.
+        tracks = [ET.SubElement(root, tag("trk"))]
 
     changed = False
-    for track in root.iter():
-        if track.tag.split("}")[-1] != "trk":
-            continue
+    for track in tracks:
+        if type_name is not None:
+            element = child_named(track, "type")
+            if element is None:
+                element = insert_before_segments(track, ET.Element(tag("type")))
+            if (element.text or "").strip().lower() != type_name:
+                element.text = type_name
+                changed = True
 
-        element = next((c for c in track if c.tag.split("}")[-1] == "type"), None)
-        if element is None:
-            # Before the segments rather than after them: the parser finds it
-            # either way, but only one of the two is a valid GPX document.
-            first_segment = next(
-                (i for i, c in enumerate(track) if c.tag.split("}")[-1] == "trkseg"),
-                len(track),
-            )
-            element = ET.Element(type_tag)
-            track.insert(first_segment, element)
-        elif (element.text or "").strip().lower() == type_name:
-            continue  # already says what we were going to write
-
-        element.text = type_name
-        changed = True
+        if summary is not None:
+            extensions = child_named(track, "extensions")
+            if extensions is None:
+                extensions = insert_before_segments(
+                    track, ET.Element(tag("extensions"))
+                )
+            ET.SubElement(extensions, f"{{{SUMMARY_NAMESPACE}}}summary", summary)
+            changed = True
 
     if not changed:
         return gpx_bytes
@@ -168,6 +243,7 @@ def with_activity_type(gpx_bytes, type_name):
     # Without this the default namespace comes back as ns0:, which parses the
     # same but makes the file look nothing like the one Garmin sent.
     ET.register_namespace("", namespace or GPX_NAMESPACE)
+    ET.register_namespace("footprints", SUMMARY_NAMESPACE)
     return ET.tostring(root, encoding="UTF-8", xml_declaration=True)
 
 
@@ -265,8 +341,10 @@ def sync(session_dir, output_folder):
         activity_id = int(activity["activityId"])
         try:
             data = garth.download(GPX_PATH.format(activity_id))
-            data = with_activity_type(
-                data, activity_type((activity.get("activityType") or {}).get("typeKey"))
+            data = annotated(
+                data,
+                activity_type((activity.get("activityType") or {}).get("typeKey")),
+                summary_of(activity),
             )
             name = output_name(activity_id, parse_timestamp(activity.get("startTimeGMT")))
             with open(os.path.join(output_folder, name), "wb") as out:

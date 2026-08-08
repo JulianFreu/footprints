@@ -226,8 +226,13 @@ static int heat_worker_count(void) {
 
 bool calculate_heatmap(GpxCollection *collection, const Progress *progress) {
     int total_points = 0;
+    // A track with no path is skipped by both loops, and by both for the same
+    // reason: its points never had coordinates, so they would all land on top
+    // of each other at world pixel (0, 0) and burn a hot spot into the map off
+    // the coast of Africa. The two conditions have to stay identical -- the
+    // count sizes the array the kd-tree is then built over.
     for (int i = 0; i < collection->total_tracks; i++) {
-        if (collection->tracks[i].visible_in_list == true) {
+        if (collection->tracks[i].visible_in_list == true && collection->tracks[i].has_path) {
             total_points = total_points + collection->tracks[i].total_points;
             LOG_DEBUG("%d points in track %d\n", collection->tracks[i].total_points, i);
         }
@@ -243,7 +248,7 @@ bool calculate_heatmap(GpxCollection *collection, const Progress *progress) {
     }
     int i = 0;
     for (int track_id = 0; track_id < collection->total_tracks; track_id++) {
-        if (collection->tracks[track_id].visible_in_list == true) {
+        if (collection->tracks[track_id].visible_in_list == true && collection->tracks[track_id].has_path) {
             for (int point_id = 0; point_id < collection->tracks[track_id].total_points; point_id++) {
                 points[i] = &collection->tracks[track_id].points[point_id];
                 i++;

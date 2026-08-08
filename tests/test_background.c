@@ -31,6 +31,7 @@ static void build_collection(GpxCollection *collection, GpxTrack *tracks,
         tracks[t] = (GpxTrack){0};
         tracks[t].points = &storage[t * per_track];
         tracks[t].total_points = per_track;
+        tracks[t].has_path = true; // built with coordinates, as the parser would
         tracks[t].track_id = t;
         tracks[t].visible_in_list = true;
         for (int i = 0; i < per_track; i++) {

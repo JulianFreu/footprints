@@ -228,6 +228,27 @@ void run_stats_tests(void) {
     CHECK_INT(series.count, 1);
     CHECK_NEAR(series.buckets[0].value[STATS_METRIC_TOTAL_DISTANCE], 10.0, 1e-4);
 
+    SUITE("stats: an activity with no path is counted like any other");
+    // A treadmill run, as gpx_parse_file leaves it: dated and with its totals,
+    // but no points and nowhere on the map. The panel counts a track by its
+    // numbers, not by whether it went anywhere, and this is that contract.
+    GpxTrack indoor[2] = {
+        track_at("2025-04-07T18:00:00Z", 8.0f, 2700.0f, 0.0f),
+        track_at("2025-04-07T06:00:00Z", 12.0f, 3600.0f, 250.0f)};
+    indoor[0].total_points = 0;
+    indoor[0].has_path = false;
+    indoor[1].has_path = true;
+    GpxCollection mixed = {0};
+    mixed.tracks = indoor;
+    mixed.total_tracks = 2;
+    CHECK(stats_build(&series, &mixed, STATS_PERIOD_DAY));
+    CHECK_INT(series.count, 1);
+    CHECK_INT(series.buckets[0].track_count, 2);
+    CHECK_NEAR(series.buckets[0].value[STATS_METRIC_TOTAL_DISTANCE], 20.0, 1e-4);
+    CHECK_NEAR(series.buckets[0].value[STATS_METRIC_TOTAL_TIME], 6300.0, 1e-4);
+    CHECK_NEAR(series.buckets[0].value[STATS_METRIC_TOTAL_ASCENT], 250.0, 1e-4);
+    CHECK_NEAR(series.buckets[0].value[STATS_METRIC_LONGEST_RUN], 12.0, 1e-4);
+
     SUITE("stats: nothing to show leaves the series empty, not stale");
     CHECK(stats_build(&series, &weeks, STATS_PERIOD_WEEK));
     CHECK_INT(series.count, 2);

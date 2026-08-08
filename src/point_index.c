@@ -46,6 +46,9 @@ bool point_index_ensure(GpxCollection *collection) {
 
     index->count = 0;
 
+    // An upper bound rather than the exact figure: the fill below skips the
+    // tracks that have no path, and a few unused slots are cheaper than a
+    // second pass to find out how many there were.
     int needed = 0;
     for (int t = 0; t < collection->total_tracks; t++)
         needed += collection->tracks[t].total_points;
@@ -62,6 +65,10 @@ bool point_index_ensure(GpxCollection *collection) {
 
     for (int t = 0; t < collection->total_tracks; t++) {
         const GpxTrack *track = &collection->tracks[t];
+        // Indexing a track with no coordinates would put it under the cursor
+        // for anyone who clicked the middle of the Atlantic.
+        if (!track->has_path)
+            continue;
         for (int i = 0; i < track->total_points; i++) {
             const GpxPoint *point = &track->points[i];
             index->entries[index->count++] = (IndexedPoint){

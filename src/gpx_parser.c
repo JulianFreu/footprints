@@ -188,6 +188,69 @@ static uint16_t extensions_heart_rate(xmlNode *node) {
     return 0;
 }
 
+// One numeric attribute of a <summary>, or 0 where it is absent.
+static double summary_number(xmlNode *node, const char *name) {
+    xmlChar *value = xmlGetProp(node, (const xmlChar *)name);
+    if (!value)
+        return 0.0;
+
+    double number = atof((const char *)value);
+    xmlFree(value);
+    return number;
+}
+
+// The numbers an activity recorded without GPS was imported with, or false if
+// the document carries none.
+//
+// A GPX has nowhere to say how far an activity went -- distance is a thing the
+// parser derives from the path -- so an import that knows the totals for an
+// activity that has no path writes them into <trk><extensions> as
+//
+//     <summary start="..." distance="..." duration="..." ascent="..."
+//              descent="..."/>
+//
+// with the metres and seconds every other number in a GPX is spelled in.
+// Matched on the local name and searched recursively for the same reason the
+// heart rate above is: the prefix is whatever the writer chose.
+static bool extract_summary(xmlNode *node, GpxTrack *track) {
+    for (xmlNode *child = node; child; child = child->next) {
+        if (child->type != XML_ELEMENT_NODE)
+            continue;
+
+        if (xmlStrcasecmp(child->name, (const xmlChar *)"summary") == 0) {
+            xmlChar *start = xmlGetProp(child, (const xmlChar *)"start");
+            if (!start)
+                continue; // nothing to date it by, so nothing worth reading
+
+            time_t start_utc = iso8601_to_utc((const char *)start);
+            xmlFree(start);
+            if (start_utc == (time_t)-1)
+                continue;
+
+            // Absent reads as zero, which is what a treadmill's ascent
+            // genuinely is and what an unmeasured total is indistinguishable
+            // from anyway.
+            double distance = summary_number(child, "distance");
+            double duration = summary_number(child, "duration");
+
+            track->start_utc = start_utc;
+            track->end_utc = start_utc + (time_t)duration;
+            track->duration_secs = (float)duration;
+            track->distance = (float)(distance / 1000.0); // metres to kilometres
+            track->elev_up = (float)summary_number(child, "ascent");
+            track->elev_down = (float)summary_number(child, "descent");
+            track->secs_per_km = (track->distance > 0.0f)
+                                     ? track->duration_secs / track->distance
+                                     : 0.0f;
+            return true;
+        }
+
+        if (extract_summary(child->children, track))
+            return true;
+    }
+    return false;
+}
+
 // Walks the document for <trkpt> elements, appending a point for each and its
 // timestamp to `times`. The timestamps used to be read by a second walk of the
 // same nodes that kept only the first and the last; the split search needs all
@@ -279,6 +342,7 @@ static bool gpx_extract_coords(xmlNode *node, GpxTrack *track, TrackTimes *times
                 pt->track_id = track->track_id;
                 pt->heat = 1;
                 pt->heart_rate = heart_rate;
+                track->has_path = true;
 
                 if (elevation_found)
                     pt->elevation = elevation;
@@ -301,7 +365,9 @@ static bool gpx_extract_coords(xmlNode *node, GpxTrack *track, TrackTimes *times
 static void track_calculate_mid_point(GpxTrack *track) {
     uint64_t mid_x = 0;
     uint64_t mid_y = 0;
-    if (track->total_points <= 0)
+    // Averaging the points of a track that never had coordinates would put its
+    // middle at world pixel (0, 0), and the map would fly to Null Island for it.
+    if (track->total_points <= 0 || !track->has_path)
         return;
 
     for (int i = 0; i < track->total_points; i++) {
@@ -453,6 +519,15 @@ static bool gpx_parse_file(char *filename, GpxTrack *track, TrackTimes *times) {
         track_splits_compute(track, times->at);
         LOG_DEBUG("5k: %f, 10k: %f\n", track->splits[SPLIT_5K],
                   track->splits[SPLIT_10K]);
+
+        // Only where there is no path to derive them from. An outdoor track
+        // keeps the numbers measured above, so a stray <summary> cannot
+        // contradict what the trackpoints say. The high and low points and the
+        // splits stay zero: those are shapes of a run, not totals, and there is
+        // no series here to take them from.
+        if (!track->has_path && extract_summary(root_element, track))
+            LOG_DEBUG("summary: %.2f km in %.0f s\n", (double)track->distance,
+                      (double)track->duration_secs);
     }
 
     // xmlCleanupParser() is a once-per-process teardown call, not a per-document

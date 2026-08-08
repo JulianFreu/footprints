@@ -155,6 +155,16 @@ Activities are downloaded through Garmin's own GPX export. The activity type it
 reports is written into the `<type>` element described below, so a trail run
 imports as a run rather than as `Other`.
 
+An activity recorded without GPS — a treadmill run — exports with no path at
+all, and everything Footprints normally knows about a track is measured from
+one. Rather than let it land as a row of zeroes, the import writes Garmin's own
+distance, duration and ascent into the file as a `<summary>` element, and the
+parser reads those where there are no trackpoints to measure. Such an activity
+counts towards the statistics and the records like any other; it simply has
+nowhere to appear on the map. Treadmill runs downloaded before this existed
+carry no summary — delete them and press **Import new activities** again, and
+they will come back with their numbers.
+
 This needs `garth-ng`, which is in `requirements.txt`:
 
 ```bash
