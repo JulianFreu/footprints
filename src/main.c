@@ -445,27 +445,27 @@ static void dispatch_event(struct application *appl, GpxCollection *collection,
                event.button.button == SDL_BUTTON_LEFT) {
         appl->left_mouse_button_pressed = false;
         if (!appl->mouse_over_ui) {
-            // A click landing while a zoom is still easing is on a picture the
-            // model has already moved past, so it is put back into the model's
-            // own space before being unprojected.
-            float unscaled_x, unscaled_y;
-            map_screen_untransform(appl, (float)event.button.x, (float)event.button.y,
-                                   &unscaled_x, &unscaled_y);
-
-            int click_world_x, click_world_y;
-            map_screen_to_world(appl, unscaled_x, unscaled_y, &click_world_x, &click_world_y);
-            appl->selected_track = find_track_near_click(collection, click_world_x, click_world_y, appl->zoom, 10);
+            const GpxPoint *point = tracks_point_at_screen(appl, collection, event.button.x,
+                                                           event.button.y, MAP_HOVER_RADIUS_PIXELS);
+            appl->selected_track = point ? point->track_id : -1;
         }
-    } else if (event.type == SDL_MOUSEMOTION && appl->dragging) {
-        // Divided by the scale for the same reason: on a frame drawn at half
-        // size a screen pixel of drag covers two of the model's, and without
-        // this the map would lag the cursor for as long as a zoom was easing.
-        const double per_pixel = map_world_per_pixel(appl) / appl->map_transform.scale;
-        appl->world_x -= (int)(event.motion.xrel * per_pixel);
-        appl->world_y -= (int)(event.motion.yrel * per_pixel);
     } else if (event.type == SDL_MOUSEMOTION) {
+        // Recorded whatever the drag is doing. Kept out of the branch below
+        // because a pan that ends without a further motion event would
+        // otherwise leave this at wherever the drag began -- and the heat
+        // readout would answer for that pixel rather than the one under the
+        // cursor.
         appl->mouse_x = event.motion.x;
         appl->mouse_y = event.motion.y;
+
+        if (appl->dragging) {
+            // Divided by the scale for the same reason: on a frame drawn at half
+            // size a screen pixel of drag covers two of the model's, and without
+            // this the map would lag the cursor for as long as a zoom was easing.
+            const double per_pixel = map_world_per_pixel(appl) / appl->map_transform.scale;
+            appl->world_x -= (int)(event.motion.xrel * per_pixel);
+            appl->world_y -= (int)(event.motion.yrel * per_pixel);
+        }
     } else if (event.type == SDL_KEYDOWN) {
         if (event.key.keysym.sym == SDLK_TAB)
             ui_toggle_run_list();

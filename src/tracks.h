@@ -29,7 +29,12 @@ void tracks_draw_heat_tiles(struct application *appl, GpxCollection *collection,
                             const VisibleTile *tiles, int count);
 // Draws the selected track's polyline over the whole window.
 void tracks_draw_selected_overlay(struct application *appl);
-int find_track_near_click(GpxCollection *collection, int click_x, int click_y, int current_zoom, int max_pixel_distance);
+// The nearest visible track point to a screen position, or NULL when nothing is
+// within `max_pixel_distance` of it. A click wants the track this answers with,
+// the map's heat readout wants the point itself, so the walk -- and the
+// unprojection in front of it -- lives here rather than inside either of them.
+const GpxPoint *tracks_point_at_screen(const struct application *appl, GpxCollection *collection,
+                                       int screen_x, int screen_y, int max_pixel_distance);
 void update_selected_track_overlay(struct application *appl, GpxCollection *collection);
 
 // The colour at `normalized` (0 cold, 1 hot) along the heat ramp. The ramp

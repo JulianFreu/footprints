@@ -80,7 +80,7 @@ back to the default rather than stopping the program.
 
 | Setting | What it does |
 |---------|--------------|
-| Heat colours | Six setpoints shaping where a given amount of heat lands on the colour ramp |
+| Heat colours | Six setpoints shaping where a given amount of heat lands on the colour ramp, and whether the heat under the cursor is shown as a number |
 | Map | The tile provider, the Stadia API key, and a button to drop the cached tile textures |
 | Heat calculation | The overlap radius the heat is calculated with, and the size of the square drawn per track point |
 | Library | The folder scanned for `.gpx` files, and a button to read it again |
@@ -107,6 +107,14 @@ A change here only re-draws the map. Changing the **overlap radius** is
 different — it feeds the calculation itself, so the *Recalculate heat* button
 lights up while the setting and the map disagree, and pressing it re-runs the
 calculation.
+
+**Show heat tooltip** answers the same question as a number rather than a
+colour. With it on, holding the cursor over a track shows the heat of the point
+under it — the count of other tracks passing within the overlap radius — as a
+percentage of the busiest point in your library, beside a swatch of the colour
+that point is drawn in. It follows the cursor, appears only over a track, and
+never over an open panel. It is on by default; the button turns it off, and the
+choice is saved like the rest of the panel.
 
 TODO: delete this part also in code. The settings menu should be the only place to configure stadiamaps
 If `src/api_key.h` is left over from before the settings panel existed, its key

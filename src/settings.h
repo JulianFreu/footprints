@@ -63,6 +63,11 @@ typedef struct Settings {
     // afternoon spent chasing a hitch survives restarting the window.
     bool show_profiler;
 
+    // The heat readout that follows the cursor over the map. Persisted for the
+    // same reason the setpoints above are: it is part of how the map is read,
+    // not a mode one run happens to be left in.
+    bool show_heat_tooltip;
+
     // The view the window opens at, in world pixels at MAX_ZOOM.
     int start_zoom;
     int start_world_x;

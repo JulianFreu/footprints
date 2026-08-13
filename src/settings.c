@@ -70,6 +70,7 @@ void settings_defaults(Settings *s) {
     s->track_point_size = TRACK_POINT_SIZE;
 
     s->show_profiler = false;
+    s->show_heat_tooltip = true;
 
     s->start_zoom = START_ZOOM;
     s->start_world_x = START_WORLD_X;
@@ -309,6 +310,8 @@ static void apply_pair(Settings *s, const char *key, const char *value) {
         parse_int(value, &s->track_point_size);
     } else if (strcmp(key, "show_profiler") == 0) {
         parse_bool(value, &s->show_profiler);
+    } else if (strcmp(key, "show_heat_tooltip") == 0) {
+        parse_bool(value, &s->show_heat_tooltip);
     } else if (strcmp(key, "start_zoom") == 0) {
         parse_int(value, &s->start_zoom);
     } else if (strcmp(key, "start_world_x") == 0) {
@@ -380,7 +383,10 @@ bool settings_save(const Settings *s, const char *path) {
     fprintf(file, "point_size       = %d\n\n", s->track_point_size);
 
     fprintf(file, "# The frame-time graph drawn over the bottom of the map.\n");
-    fprintf(file, "show_profiler  = %s\n\n", s->show_profiler ? "true" : "false");
+    fprintf(file, "show_profiler  = %s\n", s->show_profiler ? "true" : "false");
+
+    fprintf(file, "# The heat of the track point under the cursor, shown beside it.\n");
+    fprintf(file, "show_heat_tooltip = %s\n\n", s->show_heat_tooltip ? "true" : "false");
 
     fprintf(file, "# The view the window opens at, in world pixels at the maximum zoom.\n");
     fprintf(file, "start_zoom       = %d\n", s->start_zoom);

@@ -466,20 +466,32 @@ static int index_zoom_for_radius(int current_zoom, int max_pixel_distance) {
     return zoom;
 }
 
-int find_track_near_click(GpxCollection *collection, int click_world_x, int click_world_y, int current_zoom, int max_pixel_distance) {
+const GpxPoint *tracks_point_at_screen(const struct application *appl, GpxCollection *collection,
+                                       int screen_x, int screen_y, int max_pixel_distance) {
+    // A cursor landing while a zoom is still easing is on a picture the model
+    // has already moved past, so it is put back into the model's own space
+    // before being unprojected. Done here rather than at each call site: both
+    // the click and the heat readout start from the same pixel, and the two
+    // must not be able to disagree about what is under it.
+    float unscaled_x, unscaled_y;
+    map_screen_untransform(appl, (float)screen_x, (float)screen_y, &unscaled_x, &unscaled_y);
+
+    int click_world_x, click_world_y;
+    map_screen_to_world(appl, unscaled_x, unscaled_y, &click_world_x, &click_world_y);
+
     // Asked of the index rather than of every point there is. This used to walk
     // the whole library on each click -- over a million points, with the
     // world-per-pixel divisor recomputed inside the loop -- while the index
     // that answers exactly this question was already built for the tiles.
     if (!point_index_ensure(collection))
-        return -1;
+        return NULL;
 
     // The radius is in screen pixels, so the distance has to be too.
-    const double world_per_pixel = map_world_per_pixel_at(current_zoom);
-    int closest_track_id = -1;
+    const double world_per_pixel = map_world_per_pixel_at(appl->zoom);
+    const GpxPoint *closest = NULL;
     double closest_distance_squared = (double)max_pixel_distance * (double)max_pixel_distance;
 
-    int zoom = index_zoom_for_radius(current_zoom, max_pixel_distance);
+    int zoom = index_zoom_for_radius(appl->zoom, max_pixel_distance);
     int centre_x, centre_y, offset_x, offset_y;
     conv_pixel_to_tile_and_offset(click_world_x, click_world_y, MAX_ZOOM, zoom,
                                   &centre_x, &centre_y, &offset_x, &offset_y);
@@ -512,12 +524,12 @@ int find_track_near_click(GpxCollection *collection, int click_world_x, int clic
                 // away the most direct hit there is.
                 if (dist_squared <= closest_distance_squared) {
                     closest_distance_squared = dist_squared;
-                    closest_track_id = point->track_id;
+                    closest = point;
                 }
             }
         }
     }
-    return closest_track_id; // will be -1 when there was no track nearby
+    return closest; // NULL when there was no track nearby
 }
 
 static bool overlay_key_equal(const OverlayKey *a, const OverlayKey *b) {

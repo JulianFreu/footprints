@@ -13,6 +13,7 @@
 #include "filters.h"
 #include "heat.h"
 #include "map.h"
+#include "settings.h"
 #include "background.h"
 #include "track_format.h"
 #include "track_sort.h"
@@ -477,6 +478,13 @@ static bool graph_hover_active;
 static float graph_hover_fraction; // 0..1 along the track's distance
 static int graph_hover_point = -1;
 
+// The heat of the track point under the cursor, when the pointer is over the
+// map with nothing in the way. Panel-local like the graph hover above, and read
+// only by the tooltip below: unlike the dot on the map, nothing outside this
+// file draws from it, so there is no counterpart to ui_graph_hover_point.
+static bool map_hover_active;
+static int map_hover_heat;
+
 bool ui_graph_hover_point(int *point_index) {
     if (!graph_hover_active)
         return false;
@@ -536,6 +544,37 @@ static void update_graph_hover(struct application *appl, GpxCollection *collecti
     // The dot on the map moves with the point, so a frame is owed whenever it
     // changes.
     if (graph_hover_active != was_active || graph_hover_point != was_point)
+        app_request_redraw(appl);
+}
+
+// What the cursor is over on the map, asked the same way a click asks it. Run
+// in the update pass rather than the layout, so the layout stays a read.
+// mouse_over_ui holds last frame's answer here, which is the same staleness the
+// graph hover accepts: Clay resolves its own hover against last frame's boxes
+// either way.
+static void update_map_hover(struct application *appl, GpxCollection *collection) {
+    const bool was_active = map_hover_active;
+    const int was_heat = map_hover_heat;
+
+    map_hover_active = false;
+    map_hover_heat = 0;
+
+    // A pan is not a hover: the world under the cursor is not moving, so the
+    // readout would be a fixed number shaking along with the map.
+    if (settings.show_heat_tooltip && !appl->mouse_over_ui && !appl->dragging &&
+        !background_busy(&appl->background)) {
+        const GpxPoint *point = tracks_point_at_screen(appl, collection, appl->mouse_x,
+                                                       appl->mouse_y, MAP_HOVER_RADIUS_PIXELS);
+        if (point) {
+            map_hover_active = true;
+            map_hover_heat = point->heat;
+        }
+    }
+
+    // Owed a frame for the same reason the graph hover is -- and not only on
+    // the frames an event arrived: the point under a cursor that has not moved
+    // changes while a zoom eases.
+    if (map_hover_active != was_active || map_hover_heat != was_heat)
         app_request_redraw(appl);
 }
 
@@ -747,6 +786,7 @@ void ui_update(struct application *appl, GpxCollection *collection) {
     ui_panel_move(&ui.right_sidebar, appl->selected_track > -1 ? 1.0f : 0.0f);
 
     update_graph_hover(appl, collection);
+    update_map_hover(appl, collection);
 
     // Icons fade with the panel they sit in, and an icon's alpha lives on its
     // surface: the renderer builds a texture from the surface every frame, and
@@ -785,6 +825,75 @@ void ui_update(struct application *appl, GpxCollection *collection) {
     moved |= ui_import_update(appl, collection);
     if (moved)
         app_request_redraw(appl);
+}
+
+// The heat of the point under the cursor, drawn where the cursor is. Floating
+// and passthrough: it must never take a click meant for the map, and must never
+// be the thing that sets mouse_over_ui -- which would have it suppress itself
+// on the next frame and blink at whatever rate the map redraws.
+static void draw_map_heat_tooltip(const struct application *appl,
+                                  const GpxCollection *collection) {
+    if (!map_hover_active)
+        return;
+
+    // The colour this point is drawn in on the map, read off the same ramp
+    // through the same curve, so the swatch is the tile's colour rather than an
+    // approximation of it.
+    const float normalized = heat_normalized(&settings, map_hover_heat, collection->max_heat);
+    const int percent = collection->max_heat > 0
+                            ? map_hover_heat * 100 / collection->max_heat
+                            : 0;
+
+    // Flipped to the other side of the cursor at the edge rather than clamped
+    // to it: clamping would slide the box under the pointer, which is the one
+    // place it may not be. Each axis flips on its own, so tracking along the
+    // right-hand edge does not make the box jump up and down as well.
+    float x = (float)appl->mouse_x + MAP_TOOLTIP_CURSOR_GAP;
+    float y = (float)appl->mouse_y + MAP_TOOLTIP_CURSOR_GAP;
+    if (x + MAP_TOOLTIP_WIDTH > (float)appl->window_width - SCREEN_BORDER_PADDING)
+        x = (float)appl->mouse_x - MAP_TOOLTIP_CURSOR_GAP - MAP_TOOLTIP_WIDTH;
+    if (y + MAP_TOOLTIP_HEIGHT > (float)appl->window_height - SCREEN_BORDER_PADDING)
+        y = (float)appl->mouse_y - MAP_TOOLTIP_CURSOR_GAP - MAP_TOOLTIP_HEIGHT;
+    // A window with no room on either side of the cursor has nowhere to flip to.
+    if (x < SCREEN_BORDER_PADDING)
+        x = SCREEN_BORDER_PADDING;
+    if (y < SCREEN_BORDER_PADDING)
+        y = SCREEN_BORDER_PADDING;
+
+    CLAY(CLAY_ID("MapHeatTooltip"),
+         {.floating = {.attachTo = CLAY_ATTACH_TO_ROOT,
+                       .offset = {.x = x, .y = y},
+                       // Over any panel it happens to overlap at the edge; the
+                       // panels are all floating at the default zero.
+                       .zIndex = 1,
+                       .pointerCaptureMode = CLAY_POINTER_CAPTURE_MODE_PASSTHROUGH},
+          .layout = {.padding = CLAY_PADDING_ALL(GAPS),
+                     .childGap = GAPS,
+                     .sizing = {.width = CLAY_SIZING_FIXED(MAP_TOOLTIP_WIDTH),
+                                .height = CLAY_SIZING_FIXED(MAP_TOOLTIP_HEIGHT)},
+                     .layoutDirection = CLAY_TOP_TO_BOTTOM},
+          .backgroundColor = bg_d,
+          .border = {.color = dark_aqua, .width = CLAY_BORDER_OUTSIDE(1)},
+          .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS)}) {
+        CLAY(CLAY_ID("MapHeatTooltipValue"),
+             {.layout = {.childGap = GAPS,
+                         .sizing = {.width = CLAY_SIZING_GROW(0),
+                                    .height = CLAY_SIZING_FIXED(LABEL_FONT_SIZE)},
+                         .childAlignment = {.y = CLAY_ALIGN_Y_CENTER},
+                         .layoutDirection = CLAY_LEFT_TO_RIGHT}}) {
+            CLAY(CLAY_ID("MapHeatTooltipSwatch"),
+                 {.layout = {.sizing = {.width = CLAY_SIZING_FIXED(MAP_TOOLTIP_SWATCH),
+                                        .height = CLAY_SIZING_FIXED(MAP_TOOLTIP_SWATCH)}},
+                  .backgroundColor = clay_from_sdl(heat_ramp_color(normalized)),
+                  .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS / 2)}) {
+            }
+            ui_draw_text_unwrapped(ui_frame_printf("Heat %d", map_hover_heat),
+                                   LABEL_FONT_SIZE, fg_l, CLAY_TEXT_ALIGN_LEFT);
+        }
+
+        ui_draw_text_unwrapped(ui_frame_printf("%d%% of max", percent),
+                               FILTER_TEXT_FONT_SIZE, grey2, CLAY_TEXT_ALIGN_LEFT);
+    }
 }
 
 void clay_draw_ui(struct application *appl, GpxCollection *collection) {
@@ -867,6 +976,10 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
 
         ui_fade_set(1.0f);
     }
+
+    // Last, so it lays out over whatever is open. It does not slide, so it does
+    // not fade -- the same reason the progress panel does not.
+    draw_map_heat_tooltip(appl, collection);
 
     Clay_RenderCommandArray render_commands = Clay_EndLayout();
 

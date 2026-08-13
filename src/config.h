@@ -213,6 +213,12 @@
 // along the colour ramp. Six is what the settings panel draws a field for.
 #define HEAT_SETPOINT_COUNT 6
 
+// How near a track point the cursor has to be for the map to answer for it, in
+// screen pixels. One radius for both questions the map is asked about a pixel,
+// so the heat the tooltip reports is always the heat of a point on the track a
+// click there would select.
+#define MAP_HOVER_RADIUS_PIXELS 10
+
 // --- Settings ---
 // Written beside the tile cache and the GPX folder, and read at startup. Plain
 // text, so it can be hand-edited.

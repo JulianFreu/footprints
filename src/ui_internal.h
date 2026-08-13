@@ -176,8 +176,26 @@
 #define LABEL_FONT_SIZE 16
 #define HEADING_FONT_SIZE 20
 
+// The heat readout beside the cursor. Sized here rather than fitted to its
+// text: where it sits has to be decided before the layout measures it, since it
+// flips to the other side of the cursor at the window's edge, and a box whose
+// width is not known yet cannot be told when it would run off.
+#define MAP_TOOLTIP_WIDTH 118
+#define MAP_TOOLTIP_HEIGHT (LABEL_FONT_SIZE + FILTER_TEXT_FONT_SIZE + 3 * GAPS)
+#define MAP_TOOLTIP_SWATCH LABEL_FONT_SIZE
+// Clear of the pointer itself, so the box sits beside the arrow rather than
+// under it.
+#define MAP_TOOLTIP_CURSOR_GAP 14
+
 // Animation and text-input state for the whole UI. Defined in ui.c.
 extern UIState ui;
+
+// The heat ramp is an SDL colour, because the tiles are rasterised with it.
+// Shared so that the panel previewing the ramp and the tooltip reading a point
+// off it convert the same way rather than each keeping a copy.
+static inline Clay_Color clay_from_sdl(SDL_Color color) {
+    return (Clay_Color){(float)color.r, (float)color.g, (float)color.b, 255.0f};
+}
 
 // One track attribute, formatted into this frame's text arena. The result
 // stays valid until the end of the frame, which is what Clay needs since it

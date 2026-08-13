@@ -44,6 +44,9 @@ static void test_defaults(void) {
     CHECK_NEAR(s.heat_radius_pixels, HEAT_RADIUS_PIXELS, 0.001);
     CHECK_INT(s.track_point_size, TRACK_POINT_SIZE);
     CHECK(!s.show_profiler);
+    // On rather than off: a heat map whose colours cannot be read as numbers is
+    // what the readout exists to fix, so it is there before it is asked for.
+    CHECK(s.show_heat_tooltip);
     CHECK_INT(s.start_zoom, START_ZOOM);
     CHECK_INT(s.start_world_x, START_WORLD_X);
     CHECK_INT(s.start_world_y, START_WORLD_Y);
@@ -66,6 +69,8 @@ static void test_round_trip(void) {
     written.heat_radius_pixels = 275.0f;
     written.track_point_size = 7;
     written.show_profiler = true;
+    // The opposite of its default, which is what makes the trip prove anything.
+    written.show_heat_tooltip = false;
     written.start_zoom = 14;
     written.start_world_x = 12345678;
     written.start_world_y = 87654321;
@@ -86,6 +91,7 @@ static void test_round_trip(void) {
     CHECK_NEAR(read.heat_radius_pixels, written.heat_radius_pixels, 0.001);
     CHECK_INT(read.track_point_size, written.track_point_size);
     CHECK_INT(read.show_profiler, written.show_profiler);
+    CHECK_INT(read.show_heat_tooltip, written.show_heat_tooltip);
     CHECK_INT(read.start_zoom, written.start_zoom);
     CHECK_INT(read.start_world_x, written.start_world_x);
     CHECK_INT(read.start_world_y, written.start_world_y);
@@ -157,19 +163,26 @@ static void test_bool_values(void) {
     const char *const yes[] = {"true", "1", "on"};
     const char *const no[] = {"false", "0", "off"};
 
+    // Both flags in each file, spelled opposite ways round, so one pass covers
+    // turning each of them on and off -- and covers them being told apart,
+    // which two keys sharing a parser and a prefix are worth checking.
     for (size_t i = 0; i < sizeof(yes) / sizeof(yes[0]); i++) {
-        char line[64];
+        char line[128];
         Settings s;
 
-        snprintf(line, sizeof(line), "show_profiler = %s\n", yes[i]);
+        snprintf(line, sizeof(line), "show_profiler = %s\nshow_heat_tooltip = %s\n",
+                 yes[i], no[i]);
         write_file(line);
         CHECK(settings_load(&s, TEST_PATH));
         CHECK(s.show_profiler);
+        CHECK(!s.show_heat_tooltip);
 
-        snprintf(line, sizeof(line), "show_profiler = %s\n", no[i]);
+        snprintf(line, sizeof(line), "show_profiler = %s\nshow_heat_tooltip = %s\n",
+                 no[i], yes[i]);
         write_file(line);
         CHECK(settings_load(&s, TEST_PATH));
         CHECK(!s.show_profiler);
+        CHECK(s.show_heat_tooltip);
     }
 
     // Not an answer: the comparison is case-sensitive like the provider names,
@@ -177,25 +190,33 @@ static void test_bool_values(void) {
     // number outside 0 and 1 says anything. Each leaves the default standing.
     // Surrounding space is not in this list -- the loader trims a value before
     // it is parsed, so "true " is the same word.
+    // A flag defaulting to on is the case worth having here: it says the
+    // default is what survives, rather than false being what a failed parse
+    // happens to leave behind.
     const char *const nonsense[] = {"TRUE", "yes", "", "2"};
     for (size_t i = 0; i < sizeof(nonsense) / sizeof(nonsense[0]); i++) {
-        char line[64];
-        snprintf(line, sizeof(line), "show_profiler = %s\n", nonsense[i]);
+        char line[128];
+        snprintf(line, sizeof(line), "show_profiler = %s\nshow_heat_tooltip = %s\n",
+                 nonsense[i], nonsense[i]);
         write_file(line);
 
         Settings s;
         CHECK(settings_load(&s, TEST_PATH));
         CHECK(!s.show_profiler);
+        CHECK(s.show_heat_tooltip);
     }
 
     // And because parse_bool writes only when it understood the value, an
     // unreadable one cannot turn a flag off that the rest of the file turned on.
     write_file("show_profiler = on\n"
-               "show_profiler = banana\n");
+               "show_profiler = banana\n"
+               "show_heat_tooltip = off\n"
+               "show_heat_tooltip = banana\n");
 
     Settings s;
     CHECK(settings_load(&s, TEST_PATH));
     CHECK(s.show_profiler);
+    CHECK(!s.show_heat_tooltip);
 
     remove_file();
 }

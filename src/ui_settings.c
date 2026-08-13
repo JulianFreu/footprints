@@ -57,6 +57,7 @@ static int pending_focus = NO_FIELD;
 static int pending_provider = -1;
 static bool pending_show_key = false;
 static bool pending_show_profiler = false;
+static bool pending_show_heat_tooltip = false;
 static bool pending_clear_cache = false;
 static bool pending_reload_library = false;
 static bool pending_recalculate = false;
@@ -100,6 +101,11 @@ static void clicked_show_key(Clay_ElementId id, Clay_PointerData pointer, intptr
 static void clicked_show_profiler(Clay_ElementId id, Clay_PointerData pointer, intptr_t user_data) {
     if (pointer.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME)
         pending_show_profiler = true;
+}
+
+static void clicked_show_heat_tooltip(Clay_ElementId id, Clay_PointerData pointer, intptr_t user_data) {
+    if (pointer.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME)
+        pending_show_heat_tooltip = true;
 }
 
 static void clicked_clear_cache(Clay_ElementId id, Clay_PointerData pointer, intptr_t user_data) {
@@ -414,6 +420,13 @@ bool ui_settings_update(struct application *appl, GpxCollection *collection) {
         changed = true;
     }
 
+    if (pending_show_heat_tooltip) {
+        pending_show_heat_tooltip = false;
+        settings.show_heat_tooltip = !settings.show_heat_tooltip;
+        pending_save = true;
+        changed = true;
+    }
+
     if (pending_clear_cache) {
         pending_clear_cache = false;
         // Only what is in video memory. The tiles on disk are the point of a
@@ -488,10 +501,6 @@ bool ui_settings_update(struct application *appl, GpxCollection *collection) {
 }
 
 // --- Layout ---
-
-static Clay_Color clay_from_sdl(SDL_Color color) {
-    return (Clay_Color){(float)color.r, (float)color.g, (float)color.b, 255.0f};
-}
 
 // A label above a group of rows, so the sections read as separate groups.
 static void draw_section_header(const char *title, int id) {
@@ -648,12 +657,24 @@ static void draw_heat_range_section(void) {
             draw_field((SettingsField)(FIELD_SETPOINT_0 + i), 0, false);
     }
 
-    CLAY(CLAY_ID("SettingsSetpointCaption"),
-         {.layout = {.padding = {.left = GAPS, .right = GAPS},
-                     .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(SETTINGS_ROW_HEIGHT)},
-                     .childAlignment = {.y = CLAY_ALIGN_Y_CENTER}}}) {
-        ui_draw_text_unwrapped("% of max heat, cold to hot", FILTER_TEXT_FONT_SIZE,
-                               grey2, CLAY_TEXT_ALIGN_LEFT);
+    // The caption shares its row with the toggle for the other way of reading a
+    // heat: as the number itself, for whichever point the cursor is over. Here
+    // rather than under "Heat calculation" because it changes how heat is
+    // shown, not what it comes to -- and beside the caption rather than on a
+    // row of its own because the sections below already reach past the bottom
+    // of an 800px window, which another row would only make worse.
+    SETTINGS_ROW(1) {
+        CLAY(CLAY_ID("SettingsSetpointCaption"),
+             {.layout = {.padding = {.left = GAPS},
+                         .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
+                         .childAlignment = {.y = CLAY_ALIGN_Y_CENTER}}}) {
+            ui_draw_text_unwrapped("% of max heat, cold to hot", FILTER_TEXT_FONT_SIZE,
+                                   grey2, CLAY_TEXT_ALIGN_LEFT);
+        }
+
+        draw_button(7,
+                    settings.show_heat_tooltip ? "Hide heat tooltip" : "Show heat tooltip",
+                    settings.show_heat_tooltip, true, clicked_show_heat_tooltip);
     }
 }
 
