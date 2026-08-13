@@ -775,6 +775,7 @@ void ui_update(struct application *appl, GpxCollection *collection) {
     if (appl->wheel_y) {
         if (!ui_stats_pan_by_wheel(appl->mouse_x, appl->mouse_y, appl->wheel_y) &&
             !ui_records_scroll_by_wheel(appl->mouse_x, appl->mouse_y, appl->wheel_y) &&
+            !ui_settings_scroll_by_wheel(appl->mouse_x, appl->mouse_y, appl->wheel_y) &&
             !ui_import_scroll_by_wheel(appl->mouse_x, appl->mouse_y, appl->wheel_y))
             ui_runlist_scroll_by_wheel(appl->mouse_x, appl->mouse_y, appl->wheel_y);
     }

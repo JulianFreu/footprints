@@ -1,5 +1,6 @@
 #include "ui_internal.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -76,6 +77,13 @@ static bool pending_save = false;
 static float applied_heat_radius = -1.0f;
 
 static float caret_phase = 0.0f;
+
+// The panel owns its scroll offset for the reason ui_runlist.c gives: Clay drops
+// a scroll container's position after two updates without a layout, and this
+// application lays out only on the frames it draws.
+static float scroll_target = 0.0f;  // where the wheel has put it, in pixels
+static float scroll_current = 0.0f; // what the layout draws
+static float scroll_max = 0.0f;     // from the content and the viewport
 
 static bool caret_shown(void) {
     return caret_phase < FILTER_CARET_BLINK_SECONDS / 2.0f;
@@ -360,6 +368,121 @@ bool ui_settings_handle_key(SDL_Keycode key, bool shift_held) {
     }
 }
 
+// --- Geometry and scrolling ---
+
+// Adds one child of the scroll container to the running total, counting the gap
+// that precedes every child but the first. The container's children are the
+// headers, rows and captions the sections below emit, all siblings under one
+// childGap.
+static void add_child(float *height, int *count, float child) {
+    if ((*count)++ > 0)
+        *height += GAPS;
+    *height += child;
+}
+
+// The height the sections come to, written from the same numbers and the same
+// conditions Clay lays them out with. Working it out here rather than measuring
+// afterwards is what keeps the scroll limit and the rows in step -- so this
+// mirrors the section functions below, and the two are edited together.
+static float content_height(void) {
+    float height = 2 * GAPS; // the container's padding, top and bottom
+    int count = 0;
+
+    // Heat colours: header, the ramp preview, the setpoints, and the caption
+    // sharing its row with the tooltip toggle.
+    add_child(&height, &count, SETTINGS_SECTION_HEADER_HEIGHT);
+    add_child(&height, &count, SETTINGS_GRADIENT_HEIGHT);
+    add_child(&height, &count, SETTINGS_ROW_HEIGHT);
+    add_child(&height, &count, SETTINGS_ROW_HEIGHT);
+
+    // Map: header, the providers two to a row, the key, the buttons, and the
+    // line that is only there while there is no key. The loop bound is the
+    // layout's own rather than a count written down twice.
+    add_child(&height, &count, SETTINGS_SECTION_HEADER_HEIGHT);
+    for (int row = 0; row * 2 < MAP_PROVIDER_COUNT; row++)
+        add_child(&height, &count, SETTINGS_ROW_HEIGHT);
+    add_child(&height, &count, SETTINGS_ROW_HEIGHT);
+    add_child(&height, &count, SETTINGS_ROW_HEIGHT);
+    if (!map_has_api_key())
+        add_child(&height, &count, SETTINGS_ROW_HEIGHT);
+
+    // Heat calculation: header, the radius, the point size, the button.
+    add_child(&height, &count, SETTINGS_SECTION_HEADER_HEIGHT);
+    add_child(&height, &count, SETTINGS_ROW_HEIGHT);
+    add_child(&height, &count, SETTINGS_ROW_HEIGHT);
+    add_child(&height, &count, SETTINGS_ROW_HEIGHT);
+
+    // Library: header, the folder, the button.
+    add_child(&height, &count, SETTINGS_SECTION_HEADER_HEIGHT);
+    add_child(&height, &count, SETTINGS_ROW_HEIGHT);
+    add_child(&height, &count, SETTINGS_ROW_HEIGHT);
+
+    // Startup view: header, the buttons, the line under them.
+    add_child(&height, &count, SETTINGS_SECTION_HEADER_HEIGHT);
+    add_child(&height, &count, SETTINGS_ROW_HEIGHT);
+    add_child(&height, &count, SETTINGS_ROW_HEIGHT);
+
+    // Diagnostics: header, the button.
+    add_child(&height, &count, SETTINGS_SECTION_HEADER_HEIGHT);
+    add_child(&height, &count, SETTINGS_ROW_HEIGHT);
+
+    return height;
+}
+
+static void clamp_scroll(void) {
+    if (scroll_target > scroll_max)
+        scroll_target = scroll_max;
+    if (scroll_target < 0.0f)
+        scroll_target = 0.0f;
+    if (scroll_current > scroll_max)
+        scroll_current = scroll_max;
+    if (scroll_current < 0.0f)
+        scroll_current = 0.0f;
+}
+
+// How far the panel can be scrolled, given the room the body has. Re-asked
+// every frame: a key being typed in takes the hint line away and a shorter
+// window takes room away, and the view must not be left hanging past the end.
+static void update_scroll_max(int viewport_h) {
+    scroll_max = content_height() - (float)viewport_h;
+    if (scroll_max < 0.0f)
+        scroll_max = 0.0f;
+    clamp_scroll();
+}
+
+bool ui_settings_scroll_by_wheel(int mouse_x, int mouse_y, int detents) {
+    // Last frame's box. The wheel is the pointer's, and the pointer was over
+    // whatever was drawn last -- the same thing Clay resolves hover against.
+    Clay_ElementData container = Clay_GetElementData(CLAY_ID("SettingsScrollContainer"));
+    if (!container.found)
+        return false;
+
+    Clay_BoundingBox box = container.boundingBox;
+    if (mouse_x < box.x || mouse_x >= box.x + box.width ||
+        mouse_y < box.y || mouse_y >= box.y + box.height)
+        return false;
+
+    // The same feel as the run list, in the same units: SDL reports a wheel
+    // turned away from the hand as positive, which is a move toward the top.
+    // A row and the gap under it, which is the pitch the body lays them out at.
+    scroll_target -= (float)detents *
+                     (RUN_LIST_SCROLL_ROWS_PER_STEP * (SETTINGS_ROW_HEIGHT + GAPS));
+    clamp_scroll();
+    return true;
+}
+
+static bool scroll_tick(float dt) {
+    if (scroll_current == scroll_target)
+        return false;
+
+    scroll_current = anim_approach(scroll_current, scroll_target, RUN_LIST_SCROLL_TAU, dt);
+    // Arriving exactly is what lets the panel stop asking for frames; an
+    // asymptote never would.
+    if (fabsf(scroll_target - scroll_current) < 0.5f)
+        scroll_current = scroll_target;
+    return true;
+}
+
 // --- Update ---
 
 // Everything a provider switch has to do beyond writing the setting down: the
@@ -497,7 +620,9 @@ bool ui_settings_update(struct application *appl, GpxCollection *collection) {
         changed = true;
     }
 
-    return changed;
+    // First rather than second: the tick has to run whatever `changed` already
+    // says, and || would skip it.
+    return scroll_tick(appl->delta_time) || changed;
 }
 
 // --- Layout ---
@@ -813,6 +938,70 @@ static void draw_diagnostics_section(void) {
     }
 }
 
+// The indicator beside the sections. Always emitted, scrollable or not: a panel
+// that dropped it would change width as a key was typed in.
+static void draw_settings_scrollbar(int viewport_h) {
+    float thumb_h = 0.0f;
+    float thumb_y = 0.0f;
+
+    if (scroll_max > 0.0f) {
+        const float track_h = (float)(viewport_h - 2 * GAPS);
+        thumb_h = track_h * (float)viewport_h / content_height();
+        if (thumb_h < SCROLLBAR_MIN_THUMB)
+            thumb_h = SCROLLBAR_MIN_THUMB;
+        if (thumb_h > track_h)
+            thumb_h = track_h;
+        thumb_y = (scroll_current / scroll_max) * (track_h - thumb_h);
+    }
+
+    CLAY(CLAY_ID("SettingsScrollbar"),
+         {.layout = {.padding = CLAY_PADDING_ALL(GAPS),
+                     .sizing = {.width = CLAY_SIZING_FIXED(SCROLLBAR_GUTTER_WIDTH), .height = CLAY_SIZING_GROW()},
+                     .layoutDirection = CLAY_TOP_TO_BOTTOM}}) {
+        // A condition rather than an early return: CLAY() expands to a for
+        // loop, and returning out of one leaves the element open.
+        if (thumb_h > 0.0f) {
+            // A spacer above the thumb is how a plain element puts a child at
+            // an offset; nothing here has to float.
+            CLAY(CLAY_ID("SettingsScrollbarSpacer"),
+                 {.layout = {.sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(thumb_y)}}}) {
+            }
+            CLAY(CLAY_ID("SettingsScrollbarThumb"),
+                 {.layout = {.sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(thumb_h)}},
+                  .backgroundColor = ui_fade(grey0),
+                  .cornerRadius = CLAY_CORNER_RADIUS(SCROLLBAR_WIDTH / 2)}) {
+            }
+        }
+    }
+}
+
+// The sections, clipped to the room the panel has for them, and the indicator
+// beside them. The scroll offset is the app's rather than Clay's, for the
+// reason the state at the top of this file gives.
+static void draw_settings_body(struct application *appl, int height) {
+    update_scroll_max(height);
+
+    CLAY(CLAY_ID("SettingsBody"),
+         {.layout = {.sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(height)},
+                     .layoutDirection = CLAY_LEFT_TO_RIGHT}}) {
+        CLAY(CLAY_ID("SettingsScrollContainer"),
+             {.layout = {.padding = CLAY_PADDING_ALL(GAPS),
+                         .childGap = GAPS,
+                         .sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW()},
+                         .layoutDirection = CLAY_TOP_TO_BOTTOM},
+              .clip = {.vertical = true, .childOffset = {0, -scroll_current}}}) {
+            draw_heat_range_section();
+            draw_map_section(appl);
+            draw_heat_calculation_section(appl);
+            draw_library_section(appl);
+            draw_startup_view_section();
+            draw_diagnostics_section();
+        }
+
+        draw_settings_scrollbar(height);
+    }
+}
+
 static void draw_settings_header(void) {
     CLAY(CLAY_ID("SettingsHeader"),
          {.layout = {.padding = CLAY_PADDING_ALL(GAPS),
@@ -831,31 +1020,24 @@ void ui_draw_settings_panel(struct application *appl) {
     if (anim_value(&ui.panels[PANEL_SETTINGS]) <= 0.0f)
         return;
 
+    int panel_h = PANEL_HEIGHT(appl->window_height);
+    int body_height = panel_h - HEADER_HEIGHT;
+    if (body_height < SETTINGS_ROW_HEIGHT)
+        body_height = SETTINGS_ROW_HEIGHT;
+
     CLAY(CLAY_ID("SettingsPanel"),
          {.floating = {
               .attachTo = CLAY_ATTACH_TO_ROOT,
               .offset = {.x = ui_panel_offset_x(PANEL_SETTINGS, SETTINGS_WIDTH),
                          .y = PANEL_ORIGIN_Y},
           },
-          .layout = {.sizing = {.width = CLAY_SIZING_FIXED(SETTINGS_WIDTH), .height = CLAY_SIZING_FIXED(PANEL_HEIGHT(appl->window_height))}, .layoutDirection = CLAY_TOP_TO_BOTTOM},
+          .layout = {.sizing = {.width = CLAY_SIZING_FIXED(SETTINGS_WIDTH), .height = CLAY_SIZING_FIXED(panel_h)}, .layoutDirection = CLAY_TOP_TO_BOTTOM},
           .backgroundColor = ui_fade(bg),
           .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS)}) {
         if (Clay_Hovered())
             appl->mouse_over_ui = true;
 
         draw_settings_header();
-
-        CLAY(CLAY_ID("SettingsBody"),
-             {.layout = {.padding = CLAY_PADDING_ALL(GAPS),
-                         .sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW()},
-                         .childGap = GAPS,
-                         .layoutDirection = CLAY_TOP_TO_BOTTOM}}) {
-            draw_heat_range_section();
-            draw_map_section(appl);
-            draw_heat_calculation_section(appl);
-            draw_library_section(appl);
-            draw_startup_view_section();
-            draw_diagnostics_section();
-        }
+        draw_settings_body(appl, body_height);
     }
 }

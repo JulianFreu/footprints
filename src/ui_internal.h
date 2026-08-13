@@ -254,6 +254,9 @@ void ui_draw_settings_panel(struct application *appl);
 // and writes the settings file. Returns whether anything moved, the same way
 // the other panels' update functions do.
 bool ui_settings_update(struct application *appl, GpxCollection *collection);
+// Moves the settings panel by whole mouse-wheel detents, if the pointer is over
+// it. Returns whether the wheel was the panel's to take.
+bool ui_settings_scroll_by_wheel(int mouse_x, int mouse_y, int detents);
 void ui_draw_import_panel(struct application *appl);
 // Consumes the import panel's pending presses, starts and collects both
 // providers' jobs, and reloads the library once an import has put files on
