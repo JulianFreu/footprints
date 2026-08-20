@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "paths.h"
+
 // The key used to be pasted into src/api_key.h and compiled in. It lives in the
 // settings file now, but a header left over from before is still worth reading
 // once so an existing checkout does not lose its key. This is the only place
@@ -321,6 +323,14 @@ static void apply_pair(Settings *s, const char *key, const char *value) {
     }
     // Anything else is from a newer version, or a typo. Either way the rest of
     // the file is still worth reading.
+}
+
+const char *settings_file_path(void) {
+    static char path[PATHS_MAX];
+
+    if (path[0] == '\0')
+        paths_data(path, sizeof(path), SETTINGS_FILE);
+    return path;
 }
 
 bool settings_load(Settings *s, const char *path) {

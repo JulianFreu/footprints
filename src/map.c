@@ -5,13 +5,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h> // mkdir + stat
-#include <unistd.h>
 
 #include <SDL2/SDL_image.h>
 
 #include "fifo.h"
 #include "log.h"
+#include "paths.h"
+#include "platform.h"
 #include "settings.h"
 
 _Atomic bool download_in_progress;
@@ -264,13 +264,6 @@ void map_screen_to_world(const struct application *appl, float screen_x, float s
     *world_y = appl->world_y + (int)(((double)screen_y - appl->window_height / 2) * per_pixel);
 }
 
-static void ensure_directory(const char *path) {
-    struct stat st = {0};
-    if (stat(path, &st) == -1) {
-        mkdir(path, 0755);
-    }
-}
-
 // Appends one chunk of a curl transfer to the growable buffer behind `userp`.
 static size_t write_callback(void *contents, size_t size, size_t nmemb, void *userp) {
     size_t realsize = size * nmemb;
@@ -339,20 +332,25 @@ void *download_tiles(void *arg) {
         tile_cache_path(tile_path, sizeof(tile_path), provider, next_tile);
 
         LOG_DEBUG("Start download for: %s\n", tile_path);
-        // Each spelled out from the constant parts rather than from the one
-        // above it: chaining them leaves the compiler unable to bound the
-        // result, and it warns about a truncation that cannot happen.
-        char provider_dir[TILE_PATH_MAX], zoom_dir[TILE_PATH_MAX], x_dir[TILE_PATH_MAX];
-        snprintf(provider_dir, sizeof(provider_dir), "%s/%s",
-                 TILE_CACHE_DIR, source->cache_dir);
-        snprintf(zoom_dir, sizeof(zoom_dir), "%s/%s/%d",
-                 TILE_CACHE_DIR, source->cache_dir, next_tile.zoom);
-        snprintf(x_dir, sizeof(x_dir), "%s/%s/%d/%d",
-                 TILE_CACHE_DIR, source->cache_dir, next_tile.zoom, next_tile.tile_x);
-        ensure_directory(TILE_CACHE_DIR);
-        ensure_directory(provider_dir);
-        ensure_directory(zoom_dir);
-        ensure_directory(x_dir);
+        // Each spelled out from the data root and the constant parts rather
+        // than from the one above it: chaining them leaves the compiler unable
+        // to bound the result, and it warns about a truncation that cannot
+        // happen.
+        char cache_dir[TILE_PATH_MAX], provider_dir[TILE_PATH_MAX];
+        char zoom_dir[TILE_PATH_MAX], x_dir[TILE_PATH_MAX];
+        snprintf(cache_dir, sizeof(cache_dir), "%s%s",
+                 paths_data_root(), TILE_CACHE_DIR);
+        snprintf(provider_dir, sizeof(provider_dir), "%s%s/%s",
+                 paths_data_root(), TILE_CACHE_DIR, source->cache_dir);
+        snprintf(zoom_dir, sizeof(zoom_dir), "%s%s/%s/%d",
+                 paths_data_root(), TILE_CACHE_DIR, source->cache_dir, next_tile.zoom);
+        snprintf(x_dir, sizeof(x_dir), "%s%s/%s/%d/%d",
+                 paths_data_root(), TILE_CACHE_DIR, source->cache_dir,
+                 next_tile.zoom, next_tile.tile_x);
+        platform_make_dir(cache_dir);
+        platform_make_dir(provider_dir);
+        platform_make_dir(zoom_dir);
+        platform_make_dir(x_dir);
 
         struct MemoryStruct image_data;
         char url[TILE_PATH_MAX];
@@ -390,7 +388,7 @@ void *download_tiles(void *arg) {
         curl_slist_free_all(list);
 
         // Only cache the tile when the transfer actually succeeded. Writing a
-        // failed or empty response would make file_exists() report the tile as
+        // failed or empty response would make the existence check below report it as
         // present, so it would render blank forever and never be retried.
         if (res != CURLE_OK) {
             fprintf(stderr, "Tile download failed (%s): %s\n", tile_path, curl_easy_strerror(res));
@@ -594,10 +592,6 @@ void tile_cache_free(TileTextureCache *cache) {
     memset(cache->lookup, 0, sizeof(cache->lookup));
 }
 
-static int file_exists(const char *path) {
-    return access(path, F_OK) == 0;
-}
-
 // The one place the on-disk tile layout is spelled out. The download thread and
 // the render loop have to agree on it exactly, or tiles are fetched forever and
 // never found.
@@ -606,7 +600,7 @@ static int file_exists(const char *path) {
 // came from: the worker passes what it snapshotted, the main thread passes
 // whatever is current now.
 void tile_cache_path(char *out, size_t size, MapProvider provider, MapTile tile) {
-    snprintf(out, size, "%s/%s/%d/%d/%d.png", TILE_CACHE_DIR,
+    snprintf(out, size, "%s%s/%s/%d/%d/%d.png", paths_data_root(), TILE_CACHE_DIR,
              providers[clamp_provider(provider)].cache_dir,
              tile.zoom, tile.tile_x, tile.tile_y);
 }
@@ -852,7 +846,7 @@ void map_draw_tiles(struct application *appl, const VisibleTile *tiles, int coun
                 char tile_path[TILE_PATH_MAX];
                 tile_cache_path(tile_path, sizeof(tile_path), map_current_provider(), key);
 
-                if (file_exists(tile_path)) {
+                if (platform_file_exists(tile_path)) {
                     entry = load_tile_texture(appl, key, tile_path);
                 } else if (queue_tile_download(appl, key)) {
                     pending_add(key, now_ms);

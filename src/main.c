@@ -14,6 +14,8 @@
 #include "gpx_types.h"
 #include "heat.h"
 #include "map.h"
+#include "paths.h"
+#include "platform.h"
 #include "profiler.h"
 #include "render_cache.h"
 #include "settings.h"
@@ -47,11 +49,34 @@ static void app_update(struct application *appl, GpxCollection *collection) {
 }
 
 int main(int argc, char *argv[]) {
+    // Before anything builds a path. Nothing below is relative to the working
+    // directory any more, so this has to answer first.
+    if (!paths_init()) {
+        fprintf(stderr, "could not create the data directory at %s\n", paths_data_root());
+        return EXIT_FAILURE;
+    }
+
+    // An install that predates the data directory keeps its settings beside the
+    // binary, where they would otherwise read as a first run.
+    if (paths_migrate_from_cwd(SETTINGS_FILE))
+        printf("moved %s into %s\n", SETTINGS_FILE, paths_data_root());
+
     // Before anything reads a tunable. A missing file is the first run and
     // leaves the compiled-in defaults standing, so this cannot fail in a way
     // worth stopping for.
-    settings_load(&settings, SETTINGS_FILE);
+    settings_load(&settings, settings_file_path());
     settings_seed_legacy_api_key(&settings);
+
+    // The compiled-in default is a relative name from when the binary ran from
+    // the project root. A first run turns it into a real folder under the data
+    // directory; a settings file that already names one is left alone.
+    if (strcmp(settings.gpx_dir, GPX_INPUT_DIR) == 0) {
+        paths_data(settings.gpx_dir, sizeof(settings.gpx_dir), GPX_LIBRARY_DIR);
+        // Made rather than only named: it is where the import panel writes and
+        // where a first run is told to put its files, and a folder that is not
+        // there yet reads as an empty library.
+        platform_make_dirs(settings.gpx_dir);
+    }
 
     map_set_api_key(settings.stadia_api_key);
     map_set_provider(settings.provider);
@@ -65,7 +90,7 @@ int main(int argc, char *argv[]) {
                         "-stadiamaps needs an API key, and none is set.\n"
                         "Open the settings panel and paste one in, or put it in\n"
                         "%s as  stadia_api_key = <your key>\n",
-                        SETTINGS_FILE);
+                        settings_file_path());
                 return EXIT_FAILURE;
             }
             printf("using stadiamaps\n");

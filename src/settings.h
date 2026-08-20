@@ -14,7 +14,7 @@
 //
 // Nothing in here includes SDL or pthreads, which is deliberate -- it is what
 // lets tests/test_settings.c include settings.c the way the other suites
-// include the module they cover.
+// include the module they cover. paths.h is free of both for the same reason.
 
 // The tile servers the map can be drawn from. Everything but OpenStreetMap is
 // Stadia Maps and needs a key.
@@ -86,6 +86,11 @@ void settings_defaults(Settings *s);
 // first run -- and returns false only so a caller that cares can tell the two
 // apart. Anything unparseable, unknown or out of range is repaired rather than
 // rejected, because this file is meant to be hand-edited.
+// The settings file's full path, under the per-user data directory. Resolved
+// on the first call and unchanged after; startup makes that first call before
+// any other thread exists, and nothing off the main thread saves settings.
+const char *settings_file_path(void);
+
 bool settings_load(Settings *s, const char *path);
 
 // Writes the whole file. Called on every committed change: it is a few hundred

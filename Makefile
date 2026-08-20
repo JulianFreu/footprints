@@ -22,6 +22,7 @@ SOURCES  := $(SRC_DIR)/main.c $(SRC_DIR)/map.c $(SRC_DIR)/fifo.c \
             $(SRC_DIR)/ui_stats.c $(SRC_DIR)/stats.c \
             $(SRC_DIR)/ui_records.c $(SRC_DIR)/records.c \
             $(SRC_DIR)/time_util.c $(SRC_DIR)/settings.c \
+            $(SRC_DIR)/platform.c $(SRC_DIR)/paths.c \
             $(SRC_DIR)/render_cache.c \
             $(SRC_DIR)/profiler.c $(SRC_DIR)/ui_profiler.c
 OBJECTS  := $(SOURCES:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)

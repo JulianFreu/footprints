@@ -496,7 +496,7 @@ bool ui_import_update(struct application *appl, GpxCollection *collection) {
 
     if (pending_save) {
         pending_save = false;
-        settings_save(&settings, SETTINGS_FILE);
+        settings_save(&settings, settings_file_path());
         changed = true;
     }
 

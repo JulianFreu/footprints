@@ -35,17 +35,21 @@
 #define MAX_ZOOM 20
 #define FIFO_DEPTH 16
 
-// Where downloaded tiles are kept, and enough room to format a path or a tile
-// URL into. Each provider gets a subdirectory of its own under here: the same
-// z/x/y names a different picture depending on who drew it, so one shared tree
-// would hand OpenStreetMap tiles back for a Stadia map.
+// Where downloaded tiles are kept, under the per-user data directory, and
+// enough room to format a path or a tile URL into. Each provider gets a
+// subdirectory of its own under here: the same z/x/y names a different picture
+// depending on who drew it, so one shared tree would hand OpenStreetMap tiles
+// back for a Stadia map.
 #define TILE_CACHE_DIR "tilecache"
 
-// The default scanned at startup for .gpx files, overridable in the settings.
-// Both this and the tile cache are relative to the working directory, so the
-// binary is run from the project root.
+// The default folder scanned at startup for .gpx files, overridable in the
+// settings. GPX_INPUT_DIR is what settings.c falls back to and what a settings
+// file written before the library moved still says; startup replaces it with
+// GPX_LIBRARY_DIR under the per-user data directory, so a first run reads a
+// real place rather than whatever folder the program was started from.
 #define GPX_INPUT_DIR "./gpx_files"
-#define TILE_PATH_MAX 256
+#define GPX_LIBRARY_DIR "gpx_files"
+#define TILE_PATH_MAX 512
 
 // Enough to build a path to a file anywhere under the library folder, which is
 // itself up to SETTINGS_PATH_MAX. A name that will not fit is skipped rather
@@ -220,8 +224,8 @@
 #define MAP_HOVER_RADIUS_PIXELS 10
 
 // --- Settings ---
-// Written beside the tile cache and the GPX folder, and read at startup. Plain
-// text, so it can be hand-edited.
+// Written into the per-user data directory beside the tile cache, and read at
+// startup. Plain text, so it can be hand-edited.
 #define SETTINGS_FILE "settings.conf"
 // The longest a settings value can be. The key is the longer of the two in
 // practice; the path has to hold an absolute one.
@@ -233,8 +237,9 @@
 
 // --- Activity import ---
 // One helper per provider, the folder each writes into under the library
-// folder, and where the token it mints is kept. All relative to the working
-// directory, like the tile cache and the library.
+// folder, and where the token it mints is kept. The scripts ship beside the
+// binary and the session folders live in the per-user data directory; both are
+// resolved through paths.h rather than being opened where they are spelled.
 #define GARMIN_SCRIPT "garmin_sync.py"
 #define GARMIN_IMPORT_SUBDIR "garmin_import"
 #define GARMIN_SESSION_DIR "garmin_session"

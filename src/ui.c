@@ -13,6 +13,7 @@
 #include "filters.h"
 #include "heat.h"
 #include "map.h"
+#include "paths.h"
 #include "settings.h"
 #include "background.h"
 #include "track_format.h"
@@ -149,7 +150,10 @@ static const int ui_font_size[UI_FONT_COUNT] = {
 
 bool ui_load_fonts(struct application *appl) {
     for (int id = 0; id < UI_FONT_COUNT; id++) {
-        TTF_Font *font = TTF_OpenFont("resources/Roboto-Regular.ttf", ui_font_size[id]);
+        char path[PATHS_MAX];
+        paths_resource(path, sizeof(path), "Roboto-Regular.ttf");
+
+        TTF_Font *font = TTF_OpenFont(path, ui_font_size[id]);
         if (!font) {
             fprintf(stderr, "Error: could not load font at size %d: %s\n",
                     ui_font_size[id], TTF_GetError());
@@ -228,7 +232,12 @@ void clay_free_memory(void) {
     clay_memory.capacity = 0;
 }
 
-static SDL_Surface *load_icon(const char *path) {
+// Named rather than pathed: the icons ship beside the binary, and resolving
+// that here is what keeps every call below reading as the file it names.
+static SDL_Surface *load_icon(const char *name) {
+    char path[PATHS_MAX];
+    paths_resource(path, sizeof(path), name);
+
     SDL_Surface *surface = IMG_Load(path);
     if (!surface)
         fprintf(stderr, "Warning: could not load icon %s: %s\n", path, IMG_GetError());
@@ -238,24 +247,24 @@ static SDL_Surface *load_icon(const char *path) {
 // Decode every static icon once. Previously each of these was reloaded from
 // disk on every frame and never freed.
 void ui_load_icons(struct application *appl) {
-    appl->icons.menu_burger = load_icon("resources/menu-burger.png");
+    appl->icons.menu_burger = load_icon("menu-burger.png");
     if (appl->icons.menu_burger)
         SDL_SetSurfaceColorMod(appl->icons.menu_burger, 250, 0, 0);
 
     // A menu icon that is missing is not fatal: load_icon says so and the
     // button falls back to its label.
-    appl->icons.statistics = load_icon("resources/statistics.png");
-    appl->icons.records = load_icon("resources/records.png");
-    appl->icons.settings = load_icon("resources/settings.png");
+    appl->icons.statistics = load_icon("statistics.png");
+    appl->icons.records = load_icon("records.png");
+    appl->icons.settings = load_icon("settings.png");
 
-    appl->icons.date = load_icon("resources/date.png");
-    appl->icons.clock = load_icon("resources/clock.png");
-    appl->icons.duration = load_icon("resources/duration.png");
-    appl->icons.pace = load_icon("resources/pace.png");
-    appl->icons.distance = load_icon("resources/distance.png");
-    appl->icons.elev_up = load_icon("resources/up.png");
-    appl->icons.elev_down = load_icon("resources/down.png");
-    appl->icons.peak = load_icon("resources/peak.png");
+    appl->icons.date = load_icon("date.png");
+    appl->icons.clock = load_icon("clock.png");
+    appl->icons.duration = load_icon("duration.png");
+    appl->icons.pace = load_icon("pace.png");
+    appl->icons.distance = load_icon("distance.png");
+    appl->icons.elev_up = load_icon("up.png");
+    appl->icons.elev_down = load_icon("down.png");
+    appl->icons.peak = load_icon("peak.png");
 }
 
 // The static artwork only. The graph surfaces are made by tracks.c whenever the
