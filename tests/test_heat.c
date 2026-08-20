@@ -2,12 +2,17 @@
 
 #include "harness.h"
 
+#include <stdint.h>
+
 // A tiny deterministic PRNG, so a failure is reproducible and the suite does
 // not depend on the platform's rand().
-static unsigned long rng_state = 12345;
+static uint64_t rng_state = 12345;
 static int next_random(int bound) {
-    rng_state = rng_state * 6364136223846793005UL + 1442695040888963407UL;
-    return (int)((rng_state >> 33) % (unsigned long)bound);
+    // Spelled in a fixed-width type: unsigned long is 64 bits on Linux and
+    // 32 on Windows, where the multiply below would be truncated and the
+    // shift would be undefined outright.
+    rng_state = rng_state * 6364136223846793005ULL + 1442695040888963407ULL;
+    return (int)((rng_state >> 33) % (uint64_t)bound);
 }
 
 // What the k-d tree is supposed to compute, written the obvious way: for each

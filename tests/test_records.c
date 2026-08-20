@@ -4,6 +4,8 @@
 // records.c calls it, and nothing else in the test binary pulls it in.
 #include "../src/gpx_activity.c"
 
+#include "../src/time_util.h"
+
 #include "harness.h"
 
 #include <stdlib.h>
@@ -24,7 +26,9 @@ static time_t at(const char *iso) {
     tm.tm_hour = hour;
     tm.tm_min = minute;
     tm.tm_sec = second;
-    return timegm(&tm);
+    // Not timegm: it is a GNU extension mingw-w64 does not have, and
+    // time_util.h already owns that difference for the whole application.
+    return utc_from_tm(&tm);
 }
 
 // One track, dated and visible, with everything a category can rank it by.
