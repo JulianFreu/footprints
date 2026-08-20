@@ -217,6 +217,13 @@ void subprocess_terminate(uintptr_t id) {
         TerminateProcess((HANDLE)id, SUBPROCESS_KILLED_CODE);
 }
 
+void subprocess_close(Subprocess *proc) {
+    if (proc->id) {
+        CloseHandle((HANDLE)proc->id);
+        proc->id = 0;
+    }
+}
+
 int subprocess_wait(Subprocess *proc) {
     if (proc->out) {
         fclose(proc->out);
@@ -230,8 +237,6 @@ int subprocess_wait(Subprocess *proc) {
 
     DWORD code = 0;
     bool exited = GetExitCodeProcess(handle, &code) != 0;
-    CloseHandle(handle);
-    proc->id = 0;
 
     // The one Windows cannot say for itself: a terminated process reports the
     // exit code its killer passed, with nothing to mark it as killed. This is
@@ -322,6 +327,12 @@ void subprocess_terminate(uintptr_t id) {
         kill((pid_t)id, SIGTERM);
 }
 
+void subprocess_close(Subprocess *proc) {
+    // Nothing to release: waitpid above has already reaped the child. Here so
+    // that the caller has one order to follow whichever platform it is on.
+    proc->id = 0;
+}
+
 int subprocess_wait(Subprocess *proc) {
     if (proc->out) {
         fclose(proc->out);
@@ -332,7 +343,6 @@ int subprocess_wait(Subprocess *proc) {
 
     int status = 0;
     waitpid((pid_t)proc->id, &status, 0);
-    proc->id = 0;
 
     // Killed rather than finished, which is what cancelling a job looks like
     // from here.
