@@ -145,12 +145,22 @@ bool subprocess_start(char *const argv[], const char *stdin_text, Subprocess *pr
     SetHandleInformation(to_child_write, HANDLE_FLAG_INHERIT, 0);
     SetHandleInformation(from_child_read, HANDLE_FLAG_INHERIT, 0);
 
+    // The build asks for no console, so on the shipped binary there is no
+    // standard error to hand down -- and naming an invalid handle while
+    // STARTF_USESTDHANDLES is set gives the child a broken stderr rather than
+    // none. Pointing it at the output pipe instead keeps whatever the helper
+    // complains about: handle_line passes anything it does not recognise to
+    // the debug log rather than treating it as protocol.
+    HANDLE parent_stderr = GetStdHandle(STD_ERROR_HANDLE);
+    if (parent_stderr == NULL || parent_stderr == INVALID_HANDLE_VALUE)
+        parent_stderr = from_child_write;
+
     STARTUPINFOA startup = {
         .cb = sizeof(STARTUPINFOA),
         .dwFlags = STARTF_USESTDHANDLES,
         .hStdInput = to_child_read,
         .hStdOutput = from_child_write,
-        .hStdError = GetStdHandle(STD_ERROR_HANDLE),
+        .hStdError = parent_stderr,
     };
     PROCESS_INFORMATION child = {0};
 

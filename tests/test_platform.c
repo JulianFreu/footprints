@@ -51,6 +51,20 @@ void run_platform_tests(void) {
     CHECK(platform_make_dir(SCRATCH "/walk/nested"));
     CHECK(platform_make_dirs(SCRATCH "/walk/nested"));
 
+    SUITE("platform: a trailing separator still checks the last component");
+    {
+        // Every data root is handed over with one of these on the end, so a
+        // version of this that reported success without looking would make
+        // paths_init unable to fail.
+        CHECK(platform_make_dirs(SCRATCH "/trailing/"));
+        CHECK(platform_file_exists(SCRATCH "/trailing"));
+
+        // Under a file rather than a directory: the last component cannot be
+        // made, and saying otherwise is the bug above.
+        write_file(SCRATCH "/walk-blocker");
+        CHECK(!platform_make_dirs(SCRATCH "/walk-blocker/under-a-file/"));
+    }
+
     SUITE("platform: a path that does not exist says so");
     CHECK(!platform_file_exists(SCRATCH "/walk/nothing-here"));
     CHECK(!platform_file_exists(SCRATCH "/no/such/tree"));
