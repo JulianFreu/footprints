@@ -91,8 +91,14 @@
 #define TILE_RETRY_SECONDS 30
 #define TILE_PENDING_MAX 128
 
+// What this build calls itself. The one place a version number is written down:
+// the Makefile reads it back out of here to name a package, and the tile
+// user-agent below is built from it rather than repeating it.
+#define FOOTPRINTS_VERSION "1.0.0"
+
 // Sent to the tile provider; OSM's usage policy asks for an identifying agent.
-#define TILE_USER_AGENT "footprints/1.0 (+https://github.com/JulianFreu/footprints)"
+#define TILE_USER_AGENT \
+    "footprints/" FOOTPRINTS_VERSION " (+https://github.com/JulianFreu/footprints)"
 
 // Upper bound on cached tile textures, per cache. Each is a TILE_SIZE-square
 // RGBA texture, so 256 of them is roughly 64 MB of video memory; past that the
@@ -222,6 +228,12 @@
 // so the heat the tooltip reports is always the heat of a point on the track a
 // click there would select.
 #define MAP_HOVER_RADIUS_PIXELS 10
+
+// The font every string is drawn with, and the longest failure message shown
+// in a box when the program cannot start. Both live beside the binary rather
+// than in the working directory; see paths.h.
+#define UI_FONT_FILE "Roboto-Regular.ttf"
+#define FATAL_MESSAGE_MAX 512
 
 // --- Settings ---
 // Written into the per-user data directory beside the tile cache, and read at
