@@ -3,7 +3,8 @@
 #include "harness.h"
 
 #include <stdlib.h>
-#include <unistd.h>
+
+#include "../src/platform.h"
 
 // Runs gpx_extract_coords over a document held in memory, so the walk that
 // fills the points and their timestamps is testable without a file on disk.
@@ -82,6 +83,70 @@ static void release_collection(GpxCollection *collection) {
         free(collection->tracks[i].points);
     free(collection->tracks);
     free(collection->list_order);
+}
+
+// Where the scan's fixtures are built. Under build/, which .gitignore already
+// excludes and `make clean` already removes.
+#define SCAN_ROOT "build/test-gpx"
+
+void run_gpx_scan_tests(void) {
+    // The walk under gpx_parse_all_files is the one piece of the parser that
+    // asks the operating system a question, and it is the piece that had to be
+    // rewritten for Windows -- mingw-w64's dirent.h has no d_type to read. So
+    // it is checked through the real entry point, against a tree on disk, on
+    // whichever platform the suite is running.
+    CHECK(platform_make_dirs(SCAN_ROOT "/nested"));
+
+    write_gpx_file(SCAN_ROOT "/one.gpx", "running");
+    write_gpx_file(SCAN_ROOT "/two.gpx", "cycling");
+    // The imports file into a subfolder of the library, so descending is not a
+    // nicety -- a scan that stopped at the top level would miss every imported
+    // activity.
+    write_gpx_file(SCAN_ROOT "/nested/three.gpx", "running");
+    // Not a .gpx, and so not a track however the platform reports it.
+    write_gpx_file(SCAN_ROOT "/notes.txt", "running");
+
+    snprintf(settings.gpx_dir, sizeof(settings.gpx_dir), "%s", SCAN_ROOT);
+
+    SUITE("gpx: the scan finds every .gpx under the library, subfolders included");
+    {
+        GpxCollection collection = {0};
+        CHECK(gpx_parse_all_files(&collection, NULL));
+        CHECK_INT(collection.total_tracks, 3);
+        // Ordering is the directory's, which no platform promises, so the list
+        // is checked for its size and its contents rather than its sequence.
+        CHECK(collection.list_order != NULL);
+        for (int i = 0; i < collection.total_tracks; i++)
+            CHECK(collection.tracks[i].total_points == 1);
+        release_collection(&collection);
+    }
+
+    SUITE("gpx: a library folder that is not there is a failed scan, not a crash");
+    {
+        // The distinction the walk draws: a subfolder that will not open costs
+        // only its own files, but the library folder itself not opening is the
+        // whole library missing.
+        snprintf(settings.gpx_dir, sizeof(settings.gpx_dir), "%s", SCAN_ROOT "/no-such-folder");
+        GpxCollection collection = {0};
+        CHECK(!gpx_parse_all_files(&collection, NULL));
+        CHECK_INT(collection.total_tracks, 0);
+        release_collection(&collection);
+    }
+
+    SUITE("gpx: an empty library folder is an empty collection, not a failure");
+    {
+        CHECK(platform_make_dirs(SCAN_ROOT "/empty"));
+        snprintf(settings.gpx_dir, sizeof(settings.gpx_dir), "%s", SCAN_ROOT "/empty");
+        GpxCollection collection = {0};
+        CHECK(gpx_parse_all_files(&collection, NULL));
+        CHECK_INT(collection.total_tracks, 0);
+        release_collection(&collection);
+    }
+
+    remove(SCAN_ROOT "/one.gpx");
+    remove(SCAN_ROOT "/two.gpx");
+    remove(SCAN_ROOT "/nested/three.gpx");
+    remove(SCAN_ROOT "/notes.txt");
 }
 
 void run_gpx_tests(void) {

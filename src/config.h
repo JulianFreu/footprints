@@ -254,9 +254,38 @@
 // this file rather than settings.conf that holds one.
 #define STRAVA_TOKEN_FILE "token.json"
 
-// The interpreter the helpers are run with. Spelled with the major version: on
-// several distributions "python" is either Python 2 or absent entirely.
-#define IMPORT_PYTHON "python3"
+// The interpreters the helpers are tried with, in the order they are tried.
+// Which name Python answers to depends on the platform, so this is a list
+// rather than a name: "py" is the launcher a default Windows install puts on
+// PATH and often the only one there, "python3" is what distributions ship, and
+// bare "python" is either a fallback or -- on a Windows with no Python at all
+// -- a stub that opens the Store. subprocess_python() runs each candidate
+// rather than looking for it, which is what tells that stub apart from an
+// interpreter.
+//
+// Defining IMPORT_PYTHON instead names one outright and skips the probe. The
+// test suite does that to point the helpers at a shell script.
+#if defined(_WIN32)
+#define IMPORT_PYTHON_CANDIDATES \
+    { "py", "python", "python3" }
+#else
+#define IMPORT_PYTHON_CANDIDATES \
+    { "python3", "python" }
+#endif
+
+// The longest command line a helper can be started with. Only Windows needs it:
+// CreateProcess takes the arguments joined back into one string, and the
+// library folder in the middle of it is user-chosen.
+#define SUBPROCESS_COMMAND_MAX 4096
+
+// The exit code a cancelled helper is killed with. Windows reports a terminated
+// process as having exited with whatever its killer passed and marks it no
+// other way, so one code is reserved to stand for "did not finish on its own".
+// It has to be one no helper can return: the scripts exit 0, 1, 2 or 3, and an
+// interpreter that could not be run exits 127, so the value is deliberately
+// outside the byte an exit status fits in. This one is what Windows itself
+// reports for a process ended by Ctrl-C.
+#define SUBPROCESS_KILLED_CODE 0xC000013AU
 
 // The longest line a helper is read a line at a time in, and the longest of
 // its messages the panel keeps to show.
