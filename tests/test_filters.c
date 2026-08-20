@@ -93,8 +93,11 @@ void run_filters_tests(void) {
     for (int a = 0; a < FILTER_COUNT; a++) {
         for (int e = 0; e < BOUND_COUNT; e++) {
             uint16_t id = filter_field_id((FilterAttribute)a, (FilterBoundEnd)e);
-            FilterAttribute got_attribute;
-            FilterBoundEnd got_end;
+            // Started from a value the checks below would fail on, so a
+            // round trip that quietly wrote nothing is a failure rather than
+            // whatever the stack happened to hold.
+            FilterAttribute got_attribute = (FilterAttribute)-1;
+            FilterBoundEnd got_end = (FilterBoundEnd)-1;
             CHECK(filter_field_unpack(id, &got_attribute, &got_end));
             CHECK_INT(got_attribute, a);
             CHECK_INT(got_end, e);
