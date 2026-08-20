@@ -88,9 +88,15 @@ static void build_kdtree(GpxPoint **points, int lo, int hi, int depth) {
 
 static double squared_distance(GpxPoint p1, GpxPoint p2, float mercator_x_correction) {
     // Flat projection; good enough at the radii we search over.
-    long int dx = (p2.world_x - p1.world_x) * mercator_x_correction;
-    long int dy = (p2.world_y - p1.world_y);
-    return dx * dx + dy * dy;
+    //
+    // int64_t rather than long: long is 64 bits on Linux and 32 on Windows, and
+    // a world pixel gap only has to reach about forty-six thousand before its
+    // square passes what 32 bits hold. It wrapped negative there, which made
+    // far-apart points read as neighbours -- and the world is 2^28 pixels
+    // across at the deepest zoom, so the gaps that do it are ordinary ones.
+    int64_t dx = (int64_t)((double)(p2.world_x - p1.world_x) * mercator_x_correction);
+    int64_t dy = (int64_t)(p2.world_y - p1.world_y);
+    return (double)(dx * dx + dy * dy);
 }
 
 // Mercator stretches the x axis by 1/cos(latitude), so a world pixel east-west
