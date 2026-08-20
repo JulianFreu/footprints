@@ -151,7 +151,7 @@ static const int ui_font_size[UI_FONT_COUNT] = {
 bool ui_load_fonts(struct application *appl) {
     for (int id = 0; id < UI_FONT_COUNT; id++) {
         char path[PATHS_MAX];
-        paths_resource(path, sizeof(path), "Roboto-Regular.ttf");
+        paths_resource(path, sizeof(path), UI_FONT_FILE);
 
         TTF_Font *font = TTF_OpenFont(path, ui_font_size[id]);
         if (!font) {

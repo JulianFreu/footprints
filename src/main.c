@@ -1,4 +1,5 @@
 #include <pthread.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,6 +22,23 @@
 #include "settings.h"
 #include "tracks.h"
 #include "ui.h"
+
+// Something that stops the program starting, said where it will be seen. The
+// Windows build asks for no console -- a terminal opening behind a desktop
+// application is worse than useless -- so stderr alone would make a failed
+// start look like nothing happening at all. SDL puts up the box itself, and may
+// be asked to before SDL_Init has run, which is where the first of these is.
+static void fatal(const char *fmt, ...) {
+    char message[FATAL_MESSAGE_MAX];
+    va_list args;
+
+    va_start(args, fmt);
+    vsnprintf(message, sizeof(message), fmt, args);
+    va_end(args);
+
+    fprintf(stderr, "%s\n", message);
+    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, WINDOW_TITLE, message, NULL);
+}
 
 static bool sdl_initialize(struct application *appl);
 static void appl_cleanup(struct application *appl, GpxCollection *collection);
@@ -52,7 +70,7 @@ int main(int argc, char *argv[]) {
     // Before anything builds a path. Nothing below is relative to the working
     // directory any more, so this has to answer first.
     if (!paths_init()) {
-        fprintf(stderr, "could not create the data directory at %s\n", paths_data_root());
+        fatal("could not create the data directory at %s", paths_data_root());
         return EXIT_FAILURE;
     }
 
@@ -86,17 +104,16 @@ int main(int argc, char *argv[]) {
         // start on Stadia for one run without changing what is saved.
         if (argc == 2 && strcmp(argv[1], "-stadiamaps") == 0) {
             if (!map_has_api_key()) {
-                fprintf(stderr,
-                        "-stadiamaps needs an API key, and none is set.\n"
-                        "Open the settings panel and paste one in, or put it in\n"
-                        "%s as  stadia_api_key = <your key>\n",
-                        settings_file_path());
+                fatal("-stadiamaps needs an API key, and none is set.\n"
+                      "Open the settings panel and paste one in, or put it in\n"
+                      "%s as  stadia_api_key = <your key>",
+                      settings_file_path());
                 return EXIT_FAILURE;
             }
             printf("using stadiamaps\n");
             map_set_provider(MAP_PROVIDER_STADIA_TERRAIN);
         } else {
-            fprintf(stderr, "The only supported argument is \"-stadiamaps\"\n");
+            fatal("The only supported argument is \"-stadiamaps\"");
             return EXIT_FAILURE;
         }
     }
@@ -153,7 +170,7 @@ int main(int argc, char *argv[]) {
     pthread_mutex_init(&appl.download_queue.lock, NULL);
     pthread_cond_init(&appl.download_queue.cond, NULL);
     if (pthread_create(&appl.download_thread, NULL, download_tiles, (void *)&(appl.download_queue))) {
-        fprintf(stderr, "Failed to create download thread\n");
+        fatal("Failed to create download thread");
         appl_cleanup(&appl, &collection);
         return EXIT_FAILURE;
     }
@@ -334,15 +351,21 @@ static void appl_cleanup(struct application *appl, GpxCollection *collection) {
 
 static bool sdl_initialize(struct application *appl) {
     if (SDL_Init(SDL_INIT_VIDEO)) {
-        fprintf(stderr, "Error initializing SDL: %s\n", SDL_GetError());
+        fatal("Error initializing SDL: %s", SDL_GetError());
         return true;
     }
     if (TTF_Init() < 0) {
-        fprintf(stderr, "Error: could not initialize TTF: %s\n", TTF_GetError());
+        fatal("Error: could not initialize TTF: %s", TTF_GetError());
         return true;
     }
-    if (!ui_load_fonts(appl))
+    if (!ui_load_fonts(appl)) {
+        // ui_load_fonts has already said which size and why on stderr; this is
+        // what puts it in front of somebody running the packaged build.
+        char font_path[PATHS_MAX];
+        paths_resource(font_path, sizeof(font_path), UI_FONT_FILE);
+        fatal("Could not load the font at %s\n%s", font_path, TTF_GetError());
         return true;
+    }
 
     // Sampled when a texture is created, not when one is drawn, so this has to
     // be set before the renderer and before anything is loaded. Without it the
@@ -352,13 +375,13 @@ static bool sdl_initialize(struct application *appl) {
 
     int img_init = IMG_Init(IMG_INIT_PNG);
     if ((img_init & IMG_INIT_PNG) != IMG_INIT_PNG) {
-        fprintf(stderr, "Error initializing SDL_Image: %s\n", IMG_GetError());
+        fatal("Error initializing SDL_Image: %s", IMG_GetError());
         return true;
     }
 
     appl->window = SDL_CreateWindow(WINDOW_TITLE, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_RESIZABLE);
     if (!appl->window) {
-        fprintf(stderr, "Error creating window: %s\n", SDL_GetError());
+        fatal("Error creating window: %s", SDL_GetError());
         return true;
     }
 
@@ -372,7 +395,7 @@ static bool sdl_initialize(struct application *appl) {
         appl->renderer = SDL_CreateRenderer(appl->window, -1, 0);
     }
     if (!appl->renderer) {
-        fprintf(stderr, "Error creating renderer: %s\n", SDL_GetError());
+        fatal("Error creating renderer: %s", SDL_GetError());
         return true;
     }
 

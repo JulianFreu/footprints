@@ -12,9 +12,13 @@ settings.conf
 # build output
 build/
 build-debug/
+dist/
 footprints
 footprints-debug
+footprints.exe
+footprints-debug.exe
 run-tests
+run-tests.exe
 
 # editor-local settings
 .vscode/
