@@ -42,7 +42,16 @@ void subprocess_terminate(uintptr_t id);
 // Waits for the child to finish and closes its output. Returns the exit code,
 // or -1 if it was killed rather than exiting -- which is what cancelling a job
 // looks like from here.
+//
+// The child itself is still held afterwards, deliberately: another thread may
+// be about to call subprocess_terminate with an id it read a moment ago, and on
+// Windows that id is a handle which must not have been closed underneath it.
 int subprocess_wait(Subprocess *proc);
+
+// Lets the finished child go. Call it once nothing else can still be holding
+// its id -- after the id has been cleared from wherever another thread reads
+// it, which is the order import_job.c uses.
+void subprocess_close(Subprocess *proc);
 
 // The Python interpreter the helpers run under: the first of the platform's
 // candidate names that is present and actually runs. NULL when none is, which

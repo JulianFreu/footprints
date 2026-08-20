@@ -28,16 +28,21 @@ typedef struct GpxPoint {
     uint16_t heart_rate; // bpm, or 0 where the point carried none
 } GpxPoint;
 
+// What the run list is sorted by, and which column asked for it.
+//
+// Prefixed because these are the names Windows uses too: <windows.h> arrives
+// through curl.h in map.c and defines DATE as a typedef of its own, which a
+// bare enum member here collides with outright.
 typedef enum {
-    ID,
-    TYPE,
-    DATE,
-    DISTANCE,
-    DURATION,
-    UPHILL,
-    DOWNHILL,
-    HIGHPOINT,
-    PACE,
+    ATTR_ID,
+    ATTR_TYPE,
+    ATTR_DATE,
+    ATTR_DISTANCE,
+    ATTR_DURATION,
+    ATTR_UPHILL,
+    ATTR_DOWNHILL,
+    ATTR_HIGHPOINT,
+    ATTR_PACE,
 } AttributeType;
 
 typedef struct GpxTrack {

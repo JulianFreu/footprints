@@ -19,25 +19,25 @@ typedef struct TrackSortEntry {
 // rest, so one comparator serves every criteria.
 static double track_sort_key(const GpxTrack *track, AttributeType criteria) {
     switch (criteria) {
-    case DISTANCE:
+    case ATTR_DISTANCE:
         return track->distance;
-    case DURATION:
+    case ATTR_DURATION:
         return track->duration_secs;
-    case PACE:
+    case ATTR_PACE:
         return -(double)track->secs_per_km;
-    case UPHILL:
+    case ATTR_UPHILL:
         return track->elev_up;
-    case DOWNHILL:
+    case ATTR_DOWNHILL:
         return track->elev_down;
-    case HIGHPOINT:
+    case ATTR_HIGHPOINT:
         return track->high_point;
-    case TYPE:
+    case ATTR_TYPE:
         return track->act_type;
-    case DATE:
+    case ATTR_DATE:
         // Latest first. The parsed timestamp is compared rather than the raw
         // ISO string, which is the same ordering without the strcmp.
         return (double)track->start_utc;
-    case ID:
+    case ATTR_ID:
         break;
     }
     return track->track_id;

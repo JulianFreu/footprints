@@ -178,7 +178,13 @@ static void *import_worker(void *arg) {
     read_output(job, helper.out);
 
     int code = subprocess_wait(&helper);
+
+    // Cleared before the child is let go, not after. import_stop reads this id
+    // and hands it to subprocess_terminate, and on Windows it is a handle --
+    // closing it while that read could still be in flight risks terminating
+    // whatever the handle value gets reused for.
     atomic_store(&job->child_id, (uintptr_t)0);
+    subprocess_close(&helper);
 
     // Published before `finished`, so a main thread that sees the job is done
     // sees everything the worker wrote about it.

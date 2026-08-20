@@ -117,25 +117,25 @@ static void draw_run_list_header_attribute(GpxCollection *collection, int width,
         Clay_OnHover(clicked_list_headers, (intptr_t)collection);
         ui_draw_text(str, LABEL_FONT_SIZE, bg_d, CLAY_TEXT_ALIGN_CENTER);
         switch (sort_type) {
-        case DATE:
+        case ATTR_DATE:
             ui_draw_text("[dd:mm:yyyy]", 12, bg_d, CLAY_TEXT_ALIGN_CENTER);
             break;
-        case DISTANCE:
+        case ATTR_DISTANCE:
             ui_draw_text("[km]", 12, bg_d, CLAY_TEXT_ALIGN_CENTER);
             break;
-        case PACE:
+        case ATTR_PACE:
             ui_draw_text("[min/km]", 12, bg_d, CLAY_TEXT_ALIGN_CENTER);
             break;
-        case DURATION:
+        case ATTR_DURATION:
             ui_draw_text("[hh:mm:ss]", 12, bg_d, CLAY_TEXT_ALIGN_CENTER);
             break;
-        case UPHILL:
+        case ATTR_UPHILL:
             ui_draw_text("[m]", 12, bg_d, CLAY_TEXT_ALIGN_CENTER);
             break;
-        case DOWNHILL:
+        case ATTR_DOWNHILL:
             ui_draw_text("[m]", 12, bg_d, CLAY_TEXT_ALIGN_CENTER);
             break;
-        case HIGHPOINT:
+        case ATTR_HIGHPOINT:
             ui_draw_text("[m]", 12, bg_d, CLAY_TEXT_ALIGN_CENTER);
             break;
         default:
@@ -154,14 +154,14 @@ static void draw_run_list_header(GpxCollection *collection) {
                                         .topRight = CORNER_RADIUS,
                                         .bottomLeft = 0,
                                         .bottomRight = 0}}) {
-        draw_run_list_header_attribute(collection, RUN_LIST_COLUMN_WIDTH, "Type", TYPE);
-        draw_run_list_header_attribute(collection, RUN_LIST_COLUMN_WIDTH, "Date", DATE);
-        draw_run_list_header_attribute(collection, RUN_LIST_COLUMN_WIDTH, "Distance", DISTANCE);
-        draw_run_list_header_attribute(collection, RUN_LIST_COLUMN_WIDTH, "Pace", PACE);
-        draw_run_list_header_attribute(collection, RUN_LIST_COLUMN_WIDTH, "Duration", DURATION);
-        draw_run_list_header_attribute(collection, RUN_LIST_COLUMN_WIDTH, "Uphill", UPHILL);
-        draw_run_list_header_attribute(collection, RUN_LIST_COLUMN_WIDTH, "Downhill", DOWNHILL);
-        draw_run_list_header_attribute(collection, RUN_LIST_COLUMN_WIDTH, "Highest", HIGHPOINT);
+        draw_run_list_header_attribute(collection, RUN_LIST_COLUMN_WIDTH, "Type", ATTR_TYPE);
+        draw_run_list_header_attribute(collection, RUN_LIST_COLUMN_WIDTH, "Date", ATTR_DATE);
+        draw_run_list_header_attribute(collection, RUN_LIST_COLUMN_WIDTH, "Distance", ATTR_DISTANCE);
+        draw_run_list_header_attribute(collection, RUN_LIST_COLUMN_WIDTH, "Pace", ATTR_PACE);
+        draw_run_list_header_attribute(collection, RUN_LIST_COLUMN_WIDTH, "Duration", ATTR_DURATION);
+        draw_run_list_header_attribute(collection, RUN_LIST_COLUMN_WIDTH, "Uphill", ATTR_UPHILL);
+        draw_run_list_header_attribute(collection, RUN_LIST_COLUMN_WIDTH, "Downhill", ATTR_DOWNHILL);
+        draw_run_list_header_attribute(collection, RUN_LIST_COLUMN_WIDTH, "Highest", ATTR_HIGHPOINT);
     }
 }
 
