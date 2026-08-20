@@ -51,6 +51,13 @@ bool platform_make_dirs(const char *path) {
         return false;
     memcpy(partial, path, length + 1);
 
+    // Trimmed first, or the last real component would be made by the loop below
+    // as though it were a parent -- and the loop ignores what those answer, so
+    // the one directory the caller actually asked for would go unchecked. Every
+    // data root is handed over with one of these on the end.
+    while (length > 1 && is_separator(partial[length - 1]))
+        partial[--length] = '\0';
+
     // From the second character on, so a leading "/" is not taken for a
     // directory to create, and neither is the "C:" of an absolute Windows path
     // -- both are already there, and asking for them fails.
@@ -60,17 +67,13 @@ bool platform_make_dirs(const char *path) {
 
         char separator = partial[i];
         partial[i] = '\0';
-        // A component that cannot be made is only fatal if the last one below
-        // also fails: a drive letter or a mount point answers "no" here and is
-        // still a perfectly good parent.
+        // A parent that cannot be made is only fatal if the last component
+        // fails too: a drive letter or a mount point answers "no" here and is
+        // still a perfectly good place to create something under.
         platform_make_dir(partial);
         partial[i] = separator;
     }
 
-    // A path given with a trailing separator has already had its last real
-    // component made by the loop.
-    if (is_separator(partial[length - 1]))
-        return true;
     return platform_make_dir(partial);
 }
 
