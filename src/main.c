@@ -67,6 +67,16 @@ static void app_update(struct application *appl, GpxCollection *collection) {
 }
 
 int main(int argc, char *argv[]) {
+    // Answered before anything else is set up, because it is the one question
+    // that needs none of it: no data directory, no window, no SDL. That is also
+    // what makes it worth something to a packaged build -- a copy that prints
+    // this has had every library it was linked against resolved by the loader,
+    // which is exactly what a zip unpacked on a fresh machine has to prove.
+    if (argc == 2 && strcmp(argv[1], "--version") == 0) {
+        printf("footprints %s\n", FOOTPRINTS_VERSION);
+        return EXIT_SUCCESS;
+    }
+
     // Before anything builds a path. Nothing below is relative to the working
     // directory any more, so this has to answer first.
     if (!paths_init()) {
@@ -113,7 +123,7 @@ int main(int argc, char *argv[]) {
             printf("using stadiamaps\n");
             map_set_provider(MAP_PROVIDER_STADIA_TERRAIN);
         } else {
-            fatal("The only supported argument is \"-stadiamaps\"");
+            fatal("The only supported arguments are \"-stadiamaps\" and \"--version\"");
             return EXIT_FAILURE;
         }
     }
