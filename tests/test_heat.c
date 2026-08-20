@@ -77,6 +77,27 @@ static void check_against_brute_force(GpxPoint *storage, int total_points,
 }
 
 void run_heat_tests(void) {
+    SUITE("heat: a distance too big for 32 bits is still positive");
+    {
+        // The square of a gap of about forty-six thousand pixels is already
+        // more than a 32-bit integer holds, and the world is 2^28 pixels across
+        // at the deepest zoom. Held in the wrong width this wrapped negative,
+        // and every far-apart pair read as a neighbour -- which is a miscount
+        // rather than a crash, so nothing else here would have noticed.
+        GpxPoint origin = {0};
+        GpxPoint far_away = {0};
+        far_away.world_y = 50000;
+        CHECK(squared_distance(origin, far_away, 1.0f) > 0.0);
+        CHECK_NEAR(squared_distance(origin, far_away, 1.0f), 2.5e9, 1.0);
+
+        // And at a separation the map really can produce.
+        GpxPoint across = {0};
+        across.world_x = 200000000;
+        across.world_y = 200000000;
+        CHECK(squared_distance(origin, across, 1.0f) > 0.0);
+        CHECK_NEAR(squared_distance(origin, across, 1.0f), 8.0e16, 1.0e11);
+    }
+
     SUITE("heat: select_nth places the median");
     // The property the implicit tree relies on: after the call, everything
     // below n is no greater and everything above is no smaller.
