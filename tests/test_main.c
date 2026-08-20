@@ -13,6 +13,8 @@ int main(void) {
     // this the suites below would be measuring a zeroed radius.
     settings_defaults(&settings);
 
+    run_platform_tests();
+    run_paths_tests();
     run_time_util_tests();
     run_settings_tests();
     run_fifo_tests();

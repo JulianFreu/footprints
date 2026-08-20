@@ -63,6 +63,8 @@ extern const char *current_suite;
     current_suite = name; \
     printf("- %s\n", name)
 
+void run_platform_tests(void);
+void run_paths_tests(void);
 void run_time_util_tests(void);
 void run_settings_tests(void);
 void run_filters_tests(void);

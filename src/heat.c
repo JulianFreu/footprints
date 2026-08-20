@@ -6,9 +6,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <unistd.h>
 
 #include "heat_types.h"
+#include "platform.h"
 #include "progress.h"
 #include "settings.h"
 
@@ -216,12 +216,10 @@ static void *heatmap_worker(void *arg) {
 
 // Number of heat workers to run: one per online core, clamped to a sane range.
 static int heat_worker_count(void) {
-    long cores = sysconf(_SC_NPROCESSORS_ONLN);
-    if (cores < 1)
-        cores = 1;
+    int cores = platform_cpu_count();
     if (cores > 64)
         cores = 64;
-    return (int)cores;
+    return cores;
 }
 
 bool calculate_heatmap(GpxCollection *collection, const Progress *progress) {

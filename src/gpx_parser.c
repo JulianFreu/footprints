@@ -1,17 +1,16 @@
 #include "gpx_parser.h"
 
-#include <dirent.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
 #include <time.h>
 
 #include <libxml/parser.h>
 #include <libxml/tree.h>
 
 #include "log.h"
+#include "platform.h"
 #include "progress.h"
 #include "settings.h"
 #include "time_util.h"
@@ -544,53 +543,33 @@ static bool join_path(char *out, size_t size, const char *folder_path, const cha
     return written > 0 && (size_t)written < size;
 }
 
-// Whether an entry is itself a directory. d_type is the cheap answer and the
-// one nearly every filesystem gives; a few report DT_UNKNOWN for everything,
-// which is what the stat is for.
-static bool entry_is_dir(const char *full_path, const struct dirent *entry) {
-    if (entry->d_type != DT_UNKNOWN)
-        return entry->d_type == DT_DIR;
-
-    struct stat info;
-    return stat(full_path, &info) == 0 && S_ISDIR(info.st_mode);
-}
-
-// Every entry worth descending into or parsing. "." and ".." would walk the
-// scan back up the tree, so they are what makes the recursion terminate as much
-// as the depth limit is.
-static bool entry_is_self_or_parent(const struct dirent *entry) {
-    return strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0;
-}
-
 // Counts the .gpx files under the folder, so progress has a denominator. It
 // descends the same way the scan does, because a count taken over one level
 // while the scan reads several would leave the bar short by every file in a
 // subfolder. A count that disagrees only makes the bar wrong; nothing is sized
 // from it.
 static int count_gpx_files(const char *folder_path, int depth) {
-    DIR *dir = opendir(folder_path);
+    PlatformDir *dir = platform_dir_open(folder_path);
     if (!dir)
         return 0;
 
     int count = 0;
-    struct dirent *entry;
-    while ((entry = readdir(dir)) != NULL) {
-        if (entry_is_self_or_parent(entry))
-            continue;
-
+    char name[GPX_PATH_MAX];
+    bool is_dir;
+    while (platform_dir_next(dir, name, sizeof(name), &is_dir)) {
         char full_path[GPX_PATH_MAX];
-        if (!join_path(full_path, sizeof(full_path), folder_path, entry->d_name))
+        if (!join_path(full_path, sizeof(full_path), folder_path, name))
             continue;
 
-        if (entry_is_dir(full_path, entry)) {
+        if (is_dir) {
             if (depth + 1 < GPX_SCAN_MAX_DEPTH)
                 count += count_gpx_files(full_path, depth + 1);
-        } else if (strstr(entry->d_name, ".gpx") != NULL) {
+        } else if (strstr(name, ".gpx") != NULL) {
             count++;
         }
     }
 
-    closedir(dir);
+    platform_dir_close(dir);
     return count;
 }
 
@@ -600,37 +579,37 @@ static int count_gpx_files(const char *folder_path, int depth) {
 // out of memory, or the library folder itself would not open.
 static bool scan_dir(const char *folder_path, GpxCollection *collection,
                      TrackTimes *times, const Progress *progress, int depth) {
-    DIR *dir = opendir(folder_path);
+    PlatformDir *dir = platform_dir_open(folder_path);
     if (dir == NULL) {
-        perror("opendir");
+        // Not perror: the failure reached here through platform_dir_open, and
+        // errno is only half the story on the Win32 side of it.
+        fprintf(stderr, "could not read %s\n", folder_path);
         // A subfolder that cannot be read costs only its own files. The library
         // folder not opening is the whole library missing, and the caller says
         // so.
         return depth > 0;
     }
 
-    struct dirent *entry;
-    while ((entry = readdir(dir)) != NULL) {
+    char name[GPX_PATH_MAX];
+    bool is_dir;
+    while (platform_dir_next(dir, name, sizeof(name), &is_dir)) {
         if (progress_cancelled(progress))
             break;
 
-        if (entry_is_self_or_parent(entry))
-            continue;
-
         char full_path[GPX_PATH_MAX];
-        if (!join_path(full_path, sizeof(full_path), folder_path, entry->d_name))
+        if (!join_path(full_path, sizeof(full_path), folder_path, name))
             continue;
 
-        if (entry_is_dir(full_path, entry)) {
+        if (is_dir) {
             if (depth + 1 < GPX_SCAN_MAX_DEPTH &&
                 !scan_dir(full_path, collection, times, progress, depth + 1)) {
-                closedir(dir);
+                platform_dir_close(dir);
                 return false;
             }
             continue;
         }
 
-        if (strstr(entry->d_name, ".gpx") == NULL)
+        if (strstr(name, ".gpx") == NULL)
             continue;
 
         GpxTrack *grown = (GpxTrack *)realloc(
@@ -639,7 +618,7 @@ static bool scan_dir(const char *folder_path, GpxCollection *collection,
 
         if (!grown) {
             perror("realloc");
-            closedir(dir);
+            platform_dir_close(dir);
             return false;
         }
         collection->tracks = grown;
@@ -662,7 +641,7 @@ static bool scan_dir(const char *folder_path, GpxCollection *collection,
         progress_add(progress, 1);
     }
 
-    closedir(dir);
+    platform_dir_close(dir);
     return true;
 }
 
