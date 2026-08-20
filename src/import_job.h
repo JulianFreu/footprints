@@ -4,6 +4,7 @@
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "config.h"
 
@@ -61,8 +62,10 @@ typedef struct ImportJob {
     _Atomic bool cancel;
     _Atomic bool finished; // worker is done; main thread has yet to join
     // The helper, so that asking a worker blocked on its output to stop can end
-    // what it is blocked on. Zero when there is no child.
-    _Atomic int child_pid;
+    // what it is blocked on. Zero when there is no child. Wide enough for a pid
+    // or a Windows process handle, since which one it holds is subprocess.c's
+    // business rather than this module's.
+    _Atomic uintptr_t child_id;
 
     // Written by the worker before `finished` is published and read by the main
     // thread after it, which is what makes them safe without a lock of their own.

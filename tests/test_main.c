@@ -20,6 +20,7 @@ int main(void) {
     run_fifo_tests();
     run_filters_tests();
     run_gpx_tests();
+    run_gpx_scan_tests();
     run_track_splits_tests();
     run_track_series_tests();
     run_heat_tests();

@@ -1,12 +1,12 @@
 #include "import_job.h"
 
-#include <signal.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/wait.h>
-#include <unistd.h>
 
 #include "log.h"
+#include "paths.h"
+#include "platform.h"
+#include "subprocess.h"
 
 // The providers. Two tables of names rather than two modules: everything below
 // this point is the same work whichever of them a job was pointed at.
@@ -37,68 +37,16 @@ static void wipe(void *data, size_t size) {
 
 // --- The helper process ---
 
-// Started with fork rather than popen: popen would carry the credentials either
-// on the command line, which ps shows to everyone, or through the environment,
-// which the whole process tree inherits. A pipe is read by the helper alone.
-static bool child_start(ImportJob *job, char *const argv[], const char *stdin_text,
-                        int *out_fd) {
-    int to_child[2], from_child[2];
+// Where a provider's pieces actually are. The tables above name them, because
+// naming them is what tells the two providers apart; neither name is a path.
+// The script ships beside the binary and the session folder belongs to whoever
+// is running it, which are two different roots.
+static void provider_script(const ImportProvider *provider, char *out, size_t size) {
+    paths_exe(out, size, provider->script);
+}
 
-    if (pipe(to_child) != 0) {
-        perror("pipe");
-        return false;
-    }
-    if (pipe(from_child) != 0) {
-        perror("pipe");
-        close(to_child[0]);
-        close(to_child[1]);
-        return false;
-    }
-
-    pid_t pid = fork();
-    if (pid < 0) {
-        perror("fork");
-        close(to_child[0]);
-        close(to_child[1]);
-        close(from_child[0]);
-        close(from_child[1]);
-        return false;
-    }
-
-    if (pid == 0) {
-        // Nothing but dup2 and execvp between the fork and the exec. Anything
-        // else would be running in a child that inherited locks the other
-        // threads of this process were holding when it was forked.
-        dup2(to_child[0], STDIN_FILENO);
-        dup2(from_child[1], STDOUT_FILENO);
-        close(to_child[0]);
-        close(to_child[1]);
-        close(from_child[0]);
-        close(from_child[1]);
-        execvp(argv[0], argv);
-        _exit(127); // read back as "could not run the interpreter"
-    }
-
-    close(to_child[0]);
-    close(from_child[1]);
-
-    // A helper that died before reading would otherwise end this process with
-    // SIGPIPE. Ignoring it turns that into a short write, which the exit code
-    // below reports properly.
-    signal(SIGPIPE, SIG_IGN);
-
-    if (stdin_text) {
-        // Three short lines, far under a pipe buffer, so this cannot block on a
-        // helper that has not started reading yet. Closing the end is what
-        // stops it waiting for a fourth.
-        ssize_t written = write(to_child[1], stdin_text, strlen(stdin_text));
-        (void)written;
-    }
-    close(to_child[1]);
-
-    *out_fd = from_child[0];
-    atomic_store(&job->child_pid, (int)pid);
-    return true;
+static void provider_session_dir(const ImportProvider *provider, char *out, size_t size) {
+    paths_data(out, size, provider->session_dir);
 }
 
 // --- Reading what it says ---
@@ -144,17 +92,16 @@ static void read_output(ImportJob *job, FILE *out) {
 // What the helper's exit code says happened. Its own message stands where it
 // left one; the fallbacks are for the ways it can fail without getting far
 // enough to say anything.
-static ImportStage stage_from_status(ImportJob *job, int status) {
-    if (!WIFEXITED(status)) {
-        // Cancelling kills it, so a job asked to stop lands here and has
-        // nothing to report.
+static ImportStage stage_from_status(ImportJob *job, int code) {
+    if (code < 0) {
+        // Killed rather than finished. Cancelling is what kills it, so a job
+        // asked to stop lands here and has nothing to report.
         if (atomic_load(&job->cancel))
             return IMPORT_IDLE;
         snprintf(job->message, sizeof(job->message), "the import helper was killed");
         return IMPORT_FAILED;
     }
 
-    int code = WEXITSTATUS(status);
     if (code == 0)
         return IMPORT_DONE;
     if (code == 2)
@@ -163,7 +110,7 @@ static ImportStage stage_from_status(ImportJob *job, int status) {
     if (job->message[0] == '\0') {
         if (code == 127)
             snprintf(job->message, sizeof(job->message), "could not run %s %s",
-                     IMPORT_PYTHON, job->provider->script);
+                     subprocess_python(), job->provider->script);
         else
             snprintf(job->message, sizeof(job->message),
                      "the import helper failed (exit %d)", code);
@@ -176,25 +123,39 @@ static ImportStage stage_from_status(ImportJob *job, int status) {
 static void *import_worker(void *arg) {
     ImportJob *job = (ImportJob *)arg;
 
-    // Built before the fork so the child does nothing but exec, and wiped as
+    // Asked once, before anything is spawned: a machine with no Python cannot
+    // run either helper, and saying so is more use than the exit code 127 that
+    // a failed exec would otherwise report.
+    const char *python = subprocess_python();
+    if (!python) {
+        snprintf(job->message, sizeof(job->message),
+                 "no Python interpreter found -- install Python 3 and try again");
+        atomic_store(&job->stage, IMPORT_FAILED);
+        atomic_store(&job->finished, true);
+        return NULL;
+    }
+
+    // Built before the spawn so the child does nothing but exec, and wiped as
     // soon as the helper has it.
     char credentials[3 * IMPORT_CREDENTIAL_MAX + 4];
     snprintf(credentials, sizeof(credentials), "%s\n%s\n%s\n",
              job->user, job->secret, job->extra);
 
-    char *const script = (char *)job->provider->script;
-    char *const session_dir = (char *)job->provider->session_dir;
-    char *const login_argv[] = {(char *)IMPORT_PYTHON, script,
-                                (char *)"login", session_dir, NULL};
-    char *const sync_argv[] = {(char *)IMPORT_PYTHON, script,
-                               (char *)"sync", session_dir,
-                               job->output_dir, NULL};
+    char script[PATHS_MAX], session_dir[PATHS_MAX];
+    provider_script(job->provider, script, sizeof(script));
+    provider_session_dir(job->provider, session_dir, sizeof(session_dir));
+
+    // The helper writes its token here and will not make the folder itself.
+    platform_make_dirs(session_dir);
+
+    char *const login_argv[] = {(char *)python, script, (char *)"login", session_dir, NULL};
+    char *const sync_argv[] = {(char *)python, script, (char *)"sync",
+                               session_dir, job->output_dir, NULL};
 
     // Only the login needs credentials; an import runs off the saved token.
-    int stdout_fd = -1;
-    bool started = job->logging_in
-                       ? child_start(job, login_argv, credentials, &stdout_fd)
-                       : child_start(job, sync_argv, NULL, &stdout_fd);
+    Subprocess helper;
+    bool started = job->logging_in ? subprocess_start(login_argv, credentials, &helper)
+                                   : subprocess_start(sync_argv, NULL, &helper);
 
     wipe(credentials, sizeof(credentials));
     wipe(job->secret, sizeof(job->secret));
@@ -207,28 +168,21 @@ static void *import_worker(void *arg) {
         return NULL;
     }
 
-    pid_t pid = (pid_t)atomic_load(&job->child_pid);
+    atomic_store(&job->child_id, (uintptr_t)helper.id);
 
     // A stop that arrived while the child was being started would have found no
-    // pid to end, so it is checked once more now that there is one.
+    // child to end, so it is checked once more now that there is one.
     if (atomic_load(&job->cancel))
-        kill(pid, SIGTERM);
+        subprocess_terminate(helper.id);
 
-    FILE *out = fdopen(stdout_fd, "r");
-    if (out) {
-        read_output(job, out);
-        fclose(out);
-    } else {
-        close(stdout_fd);
-    }
+    read_output(job, helper.out);
 
-    int status = 0;
-    waitpid(pid, &status, 0);
-    atomic_store(&job->child_pid, 0);
+    int code = subprocess_wait(&helper);
+    atomic_store(&job->child_id, (uintptr_t)0);
 
     // Published before `finished`, so a main thread that sees the job is done
     // sees everything the worker wrote about it.
-    atomic_store(&job->stage, (int)stage_from_status(job, status));
+    atomic_store(&job->stage, (int)stage_from_status(job, code));
     atomic_store(&job->finished, true);
     return NULL;
 }
@@ -245,7 +199,7 @@ static bool start(ImportJob *job, bool logging_in) {
 
     atomic_store(&job->cancel, false);
     atomic_store(&job->finished, false);
-    atomic_store(&job->child_pid, 0);
+    atomic_store(&job->child_id, (uintptr_t)0);
     atomic_store(&job->completed, 0);
     atomic_store(&job->total, 0);
     atomic_store(&job->stage, logging_in ? IMPORT_LOGGING_IN : IMPORT_IMPORTING);
@@ -338,9 +292,7 @@ void import_stop(ImportJob *job) {
     // The worker is blocked reading the helper's output, so asking it to stop
     // means ending what it is reading from. Without this, quitting during an
     // import would wait for however long the download had left.
-    pid_t pid = (pid_t)atomic_load(&job->child_pid);
-    if (pid > 0)
-        kill(pid, SIGTERM);
+    subprocess_terminate(atomic_load(&job->child_id));
 
     pthread_join(job->thread, NULL);
     job->thread_started = false;
@@ -348,7 +300,12 @@ void import_stop(ImportJob *job) {
 }
 
 bool import_have_session(const ImportProvider *provider) {
-    char path[GPX_PATH_MAX];
-    snprintf(path, sizeof(path), "%s/%s", provider->session_dir, provider->token_file);
-    return access(path, R_OK) == 0;
+    // Joined before it is resolved rather than after: appending to a path that
+    // is already as long as the buffer is exactly the truncation the compiler
+    // warns about, and this way the only place a root is prepended stays
+    // paths_data.
+    char name[PATHS_MAX], path[PATHS_MAX];
+    snprintf(name, sizeof(name), "%s/%s", provider->session_dir, provider->token_file);
+    paths_data(path, sizeof(path), name);
+    return platform_file_exists(path);
 }
