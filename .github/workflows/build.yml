@@ -1,0 +1,131 @@
+name: build
+
+# Every push and pull request builds both platforms, so a change that only
+# compiles on one is caught where it was made. A v* tag additionally publishes
+# what it built.
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The list the README tells a person to install, plus clang-format for the
+      # formatting check below.
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang-format \
+            libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev \
+            libcurl4-openssl-dev libxml2-dev
+
+      # One platform decides formatting. Running it on both would only mean
+      # tracking two clang-format versions against one .clang-format.
+      - name: Check formatting
+        run: make check-format
+
+      - name: Build
+        run: make -j"$(nproc)"
+
+      # AddressSanitizer and UBSan are on here, which is the point of running
+      # the suite on Linux: this is where the memory coverage actually happens.
+      - name: Test
+        run: make test
+
+      - name: Package
+        run: make dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: footprints-linux-x86_64
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-latest
+    # MSYS2's shell for every step, so the Makefile, pkg-config and the ldd
+    # below are the same ones the build expects.
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          # mingw-w64 packages, not MSYS ones: the result has to be a native
+          # binary that runs without the MSYS runtime installed.
+          install: >-
+            make
+            zip
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-pkgconf
+            mingw-w64-x86_64-SDL2
+            mingw-w64-x86_64-SDL2_image
+            mingw-w64-x86_64-SDL2_ttf
+            mingw-w64-x86_64-curl
+            mingw-w64-x86_64-libxml2
+
+      - name: Build
+        run: make -j"$(nproc)"
+
+      # Without the sanitizers, which mingw-w64's gcc does not have. What this
+      # covers is that the suite compiles and passes on Windows at all -- the
+      # directory walk, the process spawn and the path resolution are three
+      # different answers here than on Linux.
+      - name: Test
+        run: make test
+
+      - name: Package
+        run: make dist
+
+      # The zip has to run on a machine that has never had MSYS2 on it, and
+      # nothing on the runner would notice if it could not.
+      - name: Check the package runs unpacked, with MSYS2 off the PATH
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Expand-Archive -Path (Get-ChildItem dist\*.zip)[0].FullName -DestinationPath smoke
+          $exe = "$PWD\smoke\footprints\footprints.exe"
+          # --version answers before any window or data directory exists, so it
+          # needs no display -- but the loader has already had to resolve every
+          # DLL by then, which is the thing that fails on a machine without
+          # MSYS2. Stripping the PATH is what makes that a real test: with
+          # MSYS2 still on it the exe would find its libraries there.
+          $env:PATH = "$env:SystemRoot\system32;$env:SystemRoot"
+          $p = Start-Process -FilePath $exe -ArgumentList "--version" -PassThru -Wait `
+                 -RedirectStandardOutput version.txt
+          if ($p.ExitCode -ne 0) { throw "unpacked build exited $($p.ExitCode), expected 0" }
+          Get-Content version.txt
+          Write-Host "the unpacked build loads every DLL and runs"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: footprints-windows-x86_64
+          path: dist/*.zip
+          if-no-files-found: error
+
+  release:
+    needs: [linux, windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true

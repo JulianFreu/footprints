@@ -10,6 +10,7 @@ Build targets:
 | Target             | What it does                                                        |
 |--------------------|---------------------------------------------------------------------|
 | `make`             | Optimised incremental build (`-O2 -Wall -Wextra`)                    |
+| `make dist`        | Stage a runnable copy under `dist/` and archive it                   |
 | `make debug`       | `footprints-debug` with AddressSanitizer + UBSan                     |
 | `make test`        | Build and run the unit tests, with both sanitizers on                |
 | `make format`      | Apply `.clang-format` to all non-vendored sources                    |
@@ -20,6 +21,16 @@ Build targets:
 The build should be warning-free. `src/clay.h` and `src/clay_renderer_sdl.c` are
 vendored third-party code: they are excluded from formatting, compiled only via
 `src/clay_sdl.c`, and should not be hand-edited.
+
+Linux and Windows are both built by `.github/workflows/build.yml`, the Windows
+side through MSYS2's mingw-w64 toolchain. That toolchain has no AddressSanitizer
+or UBSan, so the sanitizer flags are `SAN` in the Makefile and empty there;
+`make test` still runs on both, and Linux is where the memory coverage happens.
+Anything that asks the operating system a question belongs behind `platform.h`,
+`paths.h` or `subprocess.h` rather than in an `#ifdef` at the call site --
+Windows is the platform hardest to try a change on, so the code that only runs
+there is kept in one place and, where it is pure enough to be, compiled and
+tested everywhere (see the command-line joiner in `subprocess.c`).
 
 ## Development
 
@@ -55,9 +66,11 @@ and the provider it is pointed at, and the animation primitive's easing and
 timing, and the frame profiler's ring and reductions.
 
 `tests/test_import.c` points the macros naming the interpreter and each
-provider's script at `tests/fake_helper.sh`, so the fork, the pipes, the line
+provider's script at `tests/fake_helper.sh`, so the spawn, the pipes, the line
 protocol and the exit codes are covered without an account anywhere. It runs the
-binary from the project root, which is where `make test` runs it from.
+binary from the project root, which is where `make test` runs it from, and
+points the data directory at `build/` so the suite writes nothing into the
+profile of whoever runs it.
 
 For threading changes, build the suite with ThreadSanitizer instead:
 
@@ -99,6 +112,9 @@ cc -O1 -g -fsanitize=thread -I$(xml2-config --cflags | sed 's/-I//') \
 | `ui_profiler.c` | The frame-time overlay: the stacked columns, the budget line and the legend |
 | `ui_internal.h` | Layout vocabulary shared by `ui*.c`; not part of the UI's interface |
 | `settings.c` | What is configurable, its defaults, and reading and writing `settings.conf` |
+| `paths.c` | The two roots every path is built from: the folder holding the binary, and the per-user data directory |
+| `platform.c` | The handful of things POSIX and Win32 spell differently -- making a directory, testing for a file, counting cores, walking a directory |
+| `subprocess.c` | Starting a helper program, feeding it stdin and reading its output; the one place a process is spawned |
 | `progress.h` | How a long operation reports progress and is asked to stop |
 | `clay_sdl.c` | The one translation unit carrying Clay and its vendored SDL renderer |
 | `*_types.h` | Types only, so a module can include what it needs without the rest |

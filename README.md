@@ -16,6 +16,17 @@ Visualize all your runs, hikes, and rides in one place, explore your most freque
 
 ## Installation
 
+### Download a build
+
+Every release has a ready-to-run build for Linux and Windows on the
+[releases page](https://github.com/JulianFreu/footprints/releases). Unpack it
+anywhere and run `footprints` (`footprints.exe` on Windows) — the Windows zip
+carries the libraries it needs, so nothing else has to be installed. Builds of
+every commit are also attached to their run under
+[Actions](https://github.com/JulianFreu/footprints/actions).
+
+To build it yourself instead, read on.
+
 ### 1. Clone the repository
 
 ```bash
@@ -38,20 +49,45 @@ Fedora:
 sudo dnf install gcc make SDL2-devel SDL2_image-devel SDL2_ttf-devel libcurl-devel libxml2-devel
 ```
 
+Windows, in an [MSYS2](https://www.msys2.org/) **MINGW64** shell:
+
+```bash
+pacman -S --needed make zip mingw-w64-x86_64-gcc mingw-w64-x86_64-pkgconf \
+  mingw-w64-x86_64-SDL2 mingw-w64-x86_64-SDL2_image mingw-w64-x86_64-SDL2_ttf \
+  mingw-w64-x86_64-curl mingw-w64-x86_64-libxml2
+```
+
+The result is an ordinary Windows program; MSYS2 is needed to build it, not to
+run it.
+
 ### 3. Build from source
 
 Run the build with `make`
 
 ### 4. Run the application
 
-After building, run the executable directly from the project root:
-
 ```bash
 ./footprints
 ```
 
-Run it from the project root — `gpx_files/`, `tilecache/`, `resources/` and
-`settings.conf` are all resolved relative to the working directory.
+It can be started from anywhere — it finds `resources/` beside the executable,
+and keeps everything it writes in a directory of its own:
+
+| Platform | Where your library, tile cache, settings and sessions live |
+|----------|------------------------------------------------------------|
+| Linux    | `~/.local/share/footprints/` (or `$XDG_DATA_HOME/footprints/`) |
+| Windows  | `%APPDATA%\footprints\` |
+
+Upgrading from a version that kept `settings.conf` in the project folder? It is
+carried across on the first run, and the folder it names as your library keeps
+working. The tile cache is not moved — it simply fills up again — and the
+Garmin and Strava imports need signing in once more.
+
+### Packaging a build
+
+`make dist` stages a runnable copy under `dist/` and archives it — a `.tar.gz`
+on Linux, a `.zip` on Windows with the DLLs it was linked against copied in
+beside the binary. This is what the release builds are made with.
 
 ### Map tiles
 
@@ -63,8 +99,9 @@ Lite, Alidade Smooth Dark and Outdoors. They need a key: open the settings
 panel, paste it into **Stadia API key**, and the styles become selectable.
 Both the key and the choice of provider are saved, so this is a one-time step.
 
-Each provider caches into a directory of its own under `tilecache/`, so
-switching between them does not mix one provider's tiles into another's.
+Each provider caches into a directory of its own under `tilecache/` in the data
+directory, so switching between them does not mix one provider's tiles into
+another's.
 
 TODO: delete the -stadiamaps option so it has to be selected in settings
 
@@ -73,7 +110,7 @@ this once" without changing what is saved. It needs a key to already be set.
 
 ## Settings
 
-Everything in the settings panel is written to `settings.conf` in the working
+Everything in the settings panel is written to `settings.conf` in the data
 directory as soon as it changes, and read back at startup. The file is plain
 text and hand-editing it is fine — anything unreadable or out of range falls
 back to the default rather than stopping the program.
@@ -122,8 +159,11 @@ is read once and carried into the settings; the header is no longer needed.
 
 ## Usage
 
-At startup, Footprints scans the `gpx_files/` directory and automatically loads all GPX files it finds there.
-So your first step should be to copy your GPX files into that folder.
+At startup, Footprints scans its library folder and automatically loads every
+GPX file it finds there. On a first run that folder is `gpx_files/` inside the
+data directory above, and it is made for you — so your first step is to copy
+your GPX files into it. Point the **Library** setting somewhere else and it
+scans that instead.
 
 Subfolders are scanned too, so a library can be filed by year, by activity, or
 however else you like — and it is what lets each import keep to a folder of its
@@ -240,6 +280,10 @@ itself reads `.gpx` files with no Python at all.
 ```bash
 pip install -r requirements.txt
 ```
+
+The import panel finds the interpreter itself: `python3` then `python` on Linux,
+and the `py` launcher first on Windows. If none of them is installed the panel
+says so rather than failing with an unexplained error.
 
 ## ToDo
 
