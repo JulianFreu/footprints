@@ -910,6 +910,25 @@ static void draw_map_heat_tooltip(const struct application *appl,
     }
 }
 
+// Credits whoever drew the tiles, in the bottom right corner of the map --
+// left of the sidebar, following it as it slides. Passthrough for the same
+// reason as the tooltip: it sits on the map and must not take its clicks.
+static void draw_map_attribution(const struct application *appl) {
+    CLAY(CLAY_ID("MapAttribution"),
+         {.floating = {.attachTo = CLAY_ATTACH_TO_ROOT,
+                       .attachPoints = {.element = CLAY_ATTACH_POINT_RIGHT_BOTTOM,
+                                        .parent = CLAY_ATTACH_POINT_RIGHT_BOTTOM},
+                       .offset = {.x = -anim_value(&ui.right_sidebar) * (SCREEN_BORDER_PADDING + SIDEBAR_WIDTH) - SCREEN_BORDER_PADDING,
+                                  .y = -SCREEN_BORDER_PADDING},
+                       .pointerCaptureMode = CLAY_POINTER_CAPTURE_MODE_PASSTHROUGH},
+          .layout = {.padding = {GAPS, GAPS, 1, 1}},
+          .backgroundColor = {bg_d.r, bg_d.g, bg_d.b, 0xb0},
+          .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS / 2)}) {
+        ui_draw_text_unwrapped(map_provider_attribution(map_current_provider()),
+                               FILTER_TEXT_FONT_SIZE, fg1, CLAY_TEXT_ALIGN_RIGHT);
+    }
+}
+
 void clay_draw_ui(struct application *appl, GpxCollection *collection) {
     if (!clay_memory.memory) {
         fprintf(stderr, "[CLAY] ERROR: clay_memory not initialized!\n");
@@ -990,6 +1009,8 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
 
         ui_fade_set(1.0f);
     }
+
+    draw_map_attribution(appl);
 
     // Last, so it lays out over whatever is open. It does not slide, so it does
     // not fade -- the same reason the progress panel does not.

@@ -24,8 +24,9 @@ _Atomic bool download_in_progress;
 // different picture depending on who drew it, so one shared tree would hand
 // back OpenStreetMap tiles for a Stadia map and there would be no way to tell.
 typedef struct TileProvider {
-    const char *label;      // what the settings panel's button says
-    const char *url_format; // zoom, x, y
+    const char *label;       // what the settings panel's button says
+    const char *attribution; // the credit drawn in the map's corner
+    const char *url_format;  // zoom, x, y
     // An array rather than a pointer so the compiler can bound the paths built
     // from it below; as a pointer it cannot, and the directory arithmetic warns
     // about a truncation that cannot happen.
@@ -40,26 +41,31 @@ typedef struct TileProvider {
 static const TileProvider providers[MAP_PROVIDER_COUNT] = {
     [MAP_PROVIDER_OSM] = {
         .label       = "OpenStreetMap",
+        .attribution = "© OpenStreetMap contributors",
         .url_format  = "https://tile.openstreetmap.org/%d/%d/%d.png",
         .cache_dir   = "osm",
         .needs_key   = false},
     [MAP_PROVIDER_STADIA_TERRAIN] = {
         .label       = "Stamen Terrain",
+        .attribution = "© Stadia Maps © Stamen Design © OpenMapTiles © OpenStreetMap",
         .url_format  = "https://tiles.stadiamaps.com/tiles/stamen_terrain/%d/%d/%d.png",
         .cache_dir   = "stadia_stamen_terrain",
         .needs_key   = true},
     [MAP_PROVIDER_STADIA_TONER_LITE] = {
         .label       = "Stamen Toner Lite",
+        .attribution = "© Stadia Maps © Stamen Design © OpenMapTiles © OpenStreetMap",
         .url_format  = "https://tiles.stadiamaps.com/tiles/stamen_toner_lite/%d/%d/%d.png",
         .cache_dir   = "stadia_stamen_toner_lite",
         .needs_key   = true},
     [MAP_PROVIDER_STADIA_SMOOTH_DARK] = {
         .label       = "Alidade Smooth Dark",
+        .attribution = "© Stadia Maps © OpenMapTiles © OpenStreetMap",
         .url_format  = "https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/%d/%d/%d.png",
         .cache_dir   = "stadia_alidade_smooth_dark",
         .needs_key   = true},
     [MAP_PROVIDER_STADIA_OUTDOORS] = {
         .label       = "Outdoors",
+        .attribution = "© Stadia Maps © OpenMapTiles © OpenStreetMap",
         .url_format  = "https://tiles.stadiamaps.com/tiles/outdoors/%d/%d/%d.png",
         .cache_dir   = "stadia_outdoors",
         .needs_key   = true},
@@ -74,6 +80,10 @@ static MapProvider clamp_provider(MapProvider provider) {
 
 const char *map_provider_label(MapProvider provider) {
     return providers[clamp_provider(provider)].label;
+}
+
+const char *map_provider_attribution(MapProvider provider) {
+    return providers[clamp_provider(provider)].attribution;
 }
 
 bool map_provider_needs_key(MapProvider provider) {

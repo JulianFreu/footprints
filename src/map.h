@@ -99,6 +99,8 @@ void map_set_api_key(const char *key);
 // What a provider is called in the settings panel, and whether selecting it is
 // any use without a key.
 const char *map_provider_label(MapProvider provider);
+// Who the provider's tiles are credited to, as drawn in the map's corner.
+const char *map_provider_attribution(MapProvider provider);
 bool map_provider_needs_key(MapProvider provider);
 
 // Whether a Stadia Maps key has been set. The Stadia providers need one; the
