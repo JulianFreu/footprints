@@ -681,8 +681,14 @@ static void draw_field(SettingsField field, int width, bool masked) {
              .layout = {.padding = {.left = GAPS, .right = GAPS},
                         .sizing = {.width = width > 0 ? CLAY_SIZING_FIXED(width) : CLAY_SIZING_GROW(0),
                                    .height = CLAY_SIZING_FIXED(SETTINGS_ROW_HEIGHT)},
-                        .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
+                        // A path or a key can be wider than the field. Held
+                        // to the right so its end and the caret stay in view.
+                        .childAlignment = {.x = field_is_text(field) && !unset ? CLAY_ALIGN_X_RIGHT : CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
                         .layoutDirection = CLAY_LEFT_TO_RIGHT},
+             // Clipped, so text wider than the field is cut off at its edge
+             // rather than widening the row and pushing the panel's contents
+             // out past its right side.
+             .clip = {.horizontal = true},
              .backgroundColor = ui_fade(Clay_Hovered() ? blue : dark_blue),
              .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS),
          }) {

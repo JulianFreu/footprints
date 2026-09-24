@@ -573,6 +573,9 @@ static void draw_field(ImportField field, bool masked) {
                         .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(SETTINGS_ROW_HEIGHT)},
                         .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
                         .layoutDirection = CLAY_LEFT_TO_RIGHT},
+             // Clipped, so a long value is cut off at the field's edge rather
+             // than widening the panel's contents past its right side.
+             .clip = {.horizontal = true},
              .backgroundColor = ui_fade(Clay_Hovered() ? blue : dark_blue),
              .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS),
          }) {
@@ -623,7 +626,11 @@ static void draw_caption(const char *text, Clay_Color color, int id) {
     CLAY(CLAY_IDI("ImportCaption", id),
          {.layout = {.padding = {.left = GAPS, .right = GAPS},
                      .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(SETTINGS_ROW_HEIGHT)},
-                     .childAlignment = {.y = CLAY_ALIGN_Y_CENTER}}}) {
+                     .childAlignment = {.y = CLAY_ALIGN_Y_CENTER}},
+          // The destination folder and the helper's messages can be wider than
+          // the panel. Clipped, like the fields, so they are cut off rather than
+          // widening everything above and below them.
+          .clip = {.horizontal = true}}) {
         ui_draw_text_unwrapped(text, FILTER_TEXT_FONT_SIZE, color, CLAY_TEXT_ALIGN_LEFT);
     }
 }
