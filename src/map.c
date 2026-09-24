@@ -363,6 +363,11 @@ void *download_tiles(void *arg) {
         curl_easy_reset(curl);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &image_data);
+        // Trust the certificates the operating system trusts. On Windows the
+        // CA bundle libcurl was built to read sits inside the MSYS2 install,
+        // not beside the exe, so without this every HTTPS tile fails to verify.
+        // Elsewhere it adds nothing to the bundle libcurl already reads.
+        curl_easy_setopt(curl, CURLOPT_SSL_OPTIONS, (long)CURLSSLOPT_NATIVE_CA);
 
         snprintf(url, sizeof(url), source->url_format,
                  next_tile.zoom, next_tile.tile_x, next_tile.tile_y);
