@@ -4,6 +4,7 @@
 
 #include "background.h"
 #include "colors.h"
+#include "map.h"
 #include "tracks.h"
 
 // The filter panel: the seven range filters, the activity-type toggles, and
@@ -36,6 +37,7 @@ static int pending_focus = NO_FIELD;
 static int pending_type_toggle = -1;
 static bool pending_clear = false;
 static bool pending_heat = false;
+static bool pending_view_area = false;
 
 // A field changed and the visible set has not caught up with it yet.
 static bool filters_dirty = false;
@@ -84,6 +86,11 @@ static void clicked_calculate_heat(
     intptr_t userData) {
     if (pointerData.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME)
         pending_heat = true;
+}
+
+// Pressed in the run list's footer, which is drawn by ui.c.
+void ui_filters_request_view_area(void) {
+    pending_view_area = true;
 }
 
 // --- Input ---
@@ -218,6 +225,20 @@ bool ui_filters_update(struct application *appl, GpxCollection *collection) {
         reset_filters(&collection->filters);
         pending_clear = false;
         focused_field = NO_FIELD;
+        filters_dirty = true;
+        immediate = true;
+    }
+
+    // A second press lets go of the area rather than taking the view again.
+    if (pending_view_area) {
+        FilterSettings *filters = &collection->filters;
+        filters->area_active = !filters->area_active;
+        if (filters->area_active) {
+            map_screen_to_world(appl, 0.0f, 0.0f, &filters->area_min_x, &filters->area_min_y);
+            map_screen_to_world(appl, (float)appl->window_width, (float)appl->window_height,
+                                &filters->area_max_x, &filters->area_max_y);
+        }
+        pending_view_area = false;
         filters_dirty = true;
         immediate = true;
     }

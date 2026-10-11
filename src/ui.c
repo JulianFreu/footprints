@@ -339,10 +339,18 @@ static void clicked_toggle_filter_view(
         ui_panel_toggle(&ui.filters);
 }
 
+static void clicked_view_area(
+    Clay_ElementId elementId,
+    Clay_PointerData pointerData,
+    intptr_t userData) {
+    if (pointerData.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME)
+        ui_filters_request_view_area();
+}
+
 // Indexed by the panel rather than given local ids: three panels draw this
 // footer, and while one slides out over another two of them are laid out in the
 // same frame -- ids they shared would be declared twice.
-void ui_draw_panel_footer(MenuPanel panel) {
+void ui_draw_panel_footer(MenuPanel panel, const FilterSettings *filters) {
     CLAY(CLAY_IDI("PanelFooter", panel), {.layout = {
                                               .padding = CLAY_PADDING_ALL(GAPS),
                                               .sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_FIXED(PANEL_FOOTER_HEIGHT)},
@@ -353,6 +361,19 @@ void ui_draw_panel_footer(MenuPanel panel) {
                                           .cornerRadius = {.bottomLeft = CORNER_RADIUS, .bottomRight = CORNER_RADIUS}}) {
         CLAY(CLAY_IDI("PanelFooterSpacer", panel), {.layout = {
                                                         .sizing = {.width = CLAY_SIZING_GROW(), .height = CLAY_SIZING_GROW()}}}) {
+        }
+        if (filters) {
+            CLAY(CLAY_IDI("ViewAreaButton", panel), {.layout = {
+                                                         .padding = CLAY_PADDING_ALL(GAPS),
+                                                         .sizing = {.width = CLAY_SIZING_FIT(), .height = CLAY_SIZING_FIT()},
+                                                         .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                                                         .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}},
+                                                     .backgroundColor = ui_fade(Clay_Hovered() ? bg_l : bg_d),
+                                                     .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS)}) {
+                Clay_OnHover(clicked_view_area, 0);
+                ui_draw_text(filters->area_active ? "Clear View Filter" : "Filter to View",
+                             LABEL_FONT_SIZE, dark_aqua, CLAY_TEXT_ALIGN_CENTER);
+            }
         }
         CLAY(CLAY_IDI("FilterOptionsButton", panel), {.layout = {
                                                           .padding = CLAY_PADDING_ALL(GAPS),

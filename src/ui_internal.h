@@ -229,8 +229,9 @@ float ui_panel_offset_x(MenuPanel panel, int width);
 int ui_panel_width(const struct application *appl, MenuPanel panel);
 
 // The footer the panels that read the collection end in: the button that shows
-// and hides the filter wing beside them.
-void ui_draw_panel_footer(MenuPanel panel);
+// and hides the filter wing beside them. Given the filters, it also carries the
+// button that narrows them to the map's current view.
+void ui_draw_panel_footer(MenuPanel panel, const FilterSettings *filters);
 
 // The opacity everything drawn from here on is scaled by, and the scaling
 // itself. Set it to a panel's anim value before drawing the panel and back to
@@ -246,6 +247,8 @@ void ui_draw_filter_panel(struct application *appl, GpxCollection *collection);
 // Returns whether anything moved. Aggregating here rather than in the layout is
 // what keeps the layout a read of the model.
 bool ui_filters_update(struct application *appl, GpxCollection *collection);
+// Asks the next update to filter to the window's view, or to stop if it is.
+void ui_filters_request_view_area(void);
 void ui_draw_run_list(struct application *appl, GpxCollection *collection);
 void ui_draw_statistics_panel(struct application *appl);
 void ui_draw_records_panel(struct application *appl);

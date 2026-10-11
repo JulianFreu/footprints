@@ -575,6 +575,6 @@ void ui_draw_statistics_panel(struct application *appl) {
                 draw_metric_button((StatsMetric)metric);
         }
 
-        ui_draw_panel_footer(PANEL_STATISTICS);
+        ui_draw_panel_footer(PANEL_STATISTICS, NULL);
     }
 }

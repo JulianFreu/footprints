@@ -370,6 +370,6 @@ void ui_draw_run_list(struct application *appl, GpxCollection *collection) {
 
         draw_run_list_header(collection);
         draw_run_list_body(collection, body_height);
-        ui_draw_panel_footer(PANEL_RUN_LIST);
+        ui_draw_panel_footer(PANEL_RUN_LIST, &collection->filters);
     }
 }

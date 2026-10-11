@@ -292,6 +292,21 @@ void reset_filters(FilterSettings *filters) {
 
     for (int type = 0; type < ACTIVITY_TYPE_COUNT; type++)
         filters->show_activity[type] = true;
+    filters->area_active = false;
+}
+
+// Whether any point of the track lies inside the view area. A track recorded
+// without GPS has nowhere to be, so it is never inside one.
+static bool track_in_area(const GpxTrack *track, const FilterSettings *filters) {
+    if (!track->has_path)
+        return false;
+    for (int i = 0; i < track->total_points; i++) {
+        const GpxPoint *point = &track->points[i];
+        if (point->world_x >= filters->area_min_x && point->world_x <= filters->area_max_x &&
+            point->world_y >= filters->area_min_y && point->world_y <= filters->area_max_y)
+            return true;
+    }
+    return false;
 }
 
 // A track survives when its activity type is shown and every filter's range
@@ -320,6 +335,10 @@ static bool track_passes_filters(const GpxTrack *track, const FilterSettings *fi
                 return false;
         }
     }
+    // Last, so the cheap comparisons above turn a track away before its
+    // points are walked.
+    if (filters->area_active && !track_in_area(track, filters))
+        return false;
     return true;
 }
 

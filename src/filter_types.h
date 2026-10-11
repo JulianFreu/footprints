@@ -52,6 +52,10 @@ typedef struct FilterBound {
 typedef struct FilterSettings {
     FilterBound bound[FILTER_COUNT][BOUND_COUNT];
     bool show_activity[ACTIVITY_TYPE_COUNT];
+    // The world rectangle a track must have a point in, taken from the window
+    // when "Filter to View" was pressed. Read only while area_active.
+    bool area_active;
+    int area_min_x, area_min_y, area_max_x, area_max_y;
 } FilterSettings;
 
 #endif

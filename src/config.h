@@ -279,10 +279,10 @@
 // test suite does that to point the helpers at a shell script.
 #if defined(_WIN32)
 #define IMPORT_PYTHON_CANDIDATES \
-    { "py", "python", "python3" }
+    {"py", "python", "python3"}
 #else
 #define IMPORT_PYTHON_CANDIDATES \
-    { "python3", "python" }
+    {"python3", "python"}
 #endif
 
 // The longest command line a helper can be started with. Only Windows needs it:

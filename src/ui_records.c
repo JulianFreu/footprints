@@ -366,6 +366,6 @@ void ui_draw_records_panel(struct application *appl) {
 
         draw_records_header();
         draw_records_body(appl, body_height);
-        ui_draw_panel_footer(PANEL_RECORDS);
+        ui_draw_panel_footer(PANEL_RECORDS, NULL);
     }
 }

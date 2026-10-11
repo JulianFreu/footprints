@@ -49,7 +49,7 @@ void filter_bound_set_digits(FilterSettings *filters, FilterAttribute attribute,
 void filter_bound_clear(FilterSettings *filters, FilterAttribute attribute,
                         FilterBoundEnd end);
 
-// Clears every field and shows every activity type.
+// Clears every field and the view area, and shows every activity type.
 void reset_filters(FilterSettings *filters);
 // Recomputes visible_in_list for every track, and the "Shown: n of m" label.
 void apply_filter_values(GpxCollection *collection);

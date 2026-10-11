@@ -24,10 +24,9 @@ extern _Atomic bool download_in_progress;
 
 // What a MapTransform is when nothing is easing. A zeroed one has a scale of
 // zero and draws nothing, so this is not something to leave to a {0}.
-#define MAP_TRANSFORM_IDENTITY                            \
-    (MapTransform) {                                      \
-        .scale = 1.0f, .anchor_x = 0.0f, .anchor_y = 0.0f \
-    }
+#define MAP_TRANSFORM_IDENTITY \
+    (MapTransform){            \
+        .scale = 1.0f, .anchor_x = 0.0f, .anchor_y = 0.0f}
 
 // Puts a rectangle given in unscaled screen pixels where the transform says it
 // should be drawn.

@@ -230,4 +230,40 @@ void run_filters_tests(void) {
     type_field(&collection.filters, FILTER_DISTANCE, BOUND_HIGH, "800");
     apply_filter_values(&collection);
     CHECK(collection.tracks[0].visible_in_list);
+
+    SUITE("filters: the view area keeps tracks with a point inside it");
+    // id 0 crosses the area with its second point, id 1 stays left of it, id 2
+    // touches its corner exactly, and id 3 has no path at all.
+    GpxPoint crossing[2] = {{.world_x = 50, .world_y = 150}, {.world_x = 150, .world_y = 150}};
+    GpxPoint outside[2] = {{.world_x = 10, .world_y = 150}, {.world_x = 90, .world_y = 150}};
+    GpxPoint corner[1] = {{.world_x = 200, .world_y = 200}};
+    tracks[0].points = crossing;
+    tracks[0].total_points = 2;
+    tracks[0].has_path = true;
+    tracks[1].points = outside;
+    tracks[1].total_points = 2;
+    tracks[1].has_path = true;
+    tracks[2].points = corner;
+    tracks[2].total_points = 1;
+    tracks[2].has_path = true;
+
+    reset_filters(&collection.filters);
+    collection.filters.area_active = true;
+    collection.filters.area_min_x = 100;
+    collection.filters.area_min_y = 100;
+    collection.filters.area_max_x = 200;
+    collection.filters.area_max_y = 200;
+    apply_filter_values(&collection);
+    CHECK(collection.tracks[0].visible_in_list);
+    CHECK(!collection.tracks[1].visible_in_list);
+    CHECK(collection.tracks[2].visible_in_list);
+    CHECK(!collection.tracks[3].visible_in_list);
+    CHECK_STR(collection.total_visible_tracks_str, "Shown: 2 of 4 Tracks");
+
+    // Clearing the filters lets go of the area.
+    reset_filters(&collection.filters);
+    CHECK(!collection.filters.area_active);
+    apply_filter_values(&collection);
+    for (int i = 0; i < 4; i++)
+        CHECK(collection.tracks[i].visible_in_list);
 }
