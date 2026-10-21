@@ -655,7 +655,10 @@ void update_selected_track_overlay(struct application *appl, GpxCollection *coll
 // Where one sample sits in the graph's box, vertically. Pace is drawn upside
 // down relative to the others: the quickest kilometre belongs at the top, and
 // it is the smallest number.
+// A value outside the range -- a stop, beyond where the pace graph is scaled
+// to -- is drawn along the edge it is past.
 static int series_y(const TrackSeries *series, float value, float min, float max, int height) {
+    value = fminf(fmaxf(value, min), max);
     float fraction = (value - min) / (max - min);
     if (series->invert)
         fraction = 1.0f - fraction;

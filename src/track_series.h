@@ -26,6 +26,8 @@ typedef struct TrackSeries {
     float *values; // one per track point; NAN where the sample is missing
     int count;
     float min; // over the samples that are present
+    // For pace, no slower than the run's typical spread allows: a stop sits
+    // beyond it, and is drawn along the edge rather than scaled to.
     float max;
     // False when the track carries none of this kind, which is how a run
     // recorded without a heart rate monitor ends up with two graphs instead of
@@ -36,7 +38,8 @@ typedef struct TrackSeries {
     bool invert;
 } TrackSeries;
 
-// Builds one series over `track`. Returns whether there is anything to draw;
+// Builds one series over `track`, pace and heart rate through a short moving
+// average along the route. Returns whether there is anything to draw;
 // `out` is left safe to free either way.
 bool track_series_build(const GpxTrack *track, TrackSeriesKind kind, TrackSeries *out);
 void track_series_free(TrackSeries *series);

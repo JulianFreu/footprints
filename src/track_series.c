@@ -50,6 +50,88 @@ static float pace_at(const GpxTrack *track, int index) {
     return seconds / (metres / 1000.0f);
 }
 
+// A centred moving average over TRACK_SERIES_SMOOTHING_METERS either side of
+// each point. The window narrows towards either end of the track so that it
+// stays centred, which leaves a sprint finish where it was rather than averaging
+// it into the stretch before. A missing sample is left out of its neighbours'
+// averages and stays missing itself, so a gap is still drawn as a gap.
+static void smooth(const GpxTrack *track, float *values, int count) {
+    float *smoothed = malloc((size_t)count * sizeof(float));
+    if (!smoothed)
+        return;
+
+    const GpxPoint *points = track->points;
+    float total = points[count - 1].partial_distance;
+
+    for (int i = 0; i < count; i++) {
+        smoothed[i] = values[i];
+        if (isnan(values[i]))
+            continue;
+
+        float here = points[i].partial_distance;
+        float half = fminf(TRACK_SERIES_SMOOTHING_METERS, fminf(here, total - here));
+
+        int lo = i;
+        while (lo > 0 && here - points[lo - 1].partial_distance <= half)
+            lo--;
+        int hi = i;
+        while (hi < count - 1 && points[hi + 1].partial_distance - here <= half)
+            hi++;
+
+        double sum = 0.0;
+        int present = 0;
+        for (int j = lo; j <= hi; j++) {
+            if (!isnan(values[j])) {
+                sum += values[j];
+                present++;
+            }
+        }
+        smoothed[i] = (float)(sum / present);
+    }
+
+    for (int i = 0; i < count; i++)
+        values[i] = smoothed[i];
+    free(smoothed);
+}
+
+static int compare_floats(const void *a, const void *b) {
+    float x = *(const float *)a;
+    float y = *(const float *)b;
+    return (x > y) - (x < y);
+}
+
+// Sorts `values` in place to find it.
+static float median(float *values, int count) {
+    qsort(values, (size_t)count, sizeof(float), compare_floats);
+    return count % 2 ? values[count / 2]
+                     : (values[count / 2 - 1] + values[count / 2]) / 2.0f;
+}
+
+// The slowest pace the graph is scaled to; anything slower is a stop, and is
+// drawn along the edge. Taken from the median and the median absolute
+// deviation rather than the mean and the standard deviation: pace has no upper
+// bound, so a stop drags those towards itself, while the median does not move
+// until the run spent half its length standing still.
+static float slow_cap(const float *values, int count) {
+    float *present = malloc((size_t)count * sizeof(float));
+    if (!present)
+        return INFINITY;
+
+    int n = 0;
+    for (int i = 0; i < count; i++) {
+        if (!isnan(values[i]))
+            present[n++] = values[i];
+    }
+
+    float middle = median(present, n);
+    for (int i = 0; i < n; i++)
+        present[i] = fabsf(present[i] - middle);
+    float deviation = median(present, n);
+    free(present);
+
+    return middle + fmaxf(PACE_OUTLIER_MADS * deviation, PACE_OUTLIER_MIN_MARGIN);
+}
+
 static float sample(const GpxTrack *track, TrackSeriesKind kind, int index) {
     switch (kind) {
     case TRACK_SERIES_ELEVATION:
@@ -191,9 +273,15 @@ bool track_series_build(const GpxTrack *track, TrackSeriesKind kind, TrackSeries
         return false;
     out->count = track->total_points;
 
+    for (int i = 0; i < out->count; i++)
+        out->values[i] = sample(track, kind, i);
+
+    // Elevation arrives smoothed already.
+    if (kind != TRACK_SERIES_ELEVATION)
+        smooth(track, out->values, out->count);
+
     for (int i = 0; i < out->count; i++) {
-        float value = sample(track, kind, i);
-        out->values[i] = value;
+        float value = out->values[i];
 
         if (isnan(value))
             continue;
@@ -208,6 +296,9 @@ bool track_series_build(const GpxTrack *track, TrackSeriesKind kind, TrackSeries
             out->max = value;
         }
     }
+
+    if (kind == TRACK_SERIES_PACE && out->present)
+        out->max = fminf(out->max, slow_cap(out->values, out->count));
 
     return out->present;
 }

@@ -205,6 +205,20 @@
 // the watch recorded.
 #define PACE_WINDOW_METERS 100.0f
 
+// Half-width, in metres, of the centred moving average the pace and heart rate
+// graphs are drawn through. Measured along the route rather than in samples
+// for the same reason the pace window is.
+#define TRACK_SERIES_SMOOTHING_METERS 50.0f
+
+// Where the pace graph stops scaling: this many median absolute deviations
+// slower than the median pace, and never closer to it than the margin, in
+// seconds per kilometre. Standing still is a pace with no upper bound, and one
+// traffic light would otherwise stretch the graph until the run itself is a
+// flat line along the top. The margin keeps a run held very steadily from
+// cutting off everything a shade slower than its middle.
+#define PACE_OUTLIER_MADS 5.0f
+#define PACE_OUTLIER_MIN_MARGIN 60.0f
+
 // --- Heatmap ---
 // Default radius in projected pixels within which two tracks count as
 // overlapping, overridable in the settings.

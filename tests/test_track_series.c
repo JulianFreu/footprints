@@ -169,6 +169,66 @@ void run_track_series_tests(void) {
         destroy(&without_hr);
     }
 
+    SUITE("track_series: a stop does not set the pace graph's scale");
+    {
+        // Three kilometres at 5:00, two minutes standing still, and three more.
+        Sample samples[660];
+        int n = 0;
+        for (int i = 0; i < 300; i++, n++)
+            samples[n] = (Sample){10.0f * (float)i, 3.0f * (float)i, 0};
+        for (int i = 0; i < 60; i++, n++)
+            samples[n] = (Sample){3000.0f, 900.0f + 2.0f * (float)i, 0};
+        for (int i = 1; i <= 300; i++, n++)
+            samples[n] = (Sample){3000.0f + 10.0f * (float)i, 1018.0f + 3.0f * (float)i, 0};
+        GpxTrack track = build(samples, n);
+        CHECK(track_series_build(&track, TRACK_SERIES_PACE, &series));
+        CHECK_NEAR(series.min, 300.0, 0.01);
+        // Scaled to the run plus the margin, not to the stop...
+        CHECK_NEAR(series.max, 300.0 + PACE_OUTLIER_MIN_MARGIN, 0.01);
+        // ...which still reads as slow as it was, for the hover to show.
+        CHECK(series.values[330] > 600.0f);
+        track_series_free(&series);
+        destroy(&track);
+    }
+
+    SUITE("track_series: intervals are not mistaken for stops");
+    {
+        // Ten blocks of half a kilometre, alternating 4:00 and 6:00.
+        Sample samples[500];
+        float seconds = 0.0f;
+        for (int i = 0; i < 500; i++) {
+            if (i > 0)
+                seconds += 10.0f / 1000.0f * ((i - 1) / 50 % 2 ? 360.0f : 240.0f);
+            samples[i] = (Sample){10.0f * (float)i, seconds, 0};
+        }
+        GpxTrack track = build(samples, 500);
+        CHECK(track_series_build(&track, TRACK_SERIES_PACE, &series));
+        CHECK_NEAR(series.min, 240.0, 0.1);
+        CHECK_NEAR(series.max, 360.0, 0.1);
+        track_series_free(&series);
+        destroy(&track);
+    }
+
+    SUITE("track_series: heart rate is smoothed along the route");
+    {
+        // A reading every metre, flickering between 140 and 160, with a ten
+        // metre dropout.
+        GpxTrack track = build_steady(200, 1.0f, 300.0f, 0);
+        for (int i = 0; i < track.total_points; i++)
+            track.points[i].heart_rate = i % 2 ? 160 : 140;
+        for (int i = 120; i < 130; i++)
+            track.points[i].heart_rate = 0;
+        CHECK(track_series_build(&track, TRACK_SERIES_HEART_RATE, &series));
+        CHECK_NEAR(series.values[60], 150.0, 0.5);
+        // The dropout is still a gap rather than filled in from either side.
+        CHECK(isnan(series.values[125]));
+        // The window narrows to stay centred, so the first point has only
+        // itself to average.
+        CHECK_NEAR(series.values[0], 140.0, 0.001);
+        track_series_free(&series);
+        destroy(&track);
+    }
+
     SUITE("track_series: elevation comes through as it is");
     {
         GpxTrack track = build_steady(10, 20.0f, 300.0f, 0);
