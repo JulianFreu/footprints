@@ -63,7 +63,8 @@ exclusions, the k-d tree radius
 search (against brute force), the spatial index (against the full scan it
 replaced), the background job's concurrency contract, the import job's contract
 and the provider it is pointed at, and the animation primitive's easing and
-timing, and the frame profiler's ring and reductions.
+timing, and the frame profiler's ring and reductions, and the timelapse's clock,
+its span and the raster it counts overlaps in.
 
 `tests/test_import.c` points the macros naming the interpreter and each
 provider's script at `tests/fake_helper.sh`, so the spawn, the pipes, the line
@@ -96,7 +97,8 @@ cc -O1 -g -fsanitize=thread -I$(xml2-config --cflags | sed 's/-I//') \
 | `import_job.c` | Runs a provider's sync script, feeds it credentials and reads its progress back |
 | `heat.c` | The implicit k-d tree and the threaded heat calculation |
 | `point_index.c` | Tile-keyed spatial index over every point, shared by all zooms |
-| `tracks.c` | Track rendering: heat tiles, the selected-track overlay, elevation profiles |
+| `tracks.c` | Track rendering: heat tiles, the timelapse layer, the selected-track overlay, elevation profiles |
+| `timelapse.c` | The timelapse's playback clock, its span, and the raster counting how many tracks have reached each cell |
 | `map.c` | The world-to-screen projection, tile URLs, the download thread, the tile texture cache, map background |
 | `fifo.c` | The bounded queue between the main loop and the download thread |
 | `time_util.c` | The single place timestamps are parsed — everything is UTC |
@@ -110,6 +112,7 @@ cc -O1 -g -fsanitize=thread -I$(xml2-config --cflags | sed 's/-I//') \
 | `ui_records.c` | The records panel: a scrolling section per category, its rows clickable |
 | `ui_settings.c` | The settings panel, its fields and the text input that feeds them |
 | `ui_profiler.c` | The frame-time overlay: the stacked columns, the budget line and the legend |
+| `ui_timelapse.c` | The timelapse's control bar and keys, and whether it is on |
 | `ui_internal.h` | Layout vocabulary shared by `ui*.c`; not part of the UI's interface |
 | `settings.c` | What is configurable, its defaults, and reading and writing `settings.conf` |
 | `paths.c` | The two roots every path is built from: the folder holding the binary, and the per-user data directory |

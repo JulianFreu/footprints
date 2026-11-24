@@ -171,6 +171,15 @@
 // rather than as one long one.
 #define RECORDS_SECTION_GAP (2 * GAPS)
 
+// The timelapse's control bar along the bottom of the map: its buttons, the
+// trough the clock is scrubbed along, and the box the clock is printed in.
+#define TIMELAPSE_BUTTON_HEIGHT ELEMENTS_HEIGHT
+#define TIMELAPSE_TROUGH_WIDTH 280
+#define TIMELAPSE_TROUGH_HEIGHT 8
+#define TIMELAPSE_CLOCK_WIDTH 90
+// Clear of the window's edge, and of the attribution in the corner beside it.
+#define TIMELAPSE_BAR_LIFT (4 * SCREEN_BORDER_PADDING)
+
 // --- Text ---
 #define FILTER_TEXT_FONT_SIZE 12
 #define LABEL_FONT_SIZE 16
@@ -302,6 +311,15 @@ bool ui_records_take_click(int *track_id);
 // Moves the panel by whole mouse-wheel detents, if the pointer is over it.
 // Returns whether the wheel was the panel's to take.
 bool ui_records_scroll_by_wheel(int mouse_x, int mouse_y, int detents);
+
+// Starts, steers and ticks the timelapse from the presses its bar and the keys
+// left for it, and measures its timeline again whenever the visible set
+// changes. Returns whether anything moved.
+bool ui_timelapse_update(struct application *appl, GpxCollection *collection);
+// The bar along the bottom of the map, while the timelapse is on.
+void ui_draw_timelapse_bar(struct application *appl);
+// Asks the next update to switch the timelapse on, or off if it is.
+void ui_timelapse_request_toggle(void);
 
 // Marks the statistics series stale; declared here rather than in ui.h now that
 // ui_invalidate_derived is what the rest of the application calls.

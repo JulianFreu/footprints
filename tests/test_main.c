@@ -33,6 +33,7 @@ int main(void) {
     run_anim_tests();
     run_zoom_tests();
     run_profiler_tests();
+    run_timelapse_tests();
 
     printf("\n%d checks, %d failed\n", tests_run, tests_failed);
     return tests_failed == 0 ? 0 : 1;

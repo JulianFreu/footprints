@@ -98,6 +98,9 @@ typedef struct GpxCollection {
     // Spatial index behind the rendered tiles. It spans every point, so the
     // filters change the tiles without touching it; only a reparse rebuilds it.
     TrackPointIndex point_index;
+    // Raised every time the visible set or its heat changes, for whatever keeps
+    // something derived from them outside the tile cache.
+    int view_generation;
 } GpxCollection;
 
 #endif

@@ -378,6 +378,40 @@
 #define PROGRESS_PANEL_HEIGHT 80
 #define PROGRESS_BAR_HEIGHT 16
 
+// --- Timelapse ---
+
+// Playback runs at whatever speed brings this share of the visible tracks to
+// their end in this many seconds. Measured off a percentile rather than the
+// longest track, so one long hike does not slow every run down to a crawl; the
+// few that outlast it go on playing after the bar has filled.
+#define TIMELAPSE_TARGET_SECONDS 60.0f
+#define TIMELAPSE_TYPICAL_SHARE 0.95f
+// What the fast button multiplies that speed by.
+#define TIMELAPSE_FAST_FACTOR 3.0f
+// How far an arrow key moves the clock, as a share of the time the typical
+// track takes -- which is also what the bar under the clock spans.
+#define TIMELAPSE_STEP_SHARE 0.05f
+
+// Points walked per frame. Playing forward needs a handful per track; this is
+// for the frames that redraw everything already shown -- after a pan, a zoom
+// or a step back -- which are counted over as many frames as this asks for
+// and then painted in one.
+#define TIMELAPSE_POINTS_PER_FRAME 400000
+// The cells overlaps are counted in are as wide as the heat radius at the
+// zoom being drawn, within these bounds. A cell is recoloured pixel by pixel
+// when another track reaches it, so the upper bound caps what that costs.
+#define TIMELAPSE_CELL_MAX 8
+// How many cells a track remembers having counted itself in. A track lingers
+// in one cell across many frames, and without this every one of them would
+// count it again.
+#define TIMELAPSE_RECENT_CELLS 16
+// A segment longer than this, in pixels, is a jump in the recording rather
+// than ground covered, and only its end is drawn.
+#define TIMELAPSE_SEGMENT_MAX_PIXELS 4096
+// The dot each track's current position is drawn as, and its dark rim.
+#define TIMELAPSE_HEAD_RADIUS 3.5f
+#define TIMELAPSE_HEAD_RIM 1.5f
+
 // --- Frame profiler ---
 // How many frames the graph remembers, and how wide each of their columns is
 // drawn. Three seconds of a 60 Hz loop, at 360 pixels.

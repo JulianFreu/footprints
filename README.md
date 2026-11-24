@@ -10,6 +10,7 @@ Visualize all your runs, hikes, and rides in one place, explore your most freque
 - **Filter** activities by distance, pace, duration, elevation gain, and more — the list, the charts, the records and the map all follow as you type
 - **Click any track** for detailed stats and insights
 - **Chart your training** by day, week, month or year — up to two of total distance, longest run, total time and total ascent at once, and scroll the plot back through the years
+- **Replay your tracks as a timelapse** — every track that passes the filters starts at the same moment and builds up in real time, the heat growing where routes overlap, with a dot where each one is now
 - **Track your personal records** — longest run and activity, highest peak, most elevation gain, and your fastest 5k, 10k, half marathon and marathon, found anywhere inside a longer run rather than only from its start
 - **Import straight from Garmin Connect and Strava** — connect once in the import panel and pull down every activity you have not already got
 - Convert **Garmin `.fit` and `.tcx` files** to `.gpx` with the included Python tool
@@ -168,6 +169,20 @@ scans that instead.
 Subfolders are scanned too, so a library can be filed by year, by activity, or
 however else you like — and it is what lets each import keep to a folder of its
 own.
+
+### Timelapse
+
+**Replay** in the menu bar swaps the heat map for a timelapse of the tracks that
+pass the filters. Every one of them starts at the same moment and appears point
+by point as its recording reached it, pauses included. Playback runs at
+whatever speed has 95% of the tracks finished after a minute; the bar under the
+map fills in that minute, and the few longer tracks go on playing after it.
+
+The bar has play/pause, restart, a ×3 speed, **Skip to end** and **Close**, and
+the position can be dragged along it. While it is open, <kbd>Space</kbd> plays
+and pauses, <kbd>←</kbd>/<kbd>→</kbd> step through it, and <kbd>Esc</kbd>
+closes it. The map can still be panned and zoomed: the picture follows the
+camera and is redrawn for the new view once it comes to rest.
 
 ### Importing from Garmin Connect
 

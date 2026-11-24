@@ -27,6 +27,12 @@ void tracks_draw_point_marker(struct application *appl, const GpxCollection *col
 // Draws the heat overlay over the tiles map_visible_tiles produced.
 void tracks_draw_heat_tiles(struct application *appl, GpxCollection *collection,
                             const VisibleTile *tiles, int count);
+// Draws the visible tracks as far as they have got `secs` into the timelapse,
+// in place of the heat tiles, and a dot where each one is now. A redraw too
+// large for one frame is spread over several and asks for them itself.
+void tracks_draw_timelapse(struct application *appl, GpxCollection *collection, float secs);
+// Gives back the timelapse's picture and raster, for when it is switched off.
+void tracks_release_timelapse(void);
 // Draws the selected track's polyline over the whole window.
 void tracks_draw_selected_overlay(struct application *appl);
 // The nearest visible track point to a screen position, or NULL when nothing is

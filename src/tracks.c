@@ -14,6 +14,7 @@
 #include "point_index.h"
 #include "render_cache.h"
 #include "settings.h"
+#include "timelapse.h"
 #include "ui.h" // the size the sidebar draws the graphs at
 
 // The heat ramp is a data-visualisation scale rather than UI chrome, so it is
@@ -255,6 +256,7 @@ void tracks_free_scratch(struct application *appl) {
     free(appl->overlay_points);
     appl->overlay_points = NULL;
     appl->overlay_points_capacity = 0;
+    tracks_release_timelapse();
 }
 
 // Drops the rendered tiles, which are what the visible set is baked into. The
@@ -263,6 +265,7 @@ void tracks_free_scratch(struct application *appl) {
 // while the filters are being typed.
 void tracks_invalidate_filtered_view(GpxCollection *collection) {
     tile_cache_clear(&collection->track_tile_cache);
+    collection->view_generation++;
 }
 
 // Teardown counterpart: also gives back the index's allocation.
@@ -960,4 +963,192 @@ void tracks_draw_point_marker(struct application *appl, const GpxCollection *col
     batch_circle(appl->renderer, dest.x + dest.w / 2.0f, dest.y + dest.h / 2.0f,
                  dest.w / 2.0f - 2.0f, sdl_color(red));
     batch_flush(appl->renderer);
+}
+// --- Timelapse ---
+
+// What the timelapse has revealed, counted per cell, and the window-sized
+// picture it has been drawn into. Built for one camera and carried to wherever
+// the camera is now, the way the selected track's overlay is during a zoom;
+// built again once the camera comes to rest somewhere else.
+//
+// A redraw is counted without drawing and painted once it has caught up, each
+// pixel a single time rather than once per track that reaches it. Until then
+// the picture shows what it showed before, from the camera it was painted for.
+static TimelapseRaster timelapse_raster;
+static SDL_Texture *timelapse_texture;
+static TimelapseView timelapse_shown;
+static bool timelapse_live; // the picture is up to date and drawn into as it grows
+static int timelapse_generation = -1;
+static float timelapse_drawn_secs;
+
+typedef struct TimelapsePaint {
+    SDL_Renderer *renderer;
+    int point_size;
+    int max_heat;
+    uint8_t ramp[HEAT_LUT_MAX];
+} TimelapsePaint;
+
+// A pixel the raster says has changed, in the colour a heat tile gives a point
+// with as many other tracks near it. The raster counts the track itself as
+// well, which the heat does not.
+static void timelapse_paint(int x, int y, int tracks, void *context) {
+    TimelapsePaint *paint = context;
+    const int heat = tracks - 1;
+
+    int index;
+    if (heat < HEAT_LUT_MAX) {
+        if (paint->ramp[heat] == HEAT_LUT_NONE)
+            paint->ramp[heat] = (uint8_t)(heat_normalized(&settings, heat, paint->max_heat) *
+                                          (HEAT_COLOR_COUNT - 1));
+        index = paint->ramp[heat];
+    } else {
+        index = (int)(heat_normalized(&settings, heat, paint->max_heat) * (HEAT_COLOR_COUNT - 1));
+    }
+
+    const int size = paint->point_size;
+    batch_rect(paint->renderer, (float)(x - size / 2), (float)(y - size / 2),
+               (float)size, (float)size, heat_colors[index]);
+}
+
+// The raster the window would be drawn from now. A cell is about as wide as
+// the heat radius at this zoom, so tracks that would count toward each other's
+// heat mostly share one.
+static TimelapseView timelapse_view_for(const struct application *appl) {
+    const int per_pixel = map_world_per_pixel(appl);
+    int cell = (int)(settings.heat_radius_pixels / (float)per_pixel);
+    if (cell < 1)
+        cell = 1;
+    if (cell > TIMELAPSE_CELL_MAX)
+        cell = TIMELAPSE_CELL_MAX;
+
+    return (TimelapseView){
+        .origin_x = appl->world_x - (appl->window_width / 2) * per_pixel,
+        .origin_y = appl->world_y - (appl->window_height / 2) * per_pixel,
+        .per_pixel = per_pixel,
+        .width = appl->window_width,
+        .height = appl->window_height,
+        .cell = cell};
+}
+
+// Starts counting again for `view`, leaving the picture as it is until the
+// count has caught up. False if there is nothing to draw into, which leaves the
+// layer released.
+static bool timelapse_restart(struct application *appl, const GpxCollection *collection,
+                              TimelapseView view) {
+    int width = 0, height = 0;
+    if (timelapse_texture)
+        SDL_QueryTexture(timelapse_texture, NULL, NULL, &width, &height);
+    if (timelapse_texture && (width != view.width || height != view.height)) {
+        SDL_DestroyTexture(timelapse_texture);
+        timelapse_texture = NULL;
+    }
+    if (!timelapse_texture) {
+        timelapse_texture = SDL_CreateTexture(appl->renderer, SDL_PIXELFORMAT_RGBA8888,
+                                              SDL_TEXTUREACCESS_TARGET, view.width, view.height);
+        timelapse_shown = (TimelapseView){0}; // nothing painted into it yet
+        if (timelapse_texture)
+            SDL_SetTextureBlendMode(timelapse_texture, SDL_BLENDMODE_BLEND);
+    }
+    if (!timelapse_texture ||
+        !timelapse_raster_reset(&timelapse_raster, view, collection->total_tracks)) {
+        tracks_release_timelapse();
+        return false;
+    }
+
+    timelapse_live = false;
+    timelapse_generation = collection->view_generation;
+    timelapse_drawn_secs = 0.0f;
+    return true;
+}
+
+void tracks_draw_timelapse(struct application *appl, GpxCollection *collection, float secs) {
+    const TimelapseView view = timelapse_view_for(appl);
+    const TimelapseView *built = &timelapse_raster.view;
+
+    // Redrawn from the start for a different set of tracks, a clock that went
+    // back, or a camera somewhere new -- but only once the camera has come to
+    // rest there. A drag would otherwise throw the picture away on every frame
+    // of it and never finish one; until then the old picture is moved along
+    // with the map instead.
+    const bool moved = memcmp(&view, built, sizeof(view)) != 0;
+    const bool settled = !appl->dragging && !zoom_active(&appl->zoom_transition);
+    if (!timelapse_texture || collection->view_generation != timelapse_generation ||
+        secs < timelapse_drawn_secs || (moved && settled)) {
+        if (!timelapse_restart(appl, collection, view))
+            return;
+    }
+
+    // Whatever was revealed since the last frame, drawn as it is counted. An
+    // advance too large for one frame -- a redraw, or a skip ahead -- carries
+    // on without drawing, and is painted whole once it has caught up.
+    TimelapsePaint paint = {.renderer = appl->renderer,
+                            .point_size = settings.track_point_size,
+                            .max_heat = collection->max_heat};
+    memset(paint.ramp, HEAT_LUT_NONE, sizeof(paint.ramp));
+    SDL_SetRenderTarget(appl->renderer, timelapse_texture);
+    SDL_SetRenderDrawBlendMode(appl->renderer, SDL_BLENDMODE_BLEND);
+    const bool caught_up = timelapse_raster_advance(&timelapse_raster, collection, secs,
+                                                    TIMELAPSE_POINTS_PER_FRAME,
+                                                    timelapse_live ? timelapse_paint : NULL, &paint);
+    if (!caught_up) {
+        timelapse_live = false;
+        app_request_redraw(appl);
+    } else if (!timelapse_live) {
+        SDL_SetRenderDrawColor(appl->renderer, 0, 0, 0, 0);
+        SDL_RenderClear(appl->renderer);
+        timelapse_raster_paint(&timelapse_raster, timelapse_paint, &paint);
+        timelapse_shown = *built;
+        timelapse_live = true;
+    }
+    batch_flush(appl->renderer);
+    SDL_SetRenderTarget(appl->renderer, NULL);
+    timelapse_drawn_secs = secs;
+
+    // Where the camera the picture was painted for puts it under the camera
+    // now. Nothing has been painted while that camera is still unset.
+    float x, y;
+    const TimelapseView *shown = &timelapse_shown;
+    map_world_to_screen(appl, shown->origin_x, shown->origin_y, &x, &y);
+    const float scale = (float)shown->per_pixel / (float)map_world_per_pixel(appl);
+    SDL_FRect dest = map_transform_rect(appl, x, y, (float)shown->width * scale,
+                                        (float)shown->height * scale);
+    SDL_RenderCopyF(appl->renderer, timelapse_texture, NULL, &dest);
+
+    // Where each track is now, straight onto the window: these move on every
+    // frame, so there is nothing worth keeping.
+    const float reach = TIMELAPSE_HEAD_RADIUS + TIMELAPSE_HEAD_RIM;
+    const SDL_Color rim = sdl_color(bg0);
+    const SDL_Color fill = {255, 255, 255, 255};
+    const int count = timelapse_raster.track_count < collection->total_tracks
+                          ? timelapse_raster.track_count
+                          : collection->total_tracks;
+    for (int i = 0; i < count; i++) {
+        const GpxTrack *track = &collection->tracks[i];
+        int world_x, world_y;
+        if (!track->visible_in_list ||
+            !timelapse_head(track, timelapse_raster.tracks[i].cursor, secs, &world_x, &world_y))
+            continue;
+
+        float screen_x, screen_y;
+        map_world_to_screen(appl, world_x, world_y, &screen_x, &screen_y);
+        const SDL_FRect at = map_transform_rect(appl, screen_x, screen_y, 0.0f, 0.0f);
+        if (at.x < -reach || at.y < -reach ||
+            at.x > appl->window_width + reach || at.y > appl->window_height + reach)
+            continue;
+
+        batch_circle(appl->renderer, at.x, at.y, reach, rim);
+        batch_circle(appl->renderer, at.x, at.y, TIMELAPSE_HEAD_RADIUS, fill);
+    }
+    batch_flush(appl->renderer);
+}
+
+void tracks_release_timelapse(void) {
+    timelapse_raster_free(&timelapse_raster);
+    if (timelapse_texture)
+        SDL_DestroyTexture(timelapse_texture);
+    timelapse_texture = NULL;
+    timelapse_shown = (TimelapseView){0};
+    timelapse_live = false;
+    timelapse_generation = -1;
+    timelapse_drawn_secs = 0.0f;
 }

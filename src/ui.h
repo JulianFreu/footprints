@@ -81,6 +81,14 @@ bool ui_graph_hover_point(int *point_index);
 // pointer may be null, for a caller that only wants the other.
 void ui_sidebar_graph_size(const struct application *appl, int *width, int *height);
 
+// Whether the map shows the timelapse in place of the heat, and how far into it
+// the clock is, in simulated seconds since every track started.
+bool ui_timelapse_active(void);
+float ui_timelapse_time(void);
+// Space, escape and the arrows while the timelapse is on. False for a key it
+// has no use for, or for any key while it is off.
+bool ui_timelapse_handle_key(SDL_Keycode key);
+
 void ui_load_icons(struct application *appl);
 void ui_free_icons(struct application *appl);
 

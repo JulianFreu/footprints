@@ -83,5 +83,6 @@ void run_import_tests(void);
 void run_anim_tests(void);
 void run_zoom_tests(void);
 void run_profiler_tests(void);
+void run_timelapse_tests(void);
 
 #endif

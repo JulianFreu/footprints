@@ -402,6 +402,14 @@ static void draw_menu_button(SDL_Surface *icon, const char *label, MenuPanel pan
     }
 }
 
+static void clicked_timelapse_button(
+    Clay_ElementId elementId,
+    Clay_PointerData pointerData,
+    intptr_t userData) {
+    if (pointerData.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME)
+        ui_timelapse_request_toggle();
+}
+
 // The buttons down the left edge, one per panel, in the order of the enum.
 static void draw_menu_bar(struct application *appl) {
     CLAY(CLAY_ID("MenuBar"),
@@ -425,6 +433,17 @@ static void draw_menu_bar(struct application *appl) {
         // every button here does until its artwork exists.
         draw_menu_button(NULL, "Sync", PANEL_IMPORT);
         draw_menu_button(appl->icons.settings, "Set", PANEL_SETTINGS);
+
+        // Not a panel: it swaps what the map shows rather than sliding
+        // anything in, so it is lit while the timelapse is on instead.
+        CLAY(CLAY_ID_LOCAL("TimelapseMenuButton"),
+             {.layout = MenuButtonLayout,
+              .backgroundColor = ui_fade(Clay_Hovered() ? big_button_color
+                                                        : (ui_timelapse_active() ? accent_color_hl : accent_color)),
+              .cornerRadius = CLAY_CORNER_RADIUS(CORNER_RADIUS)}) {
+            Clay_OnHover(clicked_timelapse_button, 0);
+            ui_draw_text("Replay", FILTER_TEXT_FONT_SIZE, fg_l, CLAY_TEXT_ALIGN_CENTER);
+        }
     }
 }
 
@@ -570,8 +589,9 @@ static void update_map_hover(struct application *appl, GpxCollection *collection
 
     // A pan is not a hover: the world under the cursor is not moving, so the
     // readout would be a fixed number shaking along with the map.
+    // Nor is the timelapse a picture of the heat the readout gives.
     if (settings.show_heat_tooltip && !appl->mouse_over_ui && !appl->dragging &&
-        !background_busy(&appl->background)) {
+        !ui_timelapse_active() && !background_busy(&appl->background)) {
         const GpxPoint *point = tracks_point_at_screen(appl, collection, appl->mouse_x,
                                                        appl->mouse_y, MAP_HOVER_RADIUS_PIXELS);
         if (point) {
@@ -837,6 +857,7 @@ void ui_update(struct application *appl, GpxCollection *collection) {
     moved |= ui_records_update(appl, collection);
     moved |= ui_settings_update(appl, collection);
     moved |= ui_import_update(appl, collection);
+    moved |= ui_timelapse_update(appl, collection);
     if (moved)
         app_request_redraw(appl);
 }
@@ -1008,6 +1029,8 @@ void clay_draw_ui(struct application *appl, GpxCollection *collection) {
         ui_draw_settings_panel(appl);
 
         ui_fade_set(1.0f);
+
+        ui_draw_timelapse_bar(appl);
     }
 
     draw_map_attribution(appl);

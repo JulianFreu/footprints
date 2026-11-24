@@ -251,7 +251,10 @@ int main(int argc, char *argv[]) {
                 // it is worth a phase of its own rather than being folded in
                 // with the overlays either side of it.
                 profiler_mark(&appl.profiler, PROF_HEAT);
-                tracks_draw_heat_tiles(&appl, &collection, tiles, tile_count);
+                if (ui_timelapse_active())
+                    tracks_draw_timelapse(&appl, &collection, ui_timelapse_time());
+                else
+                    tracks_draw_heat_tiles(&appl, &collection, tiles, tile_count);
                 // Back to the phase this block opened with: a phase marked
                 // twice in one frame adds to itself.
                 profiler_mark(&appl.profiler, PROF_TRACKS);
@@ -525,6 +528,8 @@ static void dispatch_event(struct application *appl, GpxCollection *collection,
             appl->world_y -= (int)(event.motion.yrel * per_pixel);
         }
     } else if (event.type == SDL_KEYDOWN) {
+        if (ui_timelapse_handle_key(event.key.keysym.sym))
+            return;
         if (event.key.keysym.sym == SDLK_TAB)
             ui_toggle_run_list();
     }
