@@ -88,9 +88,12 @@ static void clicked_calculate_heat(
         pending_heat = true;
 }
 
-// Pressed in the run list's footer, which is drawn by ui.c.
-void ui_filters_request_view_area(void) {
-    pending_view_area = true;
+static void clicked_view_area(
+    Clay_ElementId elementId,
+    Clay_PointerData pointerData,
+    intptr_t userData) {
+    if (pointerData.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME)
+        pending_view_area = true;
 }
 
 // --- Input ---
@@ -476,6 +479,9 @@ void ui_draw_filter_panel(struct application *appl, GpxCollection *collection) {
              {.layout = {.sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(LIST_ENTRY_HEIGHT)}, .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}}}) {
             ui_draw_text(collection->total_visible_tracks_str, LABEL_FONT_SIZE, fg, CLAY_TEXT_ALIGN_CENTER);
         }
+
+        draw_filter_button(2, filters->area_active ? "Clear View Filter" : "Filter to View",
+                           clicked_view_area);
 
         // The two things the panel does that are not a filter. Everything the
         // filters themselves do now happens as they are typed, so there is no
