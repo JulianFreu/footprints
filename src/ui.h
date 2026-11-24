@@ -45,7 +45,7 @@ void ui_filters_blur(void);
 // digits -- the API key and the GPX folder are text -- so it needs the typed
 // characters SDL_TEXTINPUT carries rather than only the keycodes.
 bool ui_settings_input_active(void);
-bool ui_settings_handle_key(SDL_Keycode key, bool shift_held);
+bool ui_settings_handle_key(SDL_Keycode key, bool shift_held, bool ctrl_held);
 void ui_settings_handle_text(const char *text);
 // Commits whatever is in the focused field and leaves it. Committing rather
 // than discarding is what makes clicking away from a field the same as
@@ -53,11 +53,11 @@ void ui_settings_handle_text(const char *text);
 void ui_settings_blur(void);
 
 // And again for the import panel, which is routed after the settings one.
-// Every box in it takes whole words -- an address, a password, a code, an
-// application's id and secret -- so it too works from the characters
+// Every box in it takes whole words -- an API key, an application's id and
+// secret -- so it too works from the characters
 // SDL_TEXTINPUT carries rather than the keycodes.
 bool ui_import_input_active(void);
-bool ui_import_handle_key(SDL_Keycode key, bool shift_held);
+bool ui_import_handle_key(SDL_Keycode key, bool shift_held, bool ctrl_held);
 void ui_import_handle_text(const char *text);
 void ui_import_blur(void);
 

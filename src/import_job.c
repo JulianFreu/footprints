@@ -28,7 +28,7 @@ const ImportProvider import_strava = {
 
 // Zeroes a buffer in a way the compiler is not allowed to drop. Wiping one that
 // is never read again is exactly the store an optimiser removes, and the
-// buffers here worth wiping are the password and the client secret.
+// buffers here worth wiping are the API key and the client secret.
 static void wipe(void *data, size_t size) {
     volatile unsigned char *byte = (volatile unsigned char *)data;
     while (size--)
@@ -104,8 +104,6 @@ static ImportStage stage_from_status(ImportJob *job, int code) {
 
     if (code == 0)
         return IMPORT_DONE;
-    if (code == 2)
-        return IMPORT_MFA_REQUIRED;
 
     if (job->message[0] == '\0') {
         if (code == 127)
@@ -137,9 +135,8 @@ static void *import_worker(void *arg) {
 
     // Built before the spawn so the child does nothing but exec, and wiped as
     // soon as the helper has it.
-    char credentials[3 * IMPORT_CREDENTIAL_MAX + 4];
-    snprintf(credentials, sizeof(credentials), "%s\n%s\n%s\n",
-             job->user, job->secret, job->extra);
+    char credentials[2 * IMPORT_CREDENTIAL_MAX + 4];
+    snprintf(credentials, sizeof(credentials), "%s\n%s\n", job->user, job->secret);
 
     char script[PATHS_MAX], session_dir[PATHS_MAX];
     provider_script(job->provider, script, sizeof(script));
@@ -159,7 +156,6 @@ static void *import_worker(void *arg) {
 
     wipe(credentials, sizeof(credentials));
     wipe(job->secret, sizeof(job->secret));
-    wipe(job->extra, sizeof(job->extra));
 
     if (!started) {
         snprintf(job->message, sizeof(job->message), "could not start the import helper");
@@ -221,14 +217,12 @@ static bool start(ImportJob *job, bool logging_in) {
     return true;
 }
 
-bool import_start_login(ImportJob *job, const char *user, const char *secret,
-                        const char *extra) {
+bool import_start_login(ImportJob *job, const char *user, const char *secret) {
     if (job->thread_started)
         return false;
 
     snprintf(job->user, sizeof(job->user), "%s", user ? user : "");
     snprintf(job->secret, sizeof(job->secret), "%s", secret ? secret : "");
-    snprintf(job->extra, sizeof(job->extra), "%s", extra ? extra : "");
     return start(job, true);
 }
 

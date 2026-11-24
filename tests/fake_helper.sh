@@ -6,29 +6,23 @@
 # src/import_job.c builds the same argument list for every provider, so what
 # arrives here is $1 = login|sync, $2 = session directory, $3 = output
 # directory. The test chooses a behaviour through $3 for a sync and through the
-# password for a login, which are the arguments it controls.
+# secret for a login, which are the arguments it controls.
 
 case "$1" in
 login)
-    read -r email
-    read -r password
-    read -r mfa
-    if [ -z "$email" ] || [ -z "$password" ]; then
-        echo "error an email address and a password are needed"
+    read -r user
+    read -r secret
+    # Only the secret is required: Garmin's key comes with no user at all.
+    if [ -z "$secret" ]; then
+        echo "error an API key is needed"
         exit 1
-    fi
-    # Stands in for Garmin asking for a code: the first attempt has none to
-    # give, the retry does.
-    if [ "$password" = "needs-mfa" ] && [ -z "$mfa" ]; then
-        echo "mfa-required"
-        exit 2
     fi
     # Stands in for the Strava login handing over to the browser: something to
     # show on a job that has not failed and is not finished.
-    if [ "$password" = "needs-browser" ]; then
+    if [ "$secret" = "needs-browser" ]; then
         echo "message waiting for the browser"
     fi
-    echo "signed in as $email"
+    echo "signed in as $user"
     exit 0
     ;;
 sync)

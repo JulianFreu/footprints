@@ -20,5 +20,8 @@ footprints-debug.exe
 run-tests
 run-tests.exe
 
+# written by Python beside the helpers, which import each other
+__pycache__/
+
 # editor-local settings
 .vscode/

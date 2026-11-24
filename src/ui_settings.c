@@ -310,9 +310,36 @@ void ui_settings_handle_text(const char *text) {
     caret_phase = 0.0f;
 }
 
-bool ui_settings_handle_key(SDL_Keycode key, bool shift_held) {
+// Appends the clipboard's text, minus the line breaks a copied key or path so
+// often ends in: every box here is one line, and a break in it is never meant.
+static void buffer_paste(void) {
+    char *text = SDL_GetClipboardText();
+    if (!text)
+        return;
+
+    char *out = text;
+    for (const char *in = text; *in; in++)
+        if (*in != '\r' && *in != '\n')
+            *out++ = *in;
+    *out = '\0';
+
+    buffer_append(text);
+    SDL_free(text);
+}
+
+bool ui_settings_handle_key(SDL_Keycode key, bool shift_held, bool ctrl_held) {
     if (focused_field == NO_FIELD)
         return false;
+
+    // SDL_TEXTINPUT carries nothing for Ctrl+V, so the clipboard has to be asked
+    // for here. Only a text field takes it, for the reason handle_text gives.
+    if (key == SDLK_v && ctrl_held) {
+        if (field_is_text((SettingsField)focused_field)) {
+            buffer_paste();
+            caret_phase = 0.0f;
+        }
+        return true;
+    }
 
     // A number field has no SDL_TEXTINPUT to work from, so its digits arrive
     // here. A text field's do not: they have already come through as text, and

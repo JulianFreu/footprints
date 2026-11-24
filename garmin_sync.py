@@ -1,27 +1,42 @@
 """Download new Garmin Connect activities as the .gpx files Footprints reads.
 
-Spawned by the Garmin panel rather than run by hand, so everything it says goes
-to stdout one line at a time and in a shape src/garmin.c can parse:
+Spawned by the import panel rather than run by hand, so everything it says goes
+to stdout one line at a time and in a shape src/import_job.c can parse:
 
     total <n>          how many activities are about to be downloaded
     progress <i>       i of them dealt with
     imported <n>       how many landed on disk
-    mfa-required       the login needs a code Garmin has just sent
     error <message>    what went wrong
 
-Credentials arrive as three lines on stdin -- email, password, MFA code, the
-last possibly empty. Not on the command line, which ps shows to every user on
-the machine, and not in the environment, which the whole process tree inherits.
+It talks to Garmin's Personal API, authenticated by a personal API key created
+at connect.garmin.com/app/settings/personalApiToken. The key arrives as the
+second of two lines on stdin -- the first is empty, Garmin having no user name
+to go with it. Not on the command line, which ps shows to every user on the
+machine, and not in the environment, which the whole process tree inherits.
 
-Only the OAuth token is kept, in the session directory, so a password is asked
-for once rather than on every import.
+The key is kept in the session directory, readable only by its owner: what it
+is traded for is a bearer token good for a day, so every import has to trade it
+again. A key Garmin refuses -- expired or revoked -- is deleted, which is what
+puts the panel back to asking for one.
+
+The Personal API has no GPX export. What it gives is the file the activity was
+recorded as, zipped, so a .fit is converted here with the same code
+convert_fit_to_gpx.py uses for a data export.
 """
 
+import io
+import json
 import os
 import re
 import sys
+import urllib.error
+import urllib.parse
+import urllib.request
 import xml.etree.ElementTree as ET
+import zipfile
 from datetime import datetime
+
+import convert_fit_to_gpx
 
 GPX_NAMESPACE = "http://www.topografix.com/GPX/1/1"
 
@@ -30,18 +45,27 @@ GPX_NAMESPACE = "http://www.topografix.com/GPX/1/1"
 # invention rather than anything a GPX reader is expected to know.
 SUMMARY_NAMESPACE = "https://github.com/JulianFreu/footprints/summary/1"
 
+API_ROOT = "https://personal.connectapi.garmin.com"
+TOKEN_PATH = "/personalapitoken-service/personal-api/personal-api-key/token"
 LIST_PATH = "/activitylist-service/activities/search/activities"
-GPX_PATH = "/download-service/export/gpx/activity/{}"
+DOWNLOAD_PATH = "/download-service/files/activity/{}"
+
+# Where the key is kept, inside the session directory. Its existence is what
+# tells the panel an import can run; see GARMIN_TOKEN_FILE in src/config.h.
+KEY_FILE = "api_key"
+
+# Long enough for a large original file on a slow line, short enough that a
+# request nobody is answering does not hold the import forever.
+TIMEOUT_SECONDS = 60
 
 # Activities asked for per request. The list is only read to find out which ids
 # are missing, so a larger page is fewer round trips for the same answer.
 PAGE_SIZE = 50
 
-# What the exit code tells src/garmin.c, which turns it into the stage the panel
-# shows. Anything unexpected is EXIT_ERROR.
+# What the exit code tells src/import_job.c, which turns it into the stage the
+# panel shows. Anything unexpected is EXIT_ERROR.
 EXIT_OK = 0
 EXIT_ERROR = 1
-EXIT_MFA_REQUIRED = 2
 EXIT_NO_SESSION = 3
 
 # The activity id, read back out of a name this script wrote. It is what makes
@@ -59,20 +83,86 @@ def say(message):
     print(message, flush=True)
 
 
-def load_garth():
-    """The Garmin client, imported on use.
+class KeyRefused(Exception):
+    """Garmin will not trade the key for a token, which no retry can change."""
 
-    Kept out of module scope so the naming, paging and activity-type helpers
-    below can be exercised without the package installed, the same way
-    convert_fit_to_gpx.py leaves fitparse to the one converter that needs it.
+
+# ----------------- HTTP -----------------
+def request(path, *, headers, params=None, post=False):
+    """One call to the Personal API, as the bytes of its response.
+
+    urllib rather than requests: fitparse is the only package the Garmin import
+    needs, and there is no reason for this to be a second.
     """
+    url = API_ROOT + path
+    if params:
+        url += "?" + urllib.parse.urlencode(params)
+
+    # An empty body rather than none on a POST, so it goes with a length of zero
+    # -- which is what a server that insists on one is given by every other
+    # client.
+    call = urllib.request.Request(
+        url,
+        data=b"" if post else None,
+        headers={"User-Agent": "footprints", **headers},
+    )
+
     try:
-        import garth
-    except ImportError:
+        with urllib.request.urlopen(call, timeout=TIMEOUT_SECONDS) as response:
+            return response.read()
+    except urllib.error.HTTPError as error:
+        # Garmin says what it did not like in the body, which is a good deal
+        # more use than "HTTP Error 400: Bad Request" on its own.
+        detail = error.read().decode(errors="replace").strip()
         raise RuntimeError(
-            "the Garmin import needs garth-ng: pip install -r requirements.txt"
-        )
-    return garth
+            f"{error.code} {error.reason}: {detail}" if detail else f"{error.code} {error.reason}"
+        ) from error
+
+
+def bearer_token(key):
+    """The key traded for a token, good for the rest of this run."""
+    try:
+        return request(
+            TOKEN_PATH, headers={"Accept": "*/*", "Authorization": f"ApiKey {key}"}, post=True
+        ).decode().strip()
+    except RuntimeError as error:
+        cause = error.__cause__
+        if isinstance(cause, urllib.error.HTTPError) and cause.code in (401, 403):
+            raise KeyRefused("Garmin refused the API key; create a new one and connect again")
+        raise
+
+
+def api_get(token, path, params=None, accept="application/json"):
+    return request(
+        path, headers={"Accept": accept, "Authorization": f"Bearer {token}"}, params=params
+    )
+
+
+# ----------------- The key -----------------
+def key_path(session_dir):
+    return os.path.join(session_dir, KEY_FILE)
+
+
+def save_key(session_dir, key):
+    os.makedirs(session_dir, exist_ok=True)
+
+    # Written through a descriptor opened 0600 rather than chmod'ed afterwards,
+    # so it is never readable by anyone else, not even briefly.
+    handle = os.open(key_path(session_dir), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(handle, "w") as out:
+        out.write(key)
+
+
+def load_key(session_dir):
+    with open(key_path(session_dir)) as handle:
+        return handle.read().strip()
+
+
+def forget_key(session_dir):
+    try:
+        os.remove(key_path(session_dir))
+    except OSError:
+        pass  # already gone
 
 
 # ----------------- Naming and activity types -----------------
@@ -244,7 +334,37 @@ def annotated(gpx_bytes, type_name, summary):
     # same but makes the file look nothing like the one Garmin sent.
     ET.register_namespace("", namespace or GPX_NAMESPACE)
     ET.register_namespace("footprints", SUMMARY_NAMESPACE)
+    ET.register_namespace("gpxtpx", convert_fit_to_gpx.TRACKPOINT_EXTENSION_NS)
     return ET.tostring(root, encoding="UTF-8", xml_declaration=True)
+
+
+def original_gpx(archive, activity_id):
+    """The GPX for an activity, from the zipped file it was recorded as.
+
+    A .fit is converted, and a .gpx -- what an activity uploaded from elsewhere
+    may have been -- is taken as it is. Anything else, or an archive with
+    nothing in it, comes out as a document with no path, which annotated() then
+    gives Garmin's own totals rather than leaving the activity out.
+    """
+    name = f"garmin_{activity_id}"
+
+    with zipfile.ZipFile(io.BytesIO(archive)) as bundle:
+        members = bundle.namelist()
+        fit = next((m for m in members if m.lower().endswith(".fit")), None)
+        gpx = next((m for m in members if m.lower().endswith(".gpx")), None)
+
+        if fit is not None:
+            fitfile = convert_fit_to_gpx.open_fit(io.BytesIO(bundle.read(fit)))
+            document, _, _ = convert_fit_to_gpx.fit_document(
+                fitfile, name, convert_fit_to_gpx.detect_fit_activity_type(fitfile)
+            )
+        elif gpx is not None:
+            return bundle.read(gpx)
+        else:
+            document, _ = convert_fit_to_gpx.build_gpx(name, "Unknown")
+
+    ET.indent(document)
+    return ET.tostring(document, encoding="UTF-8", xml_declaration=True)
 
 
 # ----------------- Listing -----------------
@@ -278,51 +398,53 @@ def new_activities(fetch_page, known, page_size=PAGE_SIZE):
 
 
 # ----------------- Commands -----------------
-def read_credentials():
-    """Email, password and MFA code, one per line on stdin."""
+def read_key():
+    """The API key: the second of two lines on stdin, the first being empty."""
     lines = sys.stdin.read().split("\n")
-    while len(lines) < 3:
-        lines.append("")
-    return lines[0].strip(), lines[1].rstrip("\r"), lines[2].strip()
+    return lines[1].strip() if len(lines) > 1 else ""
 
 
 def login(session_dir):
-    garth = load_garth()
-    from garth.exc import MFARequiredError
-
-    email, password, mfa_code = read_credentials()
-    if not email or not password:
-        say("error an email address and a password are needed")
+    key = read_key()
+    if not key:
+        say("error an API key is needed")
         return EXIT_ERROR
 
+    # Traded once here only to find out whether Garmin takes it, so a key
+    # pasted wrong is reported now rather than on the first import.
     try:
-        # With no code to hand there is nothing to answer a challenge with, so
-        # garth is left to raise and the panel asks for one. The retry comes
-        # back through here with the code already in hand, which is why no
-        # half-finished login has to be carried between the two runs.
-        garth.login(email, password, prompt_mfa=(lambda: mfa_code) if mfa_code else None)
-    except MFARequiredError:
-        say("mfa-required")
-        return EXIT_MFA_REQUIRED
+        bearer_token(key)
     except Exception as error:
         say(f"error {error}")
         return EXIT_ERROR
 
-    garth.save(session_dir)
+    save_key(session_dir, key)
     return EXIT_OK
 
 
 def sync(session_dir, output_folder):
-    garth = load_garth()
+    try:
+        import fitparse  # noqa: F401 -- asked once, rather than per activity
+    except ImportError:
+        say("error the Garmin import needs fitparse: pip install -r requirements.txt")
+        return EXIT_ERROR
 
     try:
-        garth.resume(session_dir)
-    except Exception as error:
-        say(f"error not logged in: {error}")
+        token = bearer_token(load_key(session_dir))
+    except OSError:
+        say("error not connected: no API key saved")
         return EXIT_NO_SESSION
+    except KeyRefused as error:
+        forget_key(session_dir)
+        say(f"error {error}")
+        return EXIT_NO_SESSION
+    except Exception as error:
+        say(f"error could not sign in: {error}")
+        return EXIT_ERROR
 
     def fetch_page(start, limit):
-        return garth.connectapi(LIST_PATH, params={"start": start, "limit": limit}) or []
+        body = api_get(token, LIST_PATH, params={"start": start, "limit": limit})
+        return json.loads(body) if body else []
 
     try:
         pending = new_activities(fetch_page, existing_ids(output_folder))
@@ -340,9 +462,13 @@ def sync(session_dir, output_folder):
     for done, activity in enumerate(reversed(pending), 1):
         activity_id = int(activity["activityId"])
         try:
-            data = garth.download(GPX_PATH.format(activity_id))
+            archive = api_get(
+                token,
+                DOWNLOAD_PATH.format(activity_id),
+                accept="application/zip, application/x-zip-compressed, application/octet-stream",
+            )
             data = annotated(
-                data,
+                original_gpx(archive, activity_id),
                 activity_type((activity.get("activityType") or {}).get("typeKey")),
                 summary_of(activity),
             )

@@ -18,19 +18,17 @@
 // writes to the model, a press only records what was pressed, and
 // ui_import_update acts on it before the next layout.
 //
-// The Garmin password and the Strava client secret are the two things here that
-// are never saved. They live in this file for as long as it takes to hand them
-// to a helper, which mints a token from them; every import after that runs off
-// the token.
+// The Garmin API key and the Strava client secret are the two things here that
+// are never saved by this file. They live in it for as long as it takes to hand
+// them to a helper, which keeps what every import after that runs off in a file
+// only its owner can read.
 
 // --- Fields ---
 
 #define NO_FIELD (-1)
 
 typedef enum ImportField {
-    FIELD_GARMIN_EMAIL = 0,
-    FIELD_GARMIN_PASSWORD,
-    FIELD_GARMIN_MFA,
+    FIELD_GARMIN_KEY = 0,
     FIELD_STRAVA_CLIENT_ID,
     FIELD_STRAVA_SECRET,
     FIELD_COUNT
@@ -41,7 +39,7 @@ typedef enum ImportField {
 #define NO_ACTION (-1)
 
 typedef enum ImportAction {
-    ACTION_SHOW_GARMIN_PASSWORD = 0,
+    ACTION_SHOW_GARMIN_KEY = 0,
     ACTION_SHOW_STRAVA_SECRET,
     ACTION_GARMIN_LOGIN,
     ACTION_GARMIN_IMPORT,
@@ -58,14 +56,12 @@ static char edit_buffer[SETTINGS_EDIT_MAX];
 // What the field held when it was focused, so ESC can put it back.
 static char focus_undo[SETTINGS_EDIT_MAX];
 
-// None of these is a setting: the password and the client secret are never
-// written to disk, and the code is good for one login.
-static char garmin_password[IMPORT_CREDENTIAL_MAX];
-static char garmin_mfa[IMPORT_CREDENTIAL_MAX];
+// Neither is a setting: settings.conf is plain text, and both are secrets.
+static char garmin_key[IMPORT_CREDENTIAL_MAX];
 static char strava_secret[IMPORT_CREDENTIAL_MAX];
 // One per section, so uncovering one secret to check it does not put the other
 // on screen alongside it.
-static bool show_garmin_password = false;
+static bool show_garmin_key = false;
 static bool show_strava_secret = false;
 
 // Set by a hover callback, consumed by the next update.
@@ -84,12 +80,6 @@ static float scroll_max = 0.0f;     // from the content and the viewport
 
 static bool caret_shown(void) {
     return caret_phase < FILTER_CARET_BLINK_SECONDS / 2.0f;
-}
-
-// The code box is asked for only once Garmin has asked for one, so an account
-// without two-factor set up never sees it.
-static bool mfa_wanted(const struct application *appl) {
-    return import_stage(&appl->garmin) == IMPORT_MFA_REQUIRED || garmin_mfa[0] != '\0';
 }
 
 // Whether a job has anything to draw a bar for: one that is running, or one
@@ -141,14 +131,8 @@ static void clicked_action(Clay_ElementId id, Clay_PointerData pointer, intptr_t
 
 static void field_text(ImportField field, char *out, size_t size) {
     switch (field) {
-    case FIELD_GARMIN_EMAIL:
-        snprintf(out, size, "%s", settings.garmin_email);
-        break;
-    case FIELD_GARMIN_PASSWORD:
-        snprintf(out, size, "%s", garmin_password);
-        break;
-    case FIELD_GARMIN_MFA:
-        snprintf(out, size, "%s", garmin_mfa);
+    case FIELD_GARMIN_KEY:
+        snprintf(out, size, "%s", garmin_key);
         break;
     case FIELD_STRAVA_CLIENT_ID:
         snprintf(out, size, "%s", settings.strava_client_id);
@@ -163,8 +147,7 @@ static void field_text(ImportField field, char *out, size_t size) {
 }
 
 // Writes `edit_buffer` into whatever the focused field stands for. Only the
-// email and the application id are settings; the rest are held here and nowhere
-// else.
+// application id is a setting; the rest are held here and nowhere else.
 //
 // The precision each is written with is spelled out rather than left to
 // snprintf's own truncation: the edit buffer is the longest a field can be and
@@ -172,18 +155,9 @@ static void field_text(ImportField field, char *out, size_t size) {
 // truncation that is exactly what is wanted.
 static void commit_field(ImportField field) {
     switch (field) {
-    case FIELD_GARMIN_EMAIL:
-        snprintf(settings.garmin_email, sizeof(settings.garmin_email), "%.*s",
-                 (int)sizeof(settings.garmin_email) - 1, edit_buffer);
-        pending_save = true;
-        break;
-    case FIELD_GARMIN_PASSWORD:
-        snprintf(garmin_password, sizeof(garmin_password), "%.*s",
-                 (int)sizeof(garmin_password) - 1, edit_buffer);
-        break;
-    case FIELD_GARMIN_MFA:
-        snprintf(garmin_mfa, sizeof(garmin_mfa), "%.*s",
-                 (int)sizeof(garmin_mfa) - 1, edit_buffer);
+    case FIELD_GARMIN_KEY:
+        snprintf(garmin_key, sizeof(garmin_key), "%.*s",
+                 (int)sizeof(garmin_key) - 1, edit_buffer);
         break;
     case FIELD_STRAVA_CLIENT_ID:
         snprintf(settings.strava_client_id, sizeof(settings.strava_client_id), "%.*s",
@@ -245,11 +219,37 @@ void ui_import_handle_text(const char *text) {
     caret_phase = 0.0f;
 }
 
-bool ui_import_handle_key(SDL_Keycode key, bool shift_held) {
+// Appends the clipboard's text, minus the line breaks a copied key so often
+// ends in: every box here is one line, and a break in it is never meant.
+static void buffer_paste(void) {
+    char *text = SDL_GetClipboardText();
+    if (!text)
+        return;
+
+    char *out = text;
+    for (const char *in = text; *in; in++)
+        if (*in != '\r' && *in != '\n')
+            *out++ = *in;
+    *out = '\0';
+
+    buffer_append(text);
+    SDL_free(text);
+}
+
+bool ui_import_handle_key(SDL_Keycode key, bool shift_held, bool ctrl_held) {
     if (focused_field == NO_FIELD)
         return false;
 
     switch (key) {
+    case SDLK_v:
+        // SDL_TEXTINPUT carries nothing for Ctrl+V, so the clipboard has to be
+        // asked for here. A plain v is typing, and arrives as text.
+        if (!ctrl_held)
+            return false;
+        buffer_paste();
+        caret_phase = 0.0f;
+        return true;
+
     case SDLK_BACKSPACE: {
         size_t used = strlen(edit_buffer);
         if (used > 0)
@@ -310,15 +310,9 @@ static float content_height(const struct application *appl) {
     float height = 2 * GAPS; // the container's padding, top and bottom
     int count = 0;
 
-    // Garmin account: header, email, password, the code box when it is wanted
-    // and the line that explains it, the buttons, and the line under them.
+    // Garmin account: header, key, the buttons, and the line under them.
     add_child(&height, &count, SETTINGS_SECTION_HEADER_HEIGHT);
     add_child(&height, &count, SETTINGS_ROW_HEIGHT);
-    add_child(&height, &count, SETTINGS_ROW_HEIGHT);
-    if (mfa_wanted(appl)) {
-        add_child(&height, &count, SETTINGS_ROW_HEIGHT);
-        add_child(&height, &count, SETTINGS_ROW_HEIGHT);
-    }
     add_child(&height, &count, SETTINGS_ROW_HEIGHT);
     add_child(&height, &count, SETTINGS_ROW_HEIGHT);
 
@@ -357,7 +351,7 @@ static void clamp_scroll(void) {
 }
 
 // How far the panel can be scrolled, given the room the body has. Re-asked
-// every frame: a code box appearing or an import finishing changes the content,
+// every frame: an import finishing changes the content,
 // and the view must not be left hanging past the end of it.
 static void update_scroll_max(const struct application *appl, int viewport_h) {
     scroll_max = content_height(appl) - (float)viewport_h;
@@ -407,20 +401,17 @@ static bool apply_action(struct application *appl, int action) {
     char folder[GPX_PATH_MAX];
 
     switch (action) {
-    case ACTION_SHOW_GARMIN_PASSWORD:
-        show_garmin_password = !show_garmin_password;
+    case ACTION_SHOW_GARMIN_KEY:
+        show_garmin_key = !show_garmin_key;
         return true;
     case ACTION_SHOW_STRAVA_SECRET:
         show_strava_secret = !show_strava_secret;
         return true;
     case ACTION_GARMIN_LOGIN:
-        return import_start_login(&appl->garmin, settings.garmin_email,
-                                  garmin_password, garmin_mfa);
+        // No user to go with the key: it alone says whose account it is.
+        return import_start_login(&appl->garmin, "", garmin_key);
     case ACTION_STRAVA_LOGIN:
-        // No third credential: Strava's second step happens in the browser
-        // rather than in a box here.
-        return import_start_login(&appl->strava, settings.strava_client_id,
-                                  strava_secret, "");
+        return import_start_login(&appl->strava, settings.strava_client_id, strava_secret);
     case ACTION_GARMIN_IMPORT:
         import_dir(&import_garmin, folder, sizeof(folder));
         return import_start_sync(&appl->garmin, folder);
@@ -434,17 +425,13 @@ static bool apply_action(struct application *appl, int action) {
 
 // Joins a worker that has finished, and wipes what it has by then traded for a
 // token. Only on the frame the result lands: after that the boxes are the
-// user's again, and a password typed for the next attempt must survive.
-static bool collect_job(ImportJob *job, char *secret, size_t secret_size,
-                        char *extra, size_t extra_size) {
+// user's again, and a key typed for the next attempt must survive.
+static bool collect_job(ImportJob *job, char *secret, size_t secret_size) {
     if (!import_collect(job))
         return false;
 
-    if (import_stage(job) == IMPORT_DONE && import_was_login(job)) {
+    if (import_stage(job) == IMPORT_DONE && import_was_login(job))
         memset(secret, 0, secret_size);
-        if (extra)
-            memset(extra, 0, extra_size);
-    }
     return true;
 }
 
@@ -474,15 +461,12 @@ bool ui_import_update(struct application *appl, GpxCollection *collection) {
 
     bool reload = false;
 
-    if (collect_job(&appl->garmin, garmin_password, sizeof(garmin_password),
-                    garmin_mfa, sizeof(garmin_mfa))) {
+    if (collect_job(&appl->garmin, garmin_key, sizeof(garmin_key))) {
         reload |= import_imported(&appl->garmin) > 0;
         changed = true;
     }
 
-    // Strava's login has no third credential to forget: the browser carries
-    // that half of it.
-    if (collect_job(&appl->strava, strava_secret, sizeof(strava_secret), NULL, 0)) {
+    if (collect_job(&appl->strava, strava_secret, sizeof(strava_secret))) {
         reload |= import_imported(&appl->strava) > 0;
         changed = true;
     }
@@ -543,7 +527,7 @@ static void draw_labelled_row(const char *label, int id) {
 static void draw_field(ImportField field, bool masked) {
     bool editing = (focused_field == (int)field);
     bool shown = (field == FIELD_STRAVA_SECRET) ? show_strava_secret
-                                                : show_garmin_password;
+                                                : show_garmin_key;
 
     char value[SETTINGS_EDIT_MAX];
     if (editing)
@@ -665,38 +649,24 @@ static void draw_garmin_account(struct application *appl) {
     bool busy = import_busy(&appl->garmin);
 
     IMPORT_ROW(0) {
-        draw_labelled_row("Email", 0);
-        draw_field(FIELD_GARMIN_EMAIL, false);
-    }
-
-    IMPORT_ROW(1) {
-        draw_labelled_row("Password", 1);
-        draw_field(FIELD_GARMIN_PASSWORD, true);
-    }
-
-    if (mfa_wanted(appl)) {
-        IMPORT_ROW(2) {
-            draw_labelled_row("Code", 2);
-            draw_field(FIELD_GARMIN_MFA, false);
-        }
-        draw_caption("Garmin sent a code. Enter it and log in again.", yellow, 0);
+        draw_labelled_row("API key", 0);
+        draw_field(FIELD_GARMIN_KEY, true);
     }
 
     IMPORT_ROW(3) {
-        draw_button(ACTION_SHOW_GARMIN_PASSWORD,
-                    show_garmin_password ? "Hide password" : "Show password",
+        draw_button(ACTION_SHOW_GARMIN_KEY, show_garmin_key ? "Hide key" : "Show key",
                     false, !busy);
-        draw_button(ACTION_GARMIN_LOGIN, "Log in", false,
-                    !busy && field_filled(FIELD_GARMIN_EMAIL, settings.garmin_email) &&
-                        field_filled(FIELD_GARMIN_PASSWORD, garmin_password));
+        draw_button(ACTION_GARMIN_LOGIN, "Connect", false,
+                    !busy && field_filled(FIELD_GARMIN_KEY, garmin_key));
     }
 
     // Said plainly rather than left to be worked out from a greyed-out import
-    // button: this is what the password is for, and once it is done it is done.
+    // button: the key is asked for once, and again only when Garmin stops
+    // taking it.
     if (import_have_session(&import_garmin))
-        draw_caption("Signed in. The password is not needed again.", grey2, 1);
+        draw_caption("Connected. The key is kept for later imports.", grey2, 1);
     else
-        draw_caption("Log in once; only the token is saved.", grey2, 1);
+        draw_caption("Create a personal API key in Garmin Connect's settings.", grey2, 1);
 }
 
 static void draw_strava_account(struct application *appl) {
@@ -745,7 +715,7 @@ static const char *import_status(const ImportJob *job) {
         // that it is the browser's turn. Garmin's says nothing and falls back.
         if (message[0] != '\0')
             return ui_frame_printf("%s", message);
-        return "Logging in…";
+        return "Connecting…";
     case IMPORT_IMPORTING:
         // The total is unknown until the helper has finished asking what there
         // is, so until then there is nothing to count.
@@ -759,8 +729,6 @@ static const char *import_status(const ImportJob *job) {
         if (message[0] != '\0')
             return ui_frame_printf("%s", message);
         return "Up to date — nothing new to import.";
-    case IMPORT_MFA_REQUIRED:
-        return ui_frame_printf("%s wants a verification code.", job->provider->name);
     case IMPORT_FAILED:
         return message[0] != '\0' ? ui_frame_printf("%s", message) : "The import failed.";
     case IMPORT_IDLE:
@@ -773,8 +741,6 @@ static Clay_Color status_color(const ImportJob *job) {
     switch (import_stage(job)) {
     case IMPORT_FAILED:
         return red;
-    case IMPORT_MFA_REQUIRED:
-        return yellow;
     case IMPORT_DONE:
         return aqua;
     default:

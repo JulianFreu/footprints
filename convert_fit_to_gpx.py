@@ -116,21 +116,41 @@ def detect_fit_activity_type(fitfile):
     return "Unknown"
 
 
-def fit_to_gpx(input_path, output_folder):
-    # Imported here rather than at module scope so that converting .tcx and
-    # .gpx files, which need nothing beyond the standard library, works
-    # without fitparse installed.
+def open_fit(source):
+    """A parsed .fit file, from a path or a file-like object.
+
+    fitparse is imported here rather than at module scope so that converting
+    .tcx and .gpx files, which need nothing beyond the standard library, works
+    without it installed.
+    """
     try:
         from fitparse import FitFile
     except ImportError:
         raise RuntimeError("reading .fit files needs fitparse: pip install fitparse")
+    return FitFile(source)
 
-    fitfile = FitFile(input_path)
+
+def fit_to_gpx(input_path, output_folder):
+    fitfile = open_fit(input_path)
     activity_type = detect_fit_activity_type(fitfile)
     if activity_type.lower() in SKIP_TYPES:
         return skip(input_path, f"activity type: {activity_type}")
 
-    gpx, trkseg = build_gpx(os.path.basename(input_path), activity_type)
+    gpx, first_timestamp, valid_points = fit_document(
+        fitfile, os.path.basename(input_path), activity_type
+    )
+    if valid_points == 0:
+        return skip(input_path, "no GPS points")
+
+    out_path = write_gpx(gpx, input_path, first_timestamp, output_folder)
+    print(f"ok   {os.path.basename(input_path)} -> {os.path.basename(out_path)} ({activity_type})")
+    return out_path
+
+
+def fit_document(fitfile, name, activity_type):
+    """The GPX document for a parsed .fit file, its first timestamp, and how
+    many trackpoints it holds -- none for an activity recorded without GPS."""
+    gpx, trkseg = build_gpx(name, activity_type)
 
     first_timestamp = None
     valid_points = 0
@@ -158,12 +178,7 @@ def fit_to_gpx(input_path, output_folder):
             first_timestamp = time
         valid_points += 1
 
-    if valid_points == 0:
-        return skip(input_path, "no GPS points")
-
-    out_path = write_gpx(gpx, input_path, first_timestamp, output_folder)
-    print(f"ok   {os.path.basename(input_path)} -> {os.path.basename(out_path)} ({activity_type})")
-    return out_path
+    return gpx, first_timestamp, valid_points
 
 
 # ----------------- TCX -----------------

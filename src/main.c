@@ -450,7 +450,8 @@ static void dispatch_event(struct application *appl, GpxCollection *collection,
         }
         if (event.type == SDL_KEYDOWN &&
             ui_settings_handle_key(event.key.keysym.sym,
-                                   (event.key.keysym.mod & KMOD_SHIFT) != 0))
+                                   (event.key.keysym.mod & KMOD_SHIFT) != 0,
+                                   (event.key.keysym.mod & KMOD_CTRL) != 0))
             return;
         if (event.type == SDL_MOUSEBUTTONDOWN)
             ui_settings_blur();
@@ -466,7 +467,8 @@ static void dispatch_event(struct application *appl, GpxCollection *collection,
         }
         if (event.type == SDL_KEYDOWN &&
             ui_import_handle_key(event.key.keysym.sym,
-                                 (event.key.keysym.mod & KMOD_SHIFT) != 0))
+                                 (event.key.keysym.mod & KMOD_SHIFT) != 0,
+                                 (event.key.keysym.mod & KMOD_CTRL) != 0))
             return;
         if (event.type == SDL_MOUSEBUTTONDOWN)
             ui_import_blur();

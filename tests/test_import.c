@@ -211,7 +211,7 @@ void run_import_tests(void) {
         ImportJob job = {.provider = &import_garmin};
         CHECK(import_start_sync(&job, "SLOW"));
         CHECK(!import_start_sync(&job, "/tmp"));
-        CHECK(!import_start_login(&job, "a@b.c", "secret", ""));
+        CHECK(!import_start_login(&job, "", "key"));
         import_stop(&job);
         CHECK(!import_busy(&job));
     }
@@ -234,36 +234,21 @@ void run_import_tests(void) {
     SUITE("import: a login carries the credentials in over stdin");
     {
         ImportJob job = {.provider = &import_garmin};
-        CHECK(import_start_login(&job, "runner@example.com", "secret", ""));
+        CHECK(import_start_login(&job, "", "key"));
         CHECK(wait_for_job(&job, 10.0));
         CHECK_INT(import_stage(&job), IMPORT_DONE);
 
         // The secret does not outlive the process it was handed to.
         CHECK_INT(job.secret[0], 0);
-        CHECK_INT(job.extra[0], 0);
     }
 
     SUITE("import: a login with no credentials fails and says so");
     {
         ImportJob job = {.provider = &import_garmin};
-        CHECK(import_start_login(&job, "", "", ""));
+        CHECK(import_start_login(&job, "", ""));
         CHECK(wait_for_job(&job, 10.0));
         CHECK_INT(import_stage(&job), IMPORT_FAILED);
-        CHECK_STR(import_message(&job), "an email address and a password are needed");
-    }
-
-    SUITE("import: a login Garmin wants a code for ends at MFA required");
-    {
-        ImportJob job = {.provider = &import_garmin};
-        CHECK(import_start_login(&job, "runner@example.com", "needs-mfa", ""));
-        CHECK(wait_for_job(&job, 10.0));
-        CHECK_INT(import_stage(&job), IMPORT_MFA_REQUIRED);
-
-        // The retry is the same call with the code filled in, which is why no
-        // half-finished login has to be carried between the two.
-        CHECK(import_start_login(&job, "runner@example.com", "needs-mfa", "123456"));
-        CHECK(wait_for_job(&job, 10.0));
-        CHECK_INT(import_stage(&job), IMPORT_DONE);
+        CHECK_STR(import_message(&job), "an API key is needed");
     }
 
     SUITE("import: a message is kept without the job counting as failed");
@@ -271,7 +256,7 @@ void run_import_tests(void) {
         // What the Strava login says while the browser has it: something to
         // show, on a job that is still going to succeed.
         ImportJob job = {.provider = &import_strava};
-        CHECK(import_start_login(&job, "12345", "needs-browser", ""));
+        CHECK(import_start_login(&job, "12345", "needs-browser"));
         CHECK(wait_for_job(&job, 10.0));
         CHECK_INT(import_stage(&job), IMPORT_DONE);
         CHECK_STR(import_message(&job), "waiting for the browser");

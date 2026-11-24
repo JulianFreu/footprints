@@ -142,8 +142,8 @@ def request_json(url, data=None, token=None):
     """One API call, as parsed JSON.
 
     urllib rather than requests: the Garmin import is the only thing here that
-    needs a package installed, and there is no reason for this one to be a
-    second.
+    needs a package installed, and there is no reason for this one to need
+    any.
     """
     body = urllib.parse.urlencode(data).encode() if data else None
     request = urllib.request.Request(url, data=body)
@@ -170,8 +170,8 @@ def save_session(session_dir, session):
     """The tokens, and the application they belong to.
 
     The client secret is in here rather than in settings.conf because it is
-    needed to refresh a token and is a secret -- the same reason garth keeps its
-    own token beside it rather than in the settings file.
+    needed to refresh a token and is a secret -- the same reason the Garmin
+    import keeps its API key beside it rather than in the settings file.
     """
     os.makedirs(session_dir, exist_ok=True)
     path = os.path.join(session_dir, "token.json")

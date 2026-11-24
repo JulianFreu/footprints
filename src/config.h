@@ -269,8 +269,10 @@
 #define GARMIN_SCRIPT "garmin_sync.py"
 #define GARMIN_IMPORT_SUBDIR "garmin_import"
 #define GARMIN_SESSION_DIR "garmin_session"
-// Written by garth, and what tells the panel a password is no longer needed.
-#define GARMIN_TOKEN_FILE "oauth2_token.json"
+// Written by garmin_sync.py, and what tells the panel a key has been given. It
+// holds the personal API key itself: what the key is traded for lasts a day, so
+// every import has to trade it again.
+#define GARMIN_TOKEN_FILE "api_key"
 
 #define STRAVA_SCRIPT "strava_sync.py"
 #define STRAVA_IMPORT_SUBDIR "strava_import"
@@ -307,7 +309,7 @@
 // The exit code a cancelled helper is killed with. Windows reports a terminated
 // process as having exited with whatever its killer passed and marks it no
 // other way, so one code is reserved to stand for "did not finish on its own".
-// It has to be one no helper can return: the scripts exit 0, 1, 2 or 3, and an
+// It has to be one no helper can return: the scripts exit 0, 1 or 3, and an
 // interpreter that could not be run exits 127, so the value is deliberately
 // outside the byte an exit status fits in. This one is what Windows itself
 // reports for a process ended by Ctrl-C.
@@ -317,10 +319,10 @@
 // its messages the panel keeps to show.
 #define IMPORT_LINE_MAX 512
 #define IMPORT_MESSAGE_MAX 160
-// A credential on its way to a helper -- an email and a password, or a Strava
+// A credential on its way to a helper -- a Garmin personal API key, or a Strava
 // application's id and secret. They live only as long as it takes to write them
-// to it.
-#define IMPORT_CREDENTIAL_MAX SETTINGS_KEY_MAX
+// to it. Wider than a setting, since Garmin does not say how long a key can be.
+#define IMPORT_CREDENTIAL_MAX 512
 
 // --- UI ---
 // How long a filter field has to sit still before the heat tiles are

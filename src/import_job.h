@@ -31,7 +31,6 @@ typedef enum ImportStage {
     IMPORT_LOGGING_IN,
     IMPORT_IMPORTING,
     IMPORT_DONE,
-    IMPORT_MFA_REQUIRED,
     IMPORT_FAILED,
 } ImportStage;
 
@@ -76,19 +75,16 @@ typedef struct ImportJob {
     // them. The secret of the pair is never written anywhere else.
     char user[IMPORT_CREDENTIAL_MAX];
     char secret[IMPORT_CREDENTIAL_MAX];
-    char extra[IMPORT_CREDENTIAL_MAX];
 
     char output_dir[GPX_PATH_MAX];
     bool logging_in;
 } ImportJob;
 
-// Mints a token from the credentials and saves it, so no later import needs
-// them. What the three stand for is the provider's business: Garmin takes an
-// email, a password and an MFA code, Strava an application id and secret.
-// `extra` may be empty: when Garmin asks for a code the job ends at
-// IMPORT_MFA_REQUIRED, and the same call is made again with it.
-bool import_start_login(ImportJob *job, const char *user, const char *secret,
-                        const char *extra);
+// Hands the credentials to the helper, which checks them and saves what later
+// imports run off, so none of them asks again. What the two stand for is the
+// provider's business: Garmin takes a personal API key as `secret` and nothing
+// as `user`, Strava an application id and secret.
+bool import_start_login(ImportJob *job, const char *user, const char *secret);
 
 // Downloads every activity not already in `output_dir`.
 bool import_start_sync(ImportJob *job, const char *output_dir);

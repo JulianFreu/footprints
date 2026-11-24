@@ -65,7 +65,6 @@ void settings_defaults(Settings *s) {
     s->stadia_api_key[0] = '\0';
 
     snprintf(s->gpx_dir, sizeof(s->gpx_dir), "%s", GPX_INPUT_DIR);
-    s->garmin_email[0] = '\0';
     s->strava_client_id[0] = '\0';
 
     s->heat_radius_pixels = HEAT_RADIUS_PIXELS;
@@ -302,8 +301,6 @@ static void apply_pair(Settings *s, const char *key, const char *value) {
         snprintf(s->stadia_api_key, sizeof(s->stadia_api_key), "%s", value);
     } else if (strcmp(key, "gpx_dir") == 0) {
         snprintf(s->gpx_dir, sizeof(s->gpx_dir), "%s", value);
-    } else if (strcmp(key, "garmin_email") == 0) {
-        snprintf(s->garmin_email, sizeof(s->garmin_email), "%s", value);
     } else if (strcmp(key, "strava_client_id") == 0) {
         snprintf(s->strava_client_id, sizeof(s->strava_client_id), "%s", value);
     } else if (strcmp(key, "heat_radius") == 0) {
@@ -381,12 +378,9 @@ bool settings_save(const Settings *s, const char *path) {
     fprintf(file, "stadia_api_key   = %s\n", s->stadia_api_key);
     fprintf(file, "gpx_dir          = %s\n\n", s->gpx_dir);
 
-    fprintf(file, "# The Garmin account the import panel signs in as, and the Strava API\n");
-    fprintf(file, "# application it authorises through. Neither the password nor the client\n");
-    fprintf(file, "# secret is written here -- only the tokens minted from them, under %s/\n",
-            GARMIN_SESSION_DIR);
-    fprintf(file, "# and %s/.\n", STRAVA_SESSION_DIR);
-    fprintf(file, "garmin_email     = %s\n", s->garmin_email);
+    fprintf(file, "# The Strava API application the import panel authorises through. Neither\n");
+    fprintf(file, "# its client secret nor the Garmin API key is written here -- they are\n");
+    fprintf(file, "# under %s/ and %s/.\n", STRAVA_SESSION_DIR, GARMIN_SESSION_DIR);
     fprintf(file, "strava_client_id = %s\n\n", s->strava_client_id);
 
     fprintf(file, "heat_radius      = %g\n", (double)s->heat_radius_pixels);

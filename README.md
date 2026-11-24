@@ -196,15 +196,20 @@ camera and is redrawn for the new view once it comes to rest.
 The **Sync** button in the menu bar opens the import panel, where Garmin Connect
 and Strava each have an account section and an import button.
 
-In the Garmin section, enter the email
-address and password of your Garmin Connect account and press **Log in**. If
-your account uses two-factor authentication, Garmin sends a code, a **Code**
-box appears, and pressing *Log in* again with it finishes the job.
+The Garmin import uses Garmin's official
+[Personal API](https://developer.garmin.com/gc-developer-program/personal/personal-api),
+which is authenticated by a key you create for yourself:
 
-That happens once. The password is traded for an OAuth token, which is saved to
-`garmin_session/`, and every import after that runs off the token — the password
-is never written anywhere, and is dropped from memory as soon as it has been
-used.
+1. Open <https://connect.garmin.com/app/settings/personalApiToken> and create a
+   personal API key. Garmin lets you choose how long it stays valid.
+2. Paste it into the **API key** box of the Garmin section and press
+   **Connect**.
+
+That happens once per key. The key is checked with Garmin straight away and
+saved to `garmin_session/api_key`, readable only by you; it is never written to
+`settings.conf`. Each import trades it for a token that lasts a day, so the key
+itself has to be kept. When it expires or you revoke it, the next import says
+so, the saved key is deleted, and the panel asks for a new one.
 
 **Import new activities** then downloads every activity that is not already on
 disk, as GPX, into `gpx_files/garmin_import/`. The panel counts them down as
@@ -213,13 +218,15 @@ it a second time fetches only what is new: each file is named after the activity
 it came from, so the import can see what it already has without keeping a record
 of its own.
 
-Activities are downloaded through Garmin's own GPX export. The activity type it
-reports is written into the `<type>` element described below, so a trail run
-imports as a run rather than as `Other`.
+The Personal API has no GPX export; it hands over the file the activity was
+recorded as. A `.fit` file is converted with the same code as
+`convert_fit_to_gpx.py` below, heart rate included, and a `.gpx` that was
+uploaded from elsewhere is kept as it is. The activity type Garmin reports is
+written into the `<type>` element described below, so a trail run imports as a
+run rather than as `Other`.
 
-An activity recorded without GPS — a treadmill run — exports with no path at
-all, and everything Footprints normally knows about a track is measured from
-one. Rather than let it land as a row of zeroes, the import writes Garmin's own
+An activity recorded without GPS — a treadmill run — has no path at all, and
+everything Footprints normally knows about a track is measured from one. Rather than let it land as a row of zeroes, the import writes Garmin's own
 distance, duration and ascent into the file as a `<summary>` element, and the
 parser reads those where there are no trackpoints to measure. Such an activity
 counts towards the statistics and the records like any other; it simply has
@@ -227,7 +234,7 @@ nowhere to appear on the map. Treadmill runs downloaded before this existed
 carry no summary — delete them and press **Import new activities** again, and
 they will come back with their numbers.
 
-This needs `garth-ng`, which is in `requirements.txt`:
+This needs `fitparse`, which is in `requirements.txt`:
 
 ```bash
 pip install -r requirements.txt
@@ -295,8 +302,7 @@ itself reads `.gpx` files with no Python at all.
 
 | Package | Needed for |
 |---------|------------|
-| `garth-ng` | The Garmin Connect import |
-| `fitparse` | Converting `.fit` files (`.tcx` and `.gpx` need only the standard library) |
+| `fitparse` | The Garmin Connect import, and converting `.fit` files (`.tcx` and `.gpx` need only the standard library) |
 | — | The Strava import, which needs only the standard library |
 
 ```bash
