@@ -5,6 +5,7 @@
 
 #include "app.h"
 #include "gpx_types.h"
+#include "timelapse.h"
 #include "ui_types.h"
 
 // Animation state for the whole UI. Defined in ui.c; the event loop in main.c
@@ -81,9 +82,10 @@ bool ui_graph_hover_point(int *point_index);
 // pointer may be null, for a caller that only wants the other.
 void ui_sidebar_graph_size(const struct application *appl, int *width, int *height);
 
-// Whether the map shows the timelapse in place of the heat, and how far into it
-// the clock is, in simulated seconds since every track started.
+// Whether the map shows the timelapse in place of the heat, where its tracks
+// sit on the timeline, and how far along that the clock is.
 bool ui_timelapse_active(void);
+const TimelapseSchedule *ui_timelapse_schedule(void);
 float ui_timelapse_time(void);
 // Space, escape and the arrows while the timelapse is on. False for a key it
 // has no use for, or for any key while it is off.

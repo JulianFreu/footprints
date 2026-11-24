@@ -227,6 +227,7 @@ void clay_init(struct application *appl) {
 void clay_free_memory(void) {
     ui_runlist_free_scratch();
     ui_stats_free_scratch();
+    ui_timelapse_free_scratch();
     free(clay_memory.memory);
     clay_memory.memory = NULL;
     clay_memory.capacity = 0;

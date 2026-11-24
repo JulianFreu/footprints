@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-// --- The clock ---
+// --- Where each track sits on the timeline ---
 
 // When a track ends, measured off its points rather than its start and end
 // stamps: a point is revealed once the clock has passed it, so the last one to
@@ -23,39 +23,130 @@ static int compare_floats(const void *a, const void *b) {
     return (x > y) - (x < y);
 }
 
-void timelapse_span(const GpxCollection *collection, float *typical_secs, float *end_secs) {
-    *typical_secs = 0.0f;
-    *end_secs = 0.0f;
-
-    // One spare, so an empty collection is still an allocation rather than a
-    // malloc(0) that may come back NULL.
-    float *ends = malloc(((size_t)collection->total_tracks + 1) * sizeof(float));
-    if (!ends)
-        return;
-
-    int count = 0;
-    for (int i = 0; i < collection->total_tracks; i++) {
-        const GpxTrack *track = &collection->tracks[i];
-        if (!track->visible_in_list || !track->has_path)
-            continue;
-        const float end = track_end_secs(track);
-        if (end > 0.0f)
-            ends[count++] = end;
-    }
-
-    if (count > 0) {
-        qsort(ends, (size_t)count, sizeof(float), compare_floats);
-        // The nearest rank: the shortest duration that at least the share of
-        // tracks asked for is no longer than. The nudge keeps a share that
-        // lands exactly on a whole track from rounding up past it.
-        int rank = (int)ceil((double)TIMELAPSE_TYPICAL_SHARE * count - 1e-4);
-        if (rank < 1)
-            rank = 1;
-        *typical_secs = ends[rank - 1];
-        *end_secs = ends[count - 1];
-    }
-    free(ends);
+// The nearest rank: the shortest duration that at least TIMELAPSE_TYPICAL_SHARE
+// of the `count` tracks are no longer than. Sorts `ends` on the way. The nudge
+// keeps a share that lands exactly on a whole track from rounding up past it.
+static float typical_end(float *ends, int count) {
+    qsort(ends, (size_t)count, sizeof(float), compare_floats);
+    int rank = (int)ceil((double)TIMELAPSE_TYPICAL_SHARE * count - 1e-4);
+    if (rank < 1)
+        rank = 1;
+    return ends[rank - 1];
 }
+
+bool timelapse_schedule_build(TimelapseSchedule *schedule, const GpxCollection *collection,
+                              TimelapseMode mode) {
+    const int total = collection->total_tracks;
+    schedule->mode = mode;
+    schedule->revision++;
+    schedule->count = 0;
+    schedule->typical_secs = 0.0f;
+    schedule->end_secs = 0.0f;
+    schedule->origin_utc = 0;
+
+    // One spare throughout, so an empty collection is still an allocation
+    // rather than a malloc(0) that may come back NULL.
+    if (total + 1 > schedule->capacity) {
+        float *offset = realloc(schedule->offset, ((size_t)total + 1) * sizeof(float));
+        if (offset)
+            schedule->offset = offset;
+        float *scale = realloc(schedule->scale, ((size_t)total + 1) * sizeof(float));
+        if (scale)
+            schedule->scale = scale;
+        if (!offset || !scale)
+            return false;
+        schedule->capacity = total + 1;
+    }
+    float *ends = malloc(((size_t)total + 1) * sizeof(float));
+    if (!ends)
+        return false;
+
+    // Which tracks are in, and how long each one is -- held in its scale until
+    // the scale itself is known.
+    int timed = 0;
+    bool dated = false;
+    time_t first = 0, last = 0;
+    for (int i = 0; i < total; i++) {
+        const GpxTrack *track = &collection->tracks[i];
+        schedule->offset[i] = NAN;
+        schedule->scale[i] = 1.0f;
+        // A track with no date has nowhere to go on a calendar.
+        if (!track->visible_in_list || !track->has_path ||
+            (mode == TIMELAPSE_CALENDAR && track->start_utc == (time_t)-1))
+            continue;
+
+        schedule->offset[i] = 0.0f;
+        schedule->scale[i] = track_end_secs(track);
+        if (schedule->scale[i] > 0.0f)
+            ends[timed++] = schedule->scale[i];
+        if (mode == TIMELAPSE_CALENDAR) {
+            if (!dated || track->start_utc < first)
+                first = track->start_utc;
+            if (!dated || track->start_utc > last)
+                last = track->start_utc;
+            dated = true;
+        }
+    }
+    schedule->count = total;
+    const float typical = timed > 0 ? typical_end(ends, timed) : 0.0f;
+
+    if (mode == TIMELAPSE_REAL_TIME) {
+        for (int i = 0; i < total; i++)
+            schedule->scale[i] = 1.0f;
+        schedule->typical_secs = typical;
+        schedule->end_secs = timed > 0 ? ends[timed - 1] : 0.0f;
+    } else if (dated) {
+        // The history from the first start to the last over the target length;
+        // a single day's worth over it at the least, so a lone track still
+        // has a timeline to be drawn along.
+        double span = difftime(last, first);
+        if (span < TIMELAPSE_TARGET_SECONDS)
+            span = TIMELAPSE_TARGET_SECONDS;
+        const float speed = (float)span / TIMELAPSE_TARGET_SECONDS;
+
+        // A track as long as the typical one is drawn over the calendar's
+        // drawing time, a shorter one at the same pace, so it finishes
+        // sooner, and a longer one squeezed into that time rather than
+        // left drawing for minutes after everything around it.
+        float finish = 0.0f;
+        for (int i = 0; i < total; i++) {
+            if (isnan(schedule->offset[i]))
+                continue;
+            const float duration = schedule->scale[i];
+            const float paced = duration > typical ? duration : typical;
+            schedule->offset[i] = (float)difftime(collection->tracks[i].start_utc, first);
+            schedule->scale[i] = paced > 0.0f
+                                     ? TIMELAPSE_CALENDAR_DRAW_SECONDS * speed / paced
+                                     : 1.0f;
+            const float end = schedule->offset[i] + duration * schedule->scale[i];
+            if (end > finish)
+                finish = end;
+        }
+        schedule->origin_utc = first;
+        schedule->typical_secs = (float)span;
+        schedule->end_secs = finish > (float)span ? finish : (float)span;
+    }
+
+    free(ends);
+    return true;
+}
+
+bool timelapse_schedule_local(const TimelapseSchedule *schedule, int index, float secs,
+                              float *local_secs) {
+    if (index < 0 || index >= schedule->count || isnan(schedule->offset[index]))
+        return false;
+    *local_secs = (secs - schedule->offset[index]) / schedule->scale[index];
+    return true;
+}
+
+void timelapse_schedule_free(TimelapseSchedule *schedule) {
+    free(schedule->offset);
+    free(schedule->scale);
+    const int revision = schedule->revision;
+    *schedule = (TimelapseSchedule){.revision = revision};
+}
+
+// --- The clock ---
 
 static float clock_rate(const TimelapseClock *clock) {
     return clock->speed * (clock->fast ? TIMELAPSE_FAST_FACTOR : 1.0f);
@@ -270,7 +361,8 @@ static int raster_coord(int world, int origin, int per_pixel) {
 }
 
 bool timelapse_raster_advance(TimelapseRaster *raster, const GpxCollection *collection,
-                              float secs, int budget, TimelapseEmit emit, void *context) {
+                              const TimelapseSchedule *schedule, float secs, int budget,
+                              TimelapseEmit emit, void *context) {
     const int count = raster->track_count < collection->total_tracks
                           ? raster->track_count
                           : collection->total_tracks;
@@ -281,7 +373,11 @@ bool timelapse_raster_advance(TimelapseRaster *raster, const GpxCollection *coll
         const int i = (first + visited) % count;
         const GpxTrack *track = &collection->tracks[i];
         TimelapseTrack *state = &raster->tracks[i];
-        if (!track->visible_in_list || !track->has_path)
+        // How far into its own recording the clock puts this track. One that
+        // has not started yet reveals nothing, not even its untimed points.
+        float local;
+        if (!track->visible_in_list || !track->has_path ||
+            !timelapse_schedule_local(schedule, i, secs, &local) || local < 0.0f)
             continue;
 
         // A point with no time of its own is revealed along with the one
@@ -289,7 +385,7 @@ bool timelapse_raster_advance(TimelapseRaster *raster, const GpxCollection *coll
         // cursor back. A track with no times at all is therefore there whole
         // from the first frame.
         while (state->cursor < track->total_points &&
-               !(track->points[state->cursor].elapsed_secs > secs)) {
+               !(track->points[state->cursor].elapsed_secs > local)) {
             if (budget-- <= 0) {
                 raster->next_track = i;
                 return false;
@@ -324,7 +420,7 @@ void timelapse_raster_paint(const TimelapseRaster *raster, TimelapseEmit emit, v
     }
 }
 
-bool timelapse_head(const GpxTrack *track, int cursor, float secs, int *world_x, int *world_y) {
+bool timelapse_head(const GpxTrack *track, int cursor, float local_secs, int *world_x, int *world_y) {
     if (!track->has_path || cursor <= 0 || cursor >= track->total_points)
         return false;
 
@@ -335,7 +431,7 @@ bool timelapse_head(const GpxTrack *track, int cursor, float secs, int *world_x,
     // leaves the dot on the last point the track revealed.
     float share = 0.0f;
     if (to->elapsed_secs > from->elapsed_secs)
-        share = (secs - from->elapsed_secs) / (to->elapsed_secs - from->elapsed_secs);
+        share = (local_secs - from->elapsed_secs) / (to->elapsed_secs - from->elapsed_secs);
     if (!(share > 0.0f))
         share = 0.0f;
     if (share > 1.0f)

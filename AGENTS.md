@@ -64,7 +64,7 @@ search (against brute force), the spatial index (against the full scan it
 replaced), the background job's concurrency contract, the import job's contract
 and the provider it is pointed at, and the animation primitive's easing and
 timing, and the frame profiler's ring and reductions, and the timelapse's clock,
-its span and the raster it counts overlaps in.
+its schedule in both modes and the raster it counts overlaps in.
 
 `tests/test_import.c` points the macros naming the interpreter and each
 provider's script at `tests/fake_helper.sh`, so the spawn, the pipes, the line
@@ -98,7 +98,7 @@ cc -O1 -g -fsanitize=thread -I$(xml2-config --cflags | sed 's/-I//') \
 | `heat.c` | The implicit k-d tree and the threaded heat calculation |
 | `point_index.c` | Tile-keyed spatial index over every point, shared by all zooms |
 | `tracks.c` | Track rendering: heat tiles, the timelapse layer, the selected-track overlay, elevation profiles |
-| `timelapse.c` | The timelapse's playback clock, its span, and the raster counting how many tracks have reached each cell |
+| `timelapse.c` | The timelapse's playback clock, the schedule laying tracks on its timeline (all at once, or by date), and the raster counting how many tracks have reached each cell |
 | `map.c` | The world-to-screen projection, tile URLs, the download thread, the tile texture cache, map background |
 | `fifo.c` | The bounded queue between the main loop and the download thread |
 | `time_util.c` | The single place timestamps are parsed — everything is UTC |

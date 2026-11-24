@@ -2,13 +2,15 @@
 
 #include "background.h"
 #include "colors.h"
+#include "time_util.h"
 #include "timelapse.h"
 #include "tracks.h"
 
 // The timelapse's controls: a bar along the bottom of the map with play, a
-// trough to scrub along, the clock, the fast button and the way out. The clock
-// itself is timelapse.c and the picture is tracks.c; this file holds whether
-// the timelapse is on and turns presses into what they ask the clock to do.
+// trough to scrub along, the clock, the fast and calendar buttons and the way
+// out. The clock and the schedule are timelapse.c and the picture is tracks.c;
+// this file holds whether the timelapse is on, in which mode, and turns
+// presses into what they ask the clock to do.
 
 // --- State ---
 
@@ -21,11 +23,14 @@ typedef enum TimelapseAction {
     ACTION_BACK,
     ACTION_FORWARD,
     ACTION_SCRUB, // a press on the trough, followed until the button is let go
+    ACTION_MODE,  // between real time and the calendar
 } TimelapseAction;
 
 static bool active = false;
 static TimelapseClock playback;
-// The visible set the span was measured from. A filter change mid-play
+static TimelapseMode mode = TIMELAPSE_REAL_TIME;
+static TimelapseSchedule schedule;
+// The visible set the schedule was laid out for. A filter change mid-play
 // stretches or shrinks the timeline without stopping it.
 static int span_generation = -1;
 // Switched on but not started yet: the span has to be measured first, and the
@@ -47,6 +52,14 @@ bool ui_timelapse_active(void) {
 
 float ui_timelapse_time(void) {
     return timelapse_clock_time(&playback);
+}
+
+const TimelapseSchedule *ui_timelapse_schedule(void) {
+    return &schedule;
+}
+
+void ui_timelapse_free_scratch(void) {
+    timelapse_schedule_free(&schedule);
 }
 
 void ui_timelapse_request_toggle(void) {
@@ -82,8 +95,9 @@ static bool taken(unsigned actions, TimelapseAction action) {
 }
 
 // The clock to wherever the pointer is along the trough. Asked of last frame's
-// box, which is what Clay hit-tests against too. The trough spans the time the
-// typical track takes rather than the longest one, which can be days.
+// box, which is what Clay hit-tests against too. In real time the trough spans
+// the time the typical track takes rather than the longest one, which can be
+// days.
 static void scrub_to_pointer(const struct application *appl) {
     Clay_ElementData trough = Clay_GetElementData(CLAY_ID("TimelapseTrough"));
     if (!trough.found || trough.boundingBox.width <= 0.0f)
@@ -108,8 +122,16 @@ bool ui_timelapse_update(struct application *appl, GpxCollection *collection) {
         scrubbing = false;
         start_pending = active;
         span_generation = -1;
-        if (!active)
+        if (!active) {
             tracks_release_timelapse();
+            timelapse_schedule_free(&schedule);
+        }
+    }
+    // A different timeline altogether, so it starts again from its beginning.
+    if (active && taken(actions, ACTION_MODE)) {
+        mode = mode == TIMELAPSE_CALENDAR ? TIMELAPSE_REAL_TIME : TIMELAPSE_CALENDAR;
+        span_generation = -1;
+        start_pending = true;
     }
     if (!active)
         return changed;
@@ -122,9 +144,9 @@ bool ui_timelapse_update(struct application *appl, GpxCollection *collection) {
     }
 
     if (collection->view_generation != span_generation) {
-        float typical, end;
-        timelapse_span(collection, &typical, &end);
-        timelapse_clock_set_span(&playback, typical, end);
+        // A failed build leaves nothing scheduled, which plays as nothing.
+        timelapse_schedule_build(&schedule, collection, mode);
+        timelapse_clock_set_span(&playback, schedule.typical_secs, schedule.end_secs);
         span_generation = collection->view_generation;
         changed = true;
     }
@@ -190,7 +212,16 @@ static void draw_button(const char *label, TimelapseAction action, bool lit) {
     }
 }
 
+// How far into the tracks the clock is, or in calendar mode which day it is.
+// The day stops at the last track's: the couple of seconds it then takes to
+// draw are not days anything happened on.
 static const char *clock_text(float secs) {
+    struct tm day;
+    const float last_day = secs < schedule.typical_secs ? secs : schedule.typical_secs;
+    if (mode == TIMELAPSE_CALENDAR &&
+        utc_to_tm(schedule.origin_utc + (time_t)last_day, &day))
+        return ui_frame_printf("%04d-%02d-%02d", day.tm_year + 1900, day.tm_mon + 1, day.tm_mday);
+
     const int whole = (int)secs;
     return ui_frame_printf("%d:%02d:%02d", whole / 3600, (whole % 3600) / 60, whole % 60);
 }
@@ -200,8 +231,9 @@ void ui_draw_timelapse_bar(struct application *appl) {
         return;
 
     const float now = timelapse_clock_time(&playback);
-    // Full once the typical track has finished; the few still going after it
-    // are what "Skip to end" is for.
+    // Full once the typical track has finished, or in calendar mode once the
+    // last one has started; what is still going after it is what "Skip to end"
+    // is for.
     float share = playback.typical_secs > 0.0f ? now / playback.typical_secs : 1.0f;
     if (share > 1.0f)
         share = 1.0f;
@@ -256,6 +288,7 @@ void ui_draw_timelapse_bar(struct application *appl) {
         }
 
         draw_button("3x", ACTION_FAST, playback.fast);
+        draw_button("Calendar", ACTION_MODE, mode == TIMELAPSE_CALENDAR);
         draw_button("Skip to end", ACTION_SKIP, false);
         draw_button("Close", ACTION_TOGGLE, false);
     }

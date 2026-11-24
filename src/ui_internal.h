@@ -176,7 +176,7 @@
 #define TIMELAPSE_BUTTON_HEIGHT ELEMENTS_HEIGHT
 #define TIMELAPSE_TROUGH_WIDTH 280
 #define TIMELAPSE_TROUGH_HEIGHT 8
-#define TIMELAPSE_CLOCK_WIDTH 90
+#define TIMELAPSE_CLOCK_WIDTH 100
 // Clear of the window's edge, and of the attribution in the corner beside it.
 #define TIMELAPSE_BAR_LIFT (4 * SCREEN_BORDER_PADDING)
 
@@ -320,6 +320,8 @@ bool ui_timelapse_update(struct application *appl, GpxCollection *collection);
 void ui_draw_timelapse_bar(struct application *appl);
 // Asks the next update to switch the timelapse on, or off if it is.
 void ui_timelapse_request_toggle(void);
+// Releases the schedule, for teardown with the timelapse still on.
+void ui_timelapse_free_scratch(void);
 
 // Marks the statistics series stale; declared here rather than in ui.h now that
 // ui_invalidate_derived is what the rest of the application calls.

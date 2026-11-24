@@ -978,7 +978,7 @@ static TimelapseRaster timelapse_raster;
 static SDL_Texture *timelapse_texture;
 static TimelapseView timelapse_shown;
 static bool timelapse_live; // the picture is up to date and drawn into as it grows
-static int timelapse_generation = -1;
+static int timelapse_revision = -1;
 static float timelapse_drawn_secs;
 
 typedef struct TimelapsePaint {
@@ -1034,7 +1034,7 @@ static TimelapseView timelapse_view_for(const struct application *appl) {
 // count has caught up. False if there is nothing to draw into, which leaves the
 // layer released.
 static bool timelapse_restart(struct application *appl, const GpxCollection *collection,
-                              TimelapseView view) {
+                              const TimelapseSchedule *schedule, TimelapseView view) {
     int width = 0, height = 0;
     if (timelapse_texture)
         SDL_QueryTexture(timelapse_texture, NULL, NULL, &width, &height);
@@ -1056,25 +1056,27 @@ static bool timelapse_restart(struct application *appl, const GpxCollection *col
     }
 
     timelapse_live = false;
-    timelapse_generation = collection->view_generation;
+    timelapse_revision = schedule->revision;
     timelapse_drawn_secs = 0.0f;
     return true;
 }
 
-void tracks_draw_timelapse(struct application *appl, GpxCollection *collection, float secs) {
+void tracks_draw_timelapse(struct application *appl, GpxCollection *collection,
+                           const TimelapseSchedule *schedule, float secs) {
     const TimelapseView view = timelapse_view_for(appl);
     const TimelapseView *built = &timelapse_raster.view;
 
-    // Redrawn from the start for a different set of tracks, a clock that went
-    // back, or a camera somewhere new -- but only once the camera has come to
+    // Redrawn from the start for a different schedule -- a change of mode, or
+    // of the tracks it was laid out for -- a clock that went back, or a camera
+    // somewhere new -- but only once the camera has come to
     // rest there. A drag would otherwise throw the picture away on every frame
     // of it and never finish one; until then the old picture is moved along
     // with the map instead.
     const bool moved = memcmp(&view, built, sizeof(view)) != 0;
     const bool settled = !appl->dragging && !zoom_active(&appl->zoom_transition);
-    if (!timelapse_texture || collection->view_generation != timelapse_generation ||
+    if (!timelapse_texture || schedule->revision != timelapse_revision ||
         secs < timelapse_drawn_secs || (moved && settled)) {
-        if (!timelapse_restart(appl, collection, view))
+        if (!timelapse_restart(appl, collection, schedule, view))
             return;
     }
 
@@ -1087,7 +1089,7 @@ void tracks_draw_timelapse(struct application *appl, GpxCollection *collection, 
     memset(paint.ramp, HEAT_LUT_NONE, sizeof(paint.ramp));
     SDL_SetRenderTarget(appl->renderer, timelapse_texture);
     SDL_SetRenderDrawBlendMode(appl->renderer, SDL_BLENDMODE_BLEND);
-    const bool caught_up = timelapse_raster_advance(&timelapse_raster, collection, secs,
+    const bool caught_up = timelapse_raster_advance(&timelapse_raster, collection, schedule, secs,
                                                     TIMELAPSE_POINTS_PER_FRAME,
                                                     timelapse_live ? timelapse_paint : NULL, &paint);
     if (!caught_up) {
@@ -1125,8 +1127,9 @@ void tracks_draw_timelapse(struct application *appl, GpxCollection *collection, 
     for (int i = 0; i < count; i++) {
         const GpxTrack *track = &collection->tracks[i];
         int world_x, world_y;
-        if (!track->visible_in_list ||
-            !timelapse_head(track, timelapse_raster.tracks[i].cursor, secs, &world_x, &world_y))
+        float local;
+        if (!track->visible_in_list || !timelapse_schedule_local(schedule, i, secs, &local) ||
+            !timelapse_head(track, timelapse_raster.tracks[i].cursor, local, &world_x, &world_y))
             continue;
 
         float screen_x, screen_y;
@@ -1149,6 +1152,6 @@ void tracks_release_timelapse(void) {
     timelapse_texture = NULL;
     timelapse_shown = (TimelapseView){0};
     timelapse_live = false;
-    timelapse_generation = -1;
+    timelapse_revision = -1;
     timelapse_drawn_secs = 0.0f;
 }

@@ -35,6 +35,16 @@ static GpxCollection collection_of(int count) {
     return (GpxCollection){.tracks = track_store, .total_tracks = count};
 }
 
+// The raster tests are in real time, laid out afresh for whatever the
+// collection holds at the moment of the call.
+static TimelapseSchedule real_time;
+
+static bool advance(TimelapseRaster *raster, const GpxCollection *collection, float secs,
+                    int budget, TimelapseEmit emit, void *context) {
+    timelapse_schedule_build(&real_time, collection, TIMELAPSE_REAL_TIME);
+    return timelapse_raster_advance(raster, collection, &real_time, secs, budget, emit, context);
+}
+
 // What the renderer would have on screen: the last count each pixel was drawn
 // with, and how many draws it took.
 typedef struct Screen {
@@ -83,12 +93,22 @@ static void test_span(void) {
     track_store[7].has_path = false;
 
     GpxCollection collection = collection_of(8);
-    float typical, end;
-    timelapse_span(&collection, &typical, &end);
-    CHECK_NEAR(end, 600.0, 1e-3);
+    TimelapseSchedule schedule = {0};
+    CHECK(timelapse_schedule_build(&schedule, &collection, TIMELAPSE_REAL_TIME));
+    CHECK_NEAR(schedule.end_secs, 600.0, 1e-3);
     // Six tracks: 95% of them is 5.7, so the sixth is the first rank that
     // covers it.
-    CHECK_NEAR(typical, 600.0, 1e-3);
+    CHECK_NEAR(schedule.typical_secs, 600.0, 1e-3);
+    // In real time every track starts at once and plays as recorded; the two
+    // left out are not scheduled at all.
+    CHECK(schedule.offset[0] == 0.0f && schedule.scale[0] == 1.0f);
+    CHECK(schedule.offset[5] == 0.0f && schedule.scale[5] == 1.0f);
+    CHECK(isnan(schedule.offset[6]) && isnan(schedule.offset[7]));
+    float local;
+    CHECK(timelapse_schedule_local(&schedule, 2, 42.0f, &local));
+    CHECK(local == 42.0f);
+    CHECK(!timelapse_schedule_local(&schedule, 6, 42.0f, &local));
+    CHECK(!timelapse_schedule_local(&schedule, 8, 42.0f, &local));
 
     // Twenty tracks put 95% on a whole track exactly: the nineteenth.
     GpxPoint many_points[20][2];
@@ -99,15 +119,59 @@ static void test_span(void) {
         many[i] = (GpxTrack){.points = many_points[i], .total_points = 2, .has_path = true, .visible_in_list = true};
     }
     GpxCollection twenty = {.tracks = many, .total_tracks = 20};
-    timelapse_span(&twenty, &typical, &end);
-    CHECK_NEAR(typical, 190.0, 1e-3);
-    CHECK_NEAR(end, 200.0, 1e-3);
+    CHECK(timelapse_schedule_build(&schedule, &twenty, TIMELAPSE_REAL_TIME));
+    CHECK_NEAR(schedule.typical_secs, 190.0, 1e-3);
+    CHECK_NEAR(schedule.end_secs, 200.0, 1e-3);
+
+    SUITE("timelapse: the calendar plays the history over the target length");
+    // A day apart each, and none of them dated by the real-time build above.
+    const time_t day = 86400, origin = 1500000000;
+    for (int i = 0; i < 20; i++)
+        many[i].start_utc = origin + (time_t)(19 - i) * day; // the last is first
+    CHECK(timelapse_schedule_build(&schedule, &twenty, TIMELAPSE_CALENDAR));
+    CHECK(schedule.origin_utc == origin);
+    CHECK_NEAR(schedule.typical_secs, 19.0 * day, 1.0);
+    CHECK_NEAR(schedule.offset[19], 0.0, 1e-3);
+    CHECK_NEAR(schedule.offset[0], 19.0 * day, 1.0);
+    const double speed = 19.0 * day / TIMELAPSE_TARGET_SECONDS;
+
+    SUITE("timelapse: each track is drawn over a couple of seconds of it");
+    // Real seconds spent drawing a track: its timeline length over the speed.
+    // The typical one, the 19th of 20, takes the drawing time; a shorter one
+    // keeps the same pace, and the one longer than it is squeezed into it.
+    CHECK_NEAR(190.0 * schedule.scale[18] / speed, TIMELAPSE_CALENDAR_DRAW_SECONDS, 1e-3);
+    CHECK_NEAR(10.0 * schedule.scale[0] / speed, TIMELAPSE_CALENDAR_DRAW_SECONDS / 19.0, 1e-3);
+    CHECK_NEAR(200.0 * schedule.scale[19] / speed, TIMELAPSE_CALENDAR_DRAW_SECONDS, 1e-3);
+    // The last to start is the first track, and it is the last to finish.
+    CHECK_NEAR(schedule.end_secs, 19.0 * day + TIMELAPSE_CALENDAR_DRAW_SECONDS / 19.0 * speed, 2.0);
+    CHECK(timelapse_schedule_local(&schedule, 0, 19.0f * day, &local));
+    CHECK_NEAR(local, 0.0, 0.5);
+
+    SUITE("timelapse: an undated track has no place on the calendar");
+    many[3].start_utc = (time_t)-1;
+    CHECK(timelapse_schedule_build(&schedule, &twenty, TIMELAPSE_CALENDAR));
+    CHECK(isnan(schedule.offset[3]));
+    CHECK(timelapse_schedule_build(&schedule, &twenty, TIMELAPSE_REAL_TIME));
+    CHECK(schedule.offset[3] == 0.0f); // in real time it has no need of one
+
+    SUITE("timelapse: a lone track still gets a timeline to be drawn along");
+    GpxCollection lone = {.tracks = many, .total_tracks = 1};
+    CHECK(timelapse_schedule_build(&schedule, &lone, TIMELAPSE_CALENDAR));
+    CHECK(schedule.typical_secs == TIMELAPSE_TARGET_SECONDS);
+    CHECK(schedule.end_secs >= schedule.typical_secs);
 
     SUITE("timelapse: no timed track leaves nothing to play");
     for (int i = 0; i < 20; i++)
         many_points[i][1].elapsed_secs = NAN;
-    timelapse_span(&twenty, &typical, &end);
-    CHECK(typical == 0.0f && end == 0.0f);
+    CHECK(timelapse_schedule_build(&schedule, &twenty, TIMELAPSE_REAL_TIME));
+    CHECK(schedule.typical_secs == 0.0f && schedule.end_secs == 0.0f);
+
+    SUITE("timelapse: every build is a new revision");
+    const int revision = schedule.revision;
+    CHECK(timelapse_schedule_build(&schedule, &twenty, TIMELAPSE_REAL_TIME));
+    CHECK_INT(schedule.revision, revision + 1);
+
+    timelapse_schedule_free(&schedule);
 }
 
 static void test_clock(void) {
@@ -175,7 +239,7 @@ static void test_reveal(void) {
     Screen screen = {0};
 
     CHECK(timelapse_raster_reset(&raster, test_view(1), 1));
-    CHECK(timelapse_raster_advance(&raster, &collection, 4.5f, 1000, record_emit, &screen));
+    CHECK(advance(&raster, &collection, 4.5f, 1000, record_emit, &screen));
     CHECK_INT(raster.tracks[0].cursor, 5);
     CHECK_INT(lit_count(&raster), 5);
     CHECK(raster.lit[1 * RASTER_W + 6]);
@@ -187,7 +251,7 @@ static void test_reveal(void) {
     CHECK_INT(x, 7); // halfway between 6 and 7, rounded away from zero
     CHECK_INT(y, 1);
 
-    CHECK(timelapse_raster_advance(&raster, &collection, 100.0f, 1000, record_emit, &screen));
+    CHECK(advance(&raster, &collection, 100.0f, 1000, record_emit, &screen));
     CHECK_INT(lit_count(&raster), 10);
     CHECK(screen_matches(&raster, &screen));
     // Finished, so no longer under way.
@@ -196,7 +260,7 @@ static void test_reveal(void) {
     SUITE("timelapse: points between distant fixes are filled in");
     point_store[0][9].world_x = 30; // a 21-pixel jump from the point before
     CHECK(timelapse_raster_reset(&raster, test_view(1), 1));
-    CHECK(timelapse_raster_advance(&raster, &collection, 100.0f, 1000, record_emit, &screen));
+    CHECK(advance(&raster, &collection, 100.0f, 1000, record_emit, &screen));
     CHECK_INT(lit_count(&raster), 29); // x 2..30 along row 1
     for (int px = 2; px <= 30; px++)
         CHECK(raster.lit[1 * RASTER_W + px]);
@@ -219,9 +283,9 @@ static void test_counting(void) {
     CHECK(timelapse_raster_reset(&whole, test_view(2), 2));
 
     for (float t = 0.0f; t <= 200.0f; t += 0.7f)
-        timelapse_raster_advance(&stepped, &collection, t, 1000, record_emit, &stepped_screen);
-    timelapse_raster_advance(&stepped, &collection, 200.0f, 1000, record_emit, &stepped_screen);
-    timelapse_raster_advance(&whole, &collection, 200.0f, 1000, record_emit, &whole_screen);
+        advance(&stepped, &collection, t, 1000, record_emit, &stepped_screen);
+    advance(&stepped, &collection, 200.0f, 1000, record_emit, &stepped_screen);
+    advance(&whole, &collection, 200.0f, 1000, record_emit, &whole_screen);
 
     for (int cell = 0; cell < 10; cell++)
         CHECK_INT(stepped.cells[1 * stepped.cells_wide + cell], 2);
@@ -238,7 +302,7 @@ static void test_counting(void) {
     GpxCollection lone = collection_of(1);
     CHECK(timelapse_raster_reset(&stepped, test_view(2), 1));
     for (float t = 0.0f; t <= 30.0f; t += 0.5f)
-        timelapse_raster_advance(&stepped, &lone, t, 1000, record_emit, &stepped_screen);
+        advance(&stepped, &lone, t, 1000, record_emit, &stepped_screen);
     CHECK_INT(stepped.cells[2 * stepped.cells_wide + 2], 1);
 
     timelapse_raster_free(&stepped);
@@ -258,12 +322,12 @@ static void test_silent_then_paint(void) {
     CHECK(timelapse_raster_reset(&live, test_view(2), 3));
     CHECK(timelapse_raster_reset(&silent, test_view(2), 3));
     for (float t = 0.0f; t <= 100.0f; t += 1.3f) {
-        timelapse_raster_advance(&live, &collection, t, 1000, record_emit, &live_screen);
-        timelapse_raster_advance(&silent, &collection, t, 4, NULL, NULL);
+        advance(&live, &collection, t, 1000, record_emit, &live_screen);
+        advance(&silent, &collection, t, 4, NULL, NULL);
     }
-    while (!timelapse_raster_advance(&silent, &collection, 100.0f, 4, NULL, NULL))
+    while (!advance(&silent, &collection, 100.0f, 4, NULL, NULL))
         ;
-    timelapse_raster_advance(&live, &collection, 100.0f, 1000, record_emit, &live_screen);
+    advance(&live, &collection, 100.0f, 1000, record_emit, &live_screen);
     CHECK_INT(silent_screen.draws, 0);
 
     timelapse_raster_paint(&silent, record_emit, &silent_screen);
@@ -277,6 +341,53 @@ static void test_silent_then_paint(void) {
     timelapse_raster_free(&silent);
 }
 
+static void test_calendar_reveal(void) {
+    SUITE("timelapse: on the calendar a track waits for its day");
+
+    const time_t day = 86400;
+    make_track(0, 0, 1, 10, 60.0f);
+    make_track(1, 0, 4, 10, 60.0f);
+    track_store[0].start_utc = 1500000000;
+    track_store[1].start_utc = 1500000000 + day;
+    GpxCollection collection = collection_of(2);
+
+    TimelapseSchedule schedule = {0};
+    TimelapseRaster raster = {0};
+    Screen screen = {0};
+    CHECK(timelapse_schedule_build(&schedule, &collection, TIMELAPSE_CALENDAR));
+    CHECK(timelapse_raster_reset(&raster, test_view(1), 2));
+
+    // Half a day in: the first is drawn whole, the second not begun.
+    CHECK(timelapse_raster_advance(&raster, &collection, &schedule, 0.5f * day, 1000,
+                                   record_emit, &screen));
+    CHECK_INT(raster.tracks[0].cursor, 10);
+    CHECK_INT(raster.tracks[1].cursor, 0);
+    float local;
+    int x, y;
+    CHECK(timelapse_schedule_local(&schedule, 1, 0.5f * day, &local));
+    CHECK(local < 0.0f);
+    CHECK(!timelapse_head(&track_store[1], raster.tracks[1].cursor, local, &x, &y));
+
+    // Partway into the second one's drawing time, it is under way.
+    const float midway = (float)day + 0.5f * 540.0f * schedule.scale[1];
+    CHECK(timelapse_raster_advance(&raster, &collection, &schedule, midway, 1000,
+                                   record_emit, &screen));
+    CHECK(raster.tracks[1].cursor > 0 && raster.tracks[1].cursor < 10);
+    CHECK(timelapse_schedule_local(&schedule, 1, midway, &local));
+    CHECK_NEAR(local, 270.0, 1.0);
+    CHECK(timelapse_head(&track_store[1], raster.tracks[1].cursor, local, &x, &y));
+    CHECK_INT(y, 4);
+
+    CHECK(timelapse_raster_advance(&raster, &collection, &schedule, schedule.end_secs, 1000,
+                                   record_emit, &screen));
+    CHECK_INT(raster.tracks[1].cursor, 10);
+    CHECK_INT(lit_count(&raster), 20);
+    CHECK(screen_matches(&raster, &screen));
+
+    timelapse_raster_free(&raster);
+    timelapse_schedule_free(&schedule);
+}
+
 static void test_budget(void) {
     SUITE("timelapse: a pass that runs out of points carries on where it stopped");
 
@@ -288,7 +399,7 @@ static void test_budget(void) {
     CHECK(timelapse_raster_reset(&raster, test_view(1), 2));
 
     int passes = 0;
-    while (!timelapse_raster_advance(&raster, &collection, 100.0f, 7, record_emit, &screen))
+    while (!advance(&raster, &collection, 100.0f, 7, record_emit, &screen))
         passes++;
     CHECK_INT(passes, 5); // forty points, seven at a time
     CHECK_INT(raster.tracks[0].cursor, 20);
@@ -308,14 +419,14 @@ static void test_missing_times_and_edges(void) {
     TimelapseRaster raster = {0};
     Screen screen = {0};
     CHECK(timelapse_raster_reset(&raster, test_view(1), 1));
-    timelapse_raster_advance(&raster, &collection, 2.0f, 1000, record_emit, &screen);
+    advance(&raster, &collection, 2.0f, 1000, record_emit, &screen);
     CHECK_INT(raster.tracks[0].cursor, 4);
 
     SUITE("timelapse: a track with no times is there whole from the start");
     for (int i = 0; i < 6; i++)
         point_store[0][i].elapsed_secs = NAN;
     CHECK(timelapse_raster_reset(&raster, test_view(1), 1));
-    timelapse_raster_advance(&raster, &collection, 0.0f, 1000, record_emit, &screen);
+    advance(&raster, &collection, 0.0f, 1000, record_emit, &screen);
     CHECK_INT(raster.tracks[0].cursor, 6);
 
     SUITE("timelapse: hidden tracks and tracks off the raster draw nothing");
@@ -327,7 +438,7 @@ static void test_missing_times_and_edges(void) {
     collection = collection_of(3);
     memset(&screen, 0, sizeof(screen));
     CHECK(timelapse_raster_reset(&raster, test_view(1), 3));
-    timelapse_raster_advance(&raster, &collection, 100.0f, 1000, record_emit, &screen);
+    advance(&raster, &collection, 100.0f, 1000, record_emit, &screen);
     CHECK_INT(lit_count(&raster), 1); // only the end of the jump
     CHECK(raster.lit[3 * RASTER_W + RASTER_W - 1]);
     CHECK_INT(raster.tracks[2].cursor, 0);
@@ -335,7 +446,7 @@ static void test_missing_times_and_edges(void) {
 
     SUITE("timelapse: a raster with nowhere to draw refuses the reset");
     CHECK(!timelapse_raster_reset(&raster, (TimelapseView){.per_pixel = 1, .cell = 1}, 1));
-    CHECK(timelapse_raster_advance(&raster, &collection, 100.0f, 1000, record_emit, &screen));
+    CHECK(advance(&raster, &collection, 100.0f, 1000, record_emit, &screen));
 
     timelapse_raster_free(&raster);
 }
@@ -346,6 +457,8 @@ void run_timelapse_tests(void) {
     test_reveal();
     test_counting();
     test_silent_then_paint();
+    test_calendar_reveal();
     test_budget();
     test_missing_times_and_edges();
+    timelapse_schedule_free(&real_time);
 }

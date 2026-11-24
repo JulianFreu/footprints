@@ -386,6 +386,10 @@
 // few that outlast it go on playing after the bar has filled.
 #define TIMELAPSE_TARGET_SECONDS 60.0f
 #define TIMELAPSE_TYPICAL_SHARE 0.95f
+// In calendar mode the whole history plays over the target length instead, and
+// each track takes this long to draw -- the typical one, that is: a shorter one
+// is drawn at the same pace and a longer one squeezed into the same time.
+#define TIMELAPSE_CALENDAR_DRAW_SECONDS 2.0f
 // What the fast button multiplies that speed by.
 #define TIMELAPSE_FAST_FACTOR 3.0f
 // How far an arrow key moves the clock, as a share of the time the typical

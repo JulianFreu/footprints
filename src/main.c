@@ -252,7 +252,8 @@ int main(int argc, char *argv[]) {
                 // with the overlays either side of it.
                 profiler_mark(&appl.profiler, PROF_HEAT);
                 if (ui_timelapse_active())
-                    tracks_draw_timelapse(&appl, &collection, ui_timelapse_time());
+                    tracks_draw_timelapse(&appl, &collection, ui_timelapse_schedule(),
+                                          ui_timelapse_time());
                 else
                     tracks_draw_heat_tiles(&appl, &collection, tiles, tile_count);
                 // Back to the phase this block opened with: a phase marked
